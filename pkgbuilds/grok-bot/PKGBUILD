@@ -1,0 +1,85 @@
+# Maintainer: petrouil
+# Contributor: Omarchy
+
+pkgname=grok-bot
+pkgver=0.30.0
+pkgrel=1
+_commit=2385d097738b3719cc5ecd9281a107aa106215f1
+pkgdesc='Grok Bot desktop agent'
+arch=('x86_64' 'aarch64')
+url='https://x.ai/bot'
+license=('custom')
+depends=(
+  'at-spi2-core'
+  'gtk3'
+  'hicolor-icon-theme'
+  'libnotify'
+  'libsecret'
+  'libxss'
+  'libxtst'
+  'nss'
+  'util-linux-libs'
+  'xdg-utils'
+)
+optdepends=('libappindicator-gtk3: tray support')
+provides=('sand')
+conflicts=('sand')
+options=('!strip' '!debug')
+
+_deb_x86_64="grok-bot_${pkgver}_amd64.deb"
+_deb_aarch64="grok-bot_${pkgver}_arm64.deb"
+source=(
+  'grok-bot.sh'
+  'grok-bot.desktop'
+)
+source_x86_64=(
+  "${_deb_x86_64}::https://downloads.cursor.com/grokbot/stable/${_commit}/linux/x64/${_deb_x86_64}"
+)
+source_aarch64=(
+  "${_deb_aarch64}::https://downloads.cursor.com/grokbot/stable/${_commit}/linux/arm64/${_deb_aarch64}"
+)
+sha256sums=('6dfa6c305941afa6cbaefbeaae06d05ab5a88f31630005d25a819a160c20c7a3'
+            '856056c9ca63dda5d01158ce8fb6a9a7cbb3f67c13a92b573cd196d3e50f26e7')
+sha256sums_x86_64=('fb888b2204c8a51c71a9f5f9a2913ac10561f3ef6939c1245ecae4e837d4ada2')
+sha256sums_aarch64=('7c4c81d576181a57b34b812258b2620626717cec84f100503a7363f37aa8e3fe')
+noextract=("${_deb_x86_64}" "${_deb_aarch64}")
+
+package() {
+  local deb_var="_deb_${CARCH}"
+  local deb="${!deb_var}"
+
+  bsdtar -xOf "${srcdir}/${deb}" data.tar.xz |
+    bsdtar -x -C "${pkgdir}" -f -
+
+  rm -rf "${pkgdir}/usr/share/doc" \
+         "${pkgdir}/usr/share/applications/sand.desktop" \
+         "${pkgdir}/usr/share/applications/grok-bot.desktop"
+
+  local icon1024="${pkgdir}/usr/share/icons/hicolor/1024x1024/apps"
+  if [[ -f "${icon1024}/sand.png" && ! -f "${icon1024}/grok-bot.png" ]]; then
+    install -Dm644 "${icon1024}/sand.png" "${icon1024}/grok-bot.png"
+  fi
+  rm -f "${icon1024}/sand.png"
+  if [[ -f "${icon1024}/grok-bot.png" ]]; then
+    install -Dm644 "${icon1024}/grok-bot.png" \
+      "${pkgdir}/usr/share/icons/hicolor/512x512/apps/grok-bot.png"
+  fi
+
+  # Always install our Wayland wrapper; do not keep any /usr/bin from the .deb.
+  rm -f "${pkgdir}/usr/bin/grok-bot" "${pkgdir}/usr/bin/sand"
+  install -Dm755 "${srcdir}/grok-bot.sh" "${pkgdir}/usr/bin/grok-bot"
+  ln -s grok-bot "${pkgdir}/usr/bin/sand"
+  install -Dm644 "${srcdir}/grok-bot.desktop" \
+    "${pkgdir}/usr/share/applications/grok-bot.desktop"
+
+  install -Dm644 "${pkgdir}/opt/Grok Bot/LICENSE.electron.txt" \
+    "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE.electron.txt"
+  install -Dm644 "${pkgdir}/opt/Grok Bot/LICENSES.chromium.html" \
+    "${pkgdir}/usr/share/licenses/${pkgname}/LICENSES.chromium.html"
+
+  if ! { [[ -L /proc/self/ns/user ]] && unshare --user true; }; then
+    chmod 4755 "${pkgdir}/opt/Grok Bot/chrome-sandbox"
+  else
+    chmod 0755 "${pkgdir}/opt/Grok Bot/chrome-sandbox"
+  fi
+}
