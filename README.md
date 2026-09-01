@@ -23,17 +23,19 @@ changes. Packages come from four places:
   artifact is reused as-is.
 - **In-tree PKGBUILDs** ([`pkgbuilds/`](pkgbuilds), `source: local` in
   `packages.json`), for software that exists nowhere in a form an aarch64
-  build can use. Currently only `obs-studio`: absent from Arch Linux ARM
-  entirely, and every AUR pkgbase hardcodes obsproject's prebuilt CEF browser
-  bundle, which is published for x86_64 only. Ours builds upstream's
-  unmodified release sources with `ENABLE_BROWSER=OFF` — no browser
-  source/dock, everything else enabled.
+  build can use. `obs-studio` is absent from Arch Linux ARM entirely, and
+  every AUR pkgbase hardcodes obsproject's prebuilt CEF browser bundle, which
+  is published for x86_64 only; ours builds upstream's unmodified release
+  sources with `ENABLE_BROWSER=OFF` — no browser source/dock, everything else
+  enabled. `avd-fw` and `libva-v4l2_request-avd` are in no repository at all,
+  and together turn on hardware video decode on Apple Silicon.
 
 ## Packages
 
 | Package | Version | Provides |
 |---------|---------|----------|
 | `aether` | 4.29.8-1 | Wallpaper-driven desktop theming |
+| `avd-fw` | 0.1-1 | Apple Video Decoder firmware — H.264/HEVC/VP9 hardware decode |
 | `brave-origin-bin` | 1:1.94.117-1 | Minimalist browser from the Brave team |
 | `cliamp` | 1.63.2-1 | Retro terminal music player |
 | `dotnet-host-bin` | 10.0.11.sdk400-1 | .NET CLI driver |
@@ -42,6 +44,7 @@ changes. Packages come from four places:
 | `herdr` | 0.8.2-1 | Terminal workspace manager for AI coding agents |
 | `hypa-ttfx-bin` | 0.3.1-1 | Hypa terminal text effects |
 | `hyprland-preview-share-picker-git` | 0.2.1.r16.g0ef9b30-1 | Share picker with window/monitor previews |
+| `libva-v4l2_request-avd` | 1.3-1 | VA-API driver so applications can reach the Apple Video Decoder |
 | `localsend` | 1.18.2-1 | Cross-platform AirDrop alternative |
 | `mise-bin` | 2026.8.16-1 | Dev tools, env vars, task runner |
 | `obs-studio` | 32.2.2-1 | Video recording and live streaming (no browser source) |
@@ -107,9 +110,9 @@ The packages differ only in where they can be built:
 
 | Group | Count | Automated |
 |-------|-------|-----------|
-| `any` — `arch=('any')`, architecture-independent | 6 | yes |
+| `any` — `arch=('any')`, architecture-independent | 7 | yes |
 | `repack` — ships a vendor-prebuilt ARM binary | 9 | yes |
-| `compile` — built from source | 12 | yes |
+| `compile` — built from source | 13 | yes |
 
 Two packages in the repo are deliberately **not** automated, and say so in
 `packages.json` rather than being silently absent. Both are built from
