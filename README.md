@@ -35,7 +35,7 @@ changes. Packages come from four places:
 |---------|---------|----------|
 | `aether` | 4.29.8-1 | Wallpaper-driven desktop theming |
 | `brave-origin-bin` | 1:1.94.117-1 | Minimalist browser from the Brave team |
-| `cliamp` | 1.63.2-1 | Retro terminal music player |
+| `cliamp` | 2.0.0-1 | Retro terminal music player |
 | `dotnet-host-bin` | 10.0.11.sdk400-1 | .NET CLI driver |
 | `dotnet-runtime-2.1` | 2.1.30.sdk818-1 | .NET Core 2.1 runtime |
 | `dotnet-sdk-2.1` | 2.1.30.sdk818-1 | .NET Core 2.1 SDK |
@@ -51,7 +51,7 @@ changes. Packages come from four places:
 | `omarchy-emacs` | 1.10.1-1 | Emacs theme/font syncing for Omarchy |
 | `omarchy-webapp-theme` | 0.3.6-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
 | `omawrite` | 0.5.0-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
-| `openai-codex-desktop` | 26.820.80927-1 | ChatGPT desktop app with Codex |
+| `openai-codex-desktop` | 26.825.51511-1 | ChatGPT desktop app with Codex |
 | `tensaku` | 0.28.0-1 | Screenshot annotation for Wayland |
 | `ttf-ia-writer` | 20181225-1 | iA Writer font subset |
 | `ttfx` | 0.3.2-1 | Terminal text effects, static binary |
