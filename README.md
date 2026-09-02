@@ -43,7 +43,7 @@ changes. Packages come from four places:
 | `hypa-ttfx-bin` | 0.3.1-1 | Hypa terminal text effects |
 | `hyprland-preview-share-picker-git` | 0.2.1.r16.g0ef9b30-1 | Share picker with window/monitor previews |
 | `localsend` | 1.18.2-1 | Cross-platform AirDrop alternative |
-| `mise-bin` | 2026.8.16-1 | Dev tools, env vars, task runner |
+| `mise-bin` | 2026.9.0-1 | Dev tools, env vars, task runner |
 | `obs-studio` | 32.2.2-1 | Video recording and live streaming (no browser source) |
 | `obsidian-appimage` | 1.12.7-1 | Markdown knowledge base (AppImage) |
 | `omacalc` | 0.2.2-1 | Calculator — bound to `SUPER + CTRL + Q` |
