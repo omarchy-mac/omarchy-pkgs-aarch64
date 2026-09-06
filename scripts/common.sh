@@ -82,6 +82,7 @@ fetch_current_dbs() {
 # These live here rather than in build-package.sh so scripts/self-test.sh can
 # exercise them directly. They are the fiddliest logic in the repo.
 ALLOW_FOREIGN_ELF="${ALLOW_FOREIGN_ELF:-}"
+EXCLUDE_BUILD_DEPS="${EXCLUDE_BUILD_DEPS:-}"
 
 # Read the name from .PKGINFO rather than inferring it from the filename.
 # Authoritative for split pkgbases, where several artifacts share a prefix
@@ -114,6 +115,28 @@ elf_allowed() {
     [[ -n "$pat" ]] || continue
     # shellcheck disable=SC2053  # glob match is the point
     [[ "$rel" == $pat ]] && return 0
+  done
+  return 1
+}
+# "compile" builds install runtime depends as well as makedepends, because
+# several of those are what the build actually links against: tensaku needs
+# gtk4 and libadwaita headers, not just rustc. A dep that is only ever needed
+# at runtime is a different matter. It can become uninstallable for reasons
+# that have nothing to do with this build -- ALARM rebuilt aquamarine past a
+# soname its own hyprland still required, which made hyprland uninstallable
+# for days -- and a Rust binary does not link against a compositor. Naming one
+# here drops it from the build-time install only; the built package still
+# declares it, so pacman still pulls it in on a user's machine.
+build_dep_excluded() {
+  local dep="$1" ex exs
+  [[ -n "$EXCLUDE_BUILD_DEPS" ]] || return 1
+  IFS=',' read -r -a exs <<< "$EXCLUDE_BUILD_DEPS"
+  for ex in "${exs[@]}"; do
+    [[ -n "$ex" ]] || continue
+    # Exact names, not globs as elf_allowed uses: this drops entries from an
+    # install list, and a stray glob quietly removing a real build dep would
+    # surface much later and much less clearly than a missing-package error.
+    [[ "$dep" == "$ex" ]] && return 0
   done
   return 1
 }

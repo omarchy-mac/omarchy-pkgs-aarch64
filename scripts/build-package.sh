@@ -11,6 +11,7 @@
 #   PKGNAMES    comma-separated pkgnames to keep (a split pkgbase builds more)
 #   OUTDIR      where to stage the kept artifacts
 #   IGNOREARCH  true to pass --ignorearch (for PKGBUILDs missing aarch64)
+#   EXCLUDE_BUILD_DEPS  comma-separated depends to skip installing at build time
 #
 # This must run inside an aarch64 environment. On a native ARM runner that is
 # free; on an x86 runner it is an emulated aarch64 container (binfmt + qemu).
@@ -29,6 +30,7 @@ source scripts/common.sh
 : "${PKGBASE:?}" "${SOURCE:?}" "${CATEGORY:?}" "${PKGNAMES:?}" "${OUTDIR:?}"
 IGNOREARCH="${IGNOREARCH:-false}"
 EXTRA_MAKEDEPENDS="${EXTRA_MAKEDEPENDS:-}"
+EXCLUDE_BUILD_DEPS="${EXCLUDE_BUILD_DEPS:-}"
 ALLOW_FOREIGN_ELF="${ALLOW_FOREIGN_ELF:-}"
 
 case "$CATEGORY" in
@@ -138,6 +140,21 @@ mapfile -t deps < <(
     [[ -n "$EXTRA_MAKEDEPENDS" ]] && tr ',' '\n' <<< "$EXTRA_MAKEDEPENDS"
   } | sed '/^$/d' | sort -u
 )
+# packages.json can name depends that must not be installed to build. See
+# build_dep_excluded: this is for runtime-only depends whose availability is
+# not our problem, and it never changes what the built package declares.
+if [[ -n "$EXCLUDE_BUILD_DEPS" ]] && ((${#deps[@]})); then
+  keep_deps=()
+  for d in "${deps[@]}"; do
+    if build_dep_excluded "$d"; then
+      log "Skipping runtime dep '$d' at build time (exclude_build_deps)"
+    else
+      keep_deps+=("$d")
+    fi
+  done
+  deps=("${keep_deps[@]+"${keep_deps[@]}"}")
+fi
+
 if ((${#deps[@]})); then
   log "Installing build deps: ${deps[*]}"
   if [[ "$(id -u)" -eq 0 ]]; then

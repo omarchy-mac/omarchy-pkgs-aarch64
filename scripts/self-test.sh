@@ -128,6 +128,24 @@ while read -r base; do
   [[ -f "pkgbuilds/$base/PKGBUILD" ]] || nolocal=$((nolocal+1))
 done < <(jq -r '.packages | map(select(.source == "local")) | .[].pkgbase' packages.json | sort -u)
 is "every local source has an in-tree PKGBUILD" "$nolocal" '0'
+# exclude_build_deps only ever removes a dep from the build-time install, so
+# the risk it carries is dropping something a package actually needs to
+# compile. Only "compile" installs runtime depends at all, so the field is
+# meaningless anywhere else and a stray one means a misunderstanding. The
+# matcher is checked separately for exactness.
+badexcl="$(jq -r '.packages | map(select(.exclude_build_deps and (.category != "compile"))) | length' packages.json)"
+is "exclude_build_deps only on compile packages" "$badexcl" '0'
+
+echo "== build-time dep exclusion"
+EXCLUDE_BUILD_DEPS='hyprland'
+build_dep_excluded hyprland  && ok "named dep is excluded"    || no "named dep is excluded"
+build_dep_excluded gtk4      && no "unnamed dep is kept"      || ok "unnamed dep is kept"
+# A prefix must not match: excluding "hyprland" must leave hyprland-guiutils.
+build_dep_excluded hyprland-guiutils && no "prefix does not match" || ok "prefix does not match"
+EXCLUDE_BUILD_DEPS='hyprland,xdg-desktop-portal-hyprland'
+build_dep_excluded xdg-desktop-portal-hyprland && ok "second entry in the list matches" || no "second entry in the list matches"
+EXCLUDE_BUILD_DEPS=''
+build_dep_excluded hyprland && no "empty list excludes nothing" || ok "empty list excludes nothing"
 
 echo "== Omarchy Mac atomic package policy"
 mkdir -p "$work/mac-source" "$work/mac-build/omarchy/usr/share/omarchy/install/helpers" \
