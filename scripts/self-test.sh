@@ -218,6 +218,48 @@ printf 'HOOKS=(base udev autodetect modconf block filesystems fsck)\n' \
   && no "hook drop-in without asahi is rejected" "a drop-in that stages no firmware passed" \
   || ok "hook drop-in without asahi is rejected"
 
+# omarchy's own depends decide what else ships: the keyring and font are built
+# by the same run and are in no other repo we carry, so an omarchy that needs
+# them must publish them.
+mkdir -p "$work/mac-extra" "$work/mac-xstage"
+# The previous case left a deliberately-broken settings package behind; this
+# case needs a good one, so rebuild it with the asahi hook restored.
+mkdir -p "$work/mac-build/settings/etc/mkinitcpio.conf.d"
+cat > "$work/mac-build/settings/etc/mkinitcpio.conf.d/omarchy_hooks.conf" <<'HOOKS'
+HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms)
+# insert the asahi hook after base, where Asahi Alarm puts it
+HOOKS
+( cd "$work/mac-build/settings" && tar -cf - . | xz > "$work/mac-extra/omarchy-settings-4.0.2-1-aarch64.pkg.tar.xz" )
+cat > "$work/mac-build/omarchy/.PKGINFO" <<'INFO'
+pkgname = omarchy
+pkgver = 4.0.2-1
+arch = aarch64
+depend = omarchy-settings=4.0.2
+depend = iwd
+depend = networkmanager
+depend = omarchy-keyring
+depend = ttf-jetbrains-mono-nerd-basic
+INFO
+( cd "$work/mac-build/omarchy" \
+    && tar -cf - .PKGINFO ./usr/share/omarchy/install ./usr/share/omarchy/themes \
+     | xz > "$work/mac-extra/omarchy-4.0.2-1-aarch64.pkg.tar.xz" )
+mkpkgany() { mkdir -p "$work/x-$1"; printf 'pkgname = %s\npkgver = 1-1\narch = any\n' "$1" > "$work/x-$1/.PKGINFO"
+  ( cd "$work/x-$1" && tar -cf - .PKGINFO | xz > "$work/mac-extra/$1-1-1-any.pkg.tar.xz" ); }
+
+# declared and present -> all four stage
+mkpkgany omarchy-keyring; mkpkgany ttf-jetbrains-mono-nerd-basic
+( RELEASE_TAG=v4.0.2-1 SOURCE_DIR="$work/mac-source" PKGDIR="$work/mac-extra" STAGING_DIR="$work/mac-xstage" \
+    bash scripts/omarchy-mac-release.sh verify ) >/dev/null 2>&1
+is "omarchy's dependency packages are published too" \
+  "$(find "$work/mac-xstage" -name '*.pkg.tar.*' | wc -l | tr -d ' ')" '4'
+
+# declared but missing -> refuse, rather than publish an uninstallable omarchy
+rm -f "$work/mac-extra/omarchy-keyring-1-1-any.pkg.tar.xz"
+( RELEASE_TAG=v4.0.2-1 SOURCE_DIR="$work/mac-source" PKGDIR="$work/mac-extra" STAGING_DIR="$work/mac-xstage" \
+    bash scripts/omarchy-mac-release.sh verify ) >/dev/null 2>&1 \
+  && no "a missing dependency package is rejected" "published an omarchy whose depend is unavailable" \
+  || ok "a missing dependency package is rejected"
+
 echo
 if (( fail )); then
   printf '\033[1;31m%d passed, %d FAILED\033[0m\n' "$pass" "$fail"; exit 1

@@ -168,10 +168,33 @@ verify() {
   grep -Fxq usr/share/omarchy/install/helpers/arm-package-sources.sh <<<"$omarchy_paths" \
     || die "omarchy package is missing the ARM package-sources policy"
 
+  # omarchy depends on omarchy-keyring and ttf-jetbrains-mono-nerd-basic, and
+  # build-packages.sh builds both -- but only the pair used to be staged, so
+  # they were built and discarded on every run and appeared in no repository.
+  # Machines have them because the ISO installer put them there; anything
+  # provisioned another way, or that loses one, cannot install omarchy at all,
+  # because the dependency is unsatisfiable. Publish what the package actually
+  # needs so the repo stands on its own.
+  #
+  # These are arch=any and carry their own upstream versions, so neither the
+  # aarch64 nor the RELEASE_VERSION assertion above applies to them. What must
+  # hold is that they are the depends omarchy names, so an omarchy that stops
+  # requiring one stops publishing it.
+  local extras=() extra extra_pkg extra_arch
+  for extra in omarchy-keyring ttf-jetbrains-mono-nerd-basic; do
+    grep -Fxq "$extra" <<<"$omarchy_depends" || continue
+    extra_pkg="$(find_package "$PKGDIR" "$extra")"
+    extra_arch="$(pkginfo_field "$extra_pkg" arch)"
+    [[ "$extra_arch" == "any" || "$extra_arch" == "aarch64" ]] \
+      || die "$extra built for $extra_arch, expected any or aarch64"
+    extras+=("$extra_pkg")
+  done
+
   mkdir -p "$STAGING_DIR"
   find "$STAGING_DIR" -maxdepth 1 -type f -name '*.pkg.tar.*' -delete
-  cp "$omarchy" "$settings" "$STAGING_DIR/"
+  cp "$omarchy" "$settings" "${extras[@]+"${extras[@]}"}" "$STAGING_DIR/"
   log "Verified and staged the atomic package pair for $RELEASE_TAG"
+  (( ${#extras[@]} )) && log "  plus ${#extras[@]} dependency package(s) omarchy requires"
   printf '    %s\n' "$STAGING_DIR"/*.pkg.tar.* >&2
 }
 
