@@ -51,7 +51,9 @@ changes. Packages come from four places:
 | `obsidian-appimage` | 1.13.7-2 | Markdown knowledge base (AppImage) |
 | `omacalc` | 0.2.2-1 | Calculator — bound to `SUPER + CTRL + Q` |
 | `omacut` | 0.4.0-1 | Video length trimmer |
+| `omarchy` | 4.0.1-2 | Omarchy Mac scripts and desktop runtime |
 | `omarchy-emacs` | 1.10.1-1 | Emacs theme/font syncing for Omarchy |
+| `omarchy-settings` | 4.0.1-2 | Apple Silicon system and user defaults |
 | `omarchy-webapp-theme` | 0.3.6-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
 | `omawrite` | 0.5.0-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
 | `openai-codex-desktop` | 26.901.20858-1 | ChatGPT desktop app with Codex |
@@ -93,10 +95,8 @@ Assets live on a single rolling `edge` tag and are replaced in place, so the
   own `pacman.conf` uses for its repo. If you'd rather not trust unsigned
   packages, build them yourself: the Omarchy ones with the command below, the
   AUR ones with `makepkg` from their PKGBUILD.
-- **Partly automated.** A scheduled workflow refreshes the
-  architecture-independent packages and the prebuilt-ARM repacks. The packages
-  that compile from source are still rebuilt by hand and can drift behind
-  upstream — see [Automation](#automation) for which is which.
+- **Automated.** Scheduled workflows refresh the general package set and the
+  fork-owned Omarchy Mac package pair independently. See [Automation](#automation).
 
 ## Automation
 
@@ -114,19 +114,15 @@ The packages differ only in where they can be built:
 | `repack` — ships a vendor-prebuilt ARM binary | 9 | yes |
 | `compile` — built from source | 13 | yes |
 
-Two packages in the repo are deliberately **not** automated, and say so in
-`packages.json` rather than being silently absent. Both are built from
-[omarchy-mac](https://github.com/omarchy-mac/omarchy-mac) and carry Apple
-Silicon patches that rebuilding from upstream's PKGBUILD would discard.
-
-`omarchy` drops the `limine` bootloader dependencies, which mean nothing on a
-Mac. `omarchy-settings` goes further: it re-inserts the `asahi` mkinitcpio hook
-that stages Apple Silicon firmware, without which the next `mkinitcpio` run
-produces an initramfs that cannot drive the display or Wi-Fi and the boot wedges
-— it also drops the `btrfs-overlayfs` hook that needs `limine-snapper-sync`,
-sets trackpad defaults, and adds around 19 files including an `asahi-alarm`
-pacman mirrorlist. Rebuild both by hand from the fork; do not remove their
-`skip`.
+Two packages stay deliberately excluded from that generic matrix. `omarchy`
+and `omarchy-settings` are built as an atomic pair by
+[`update-omarchy-mac.yml`](.github/workflows/update-omarchy-mac.yml), which
+checks hourly for a new [Omarchy Mac](https://github.com/omarchy-mac/omarchy-mac)
+release. It checks out the exact release tag, builds both packages on a native
+ARM runner, and refuses to publish unless their versions match and the aarch64
+dependency and payload contracts hold. Failures in unrelated AUR packages
+therefore cannot block an Omarchy Mac release, and one half of the pair can
+never publish by itself.
 
 `herdr` currently fails to build anywhere: its PKGBUILD pins `zig0.15`, which
 Arch dropped from `[extra]` on the move to `zig 0.16`. It is left to fail
@@ -168,6 +164,7 @@ Running it by hand:
 gh workflow run update-packages.yml                        # everything in scope
 gh workflow run update-packages.yml -f packages=mise-bin   # one package
 gh workflow run update-packages.yml -f dry_run=true        # build, verify, publish nothing
+gh workflow run update-omarchy-mac.yml -f release_tag=v4.0.2-1 -f dry_run=true
 ```
 
 [`scripts/self-test.sh`](scripts/self-test.sh) covers the parts that would fail
