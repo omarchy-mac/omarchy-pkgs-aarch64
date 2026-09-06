@@ -173,19 +173,36 @@ pkgname = omarchy-settings
 pkgver = 4.0.2-1
 arch = aarch64
 INFO
+mkdir -p "$work/mac-build/settings/etc/mkinitcpio.conf.d"
+cat > "$work/mac-build/settings/etc/mkinitcpio.conf.d/omarchy_hooks.conf" <<'HOOKS'
+HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms)
+# insert the asahi hook after base, where Asahi Alarm puts it
+HOOKS
 ( cd "$work/mac-build/settings" && tar -cf - . | xz > "$work/mac-build/omarchy-settings-4.0.2-1-aarch64.pkg.tar.xz" )
 ( RELEASE_TAG=v4.0.2-1 SOURCE_DIR="$work/mac-source" PKGDIR="$work/mac-build" \
     STAGING_DIR="$work/mac-stage" verify ) >/dev/null 2>&1 \
   && ok "matching safe pair verifies" || no "matching safe pair verifies" "policy rejected a safe pair"
 is "both packages stage together" "$(find "$work/mac-stage" -name '*.pkg.tar.*' | wc -l)" '2'
 
-mkdir -p "$work/mac-build/settings/etc/mkinitcpio.conf.d"
-touch "$work/mac-build/settings/etc/mkinitcpio.conf.d/omarchy_hooks.conf"
+# Dropping the hook is the boot-breaking case: the package installs fine and
+# the machine wedges at the next mkinitcpio run, with no display to say why.
+rm -rf "$work/mac-build/settings/etc/mkinitcpio.conf.d"
 ( cd "$work/mac-build/settings" && tar -cf - . | xz > "$work/mac-build/omarchy-settings-4.0.2-1-aarch64.pkg.tar.xz" )
 ( RELEASE_TAG=v4.0.2-1 SOURCE_DIR="$work/mac-source" PKGDIR="$work/mac-build" \
     STAGING_DIR="$work/mac-stage" verify ) >/dev/null 2>&1 \
-  && no "x86 initramfs policy is rejected" "unsafe settings package passed" \
-  || ok "x86 initramfs policy is rejected"
+  && no "missing asahi hook is rejected" "settings package without the asahi hook passed" \
+  || ok "missing asahi hook is rejected"
+
+# A present-but-empty drop-in restores nothing, so a path check alone is not
+# enough -- the content has to name the hook.
+mkdir -p "$work/mac-build/settings/etc/mkinitcpio.conf.d"
+printf 'HOOKS=(base udev autodetect modconf block filesystems fsck)\n' \
+  > "$work/mac-build/settings/etc/mkinitcpio.conf.d/omarchy_hooks.conf"
+( cd "$work/mac-build/settings" && tar -cf - . | xz > "$work/mac-build/omarchy-settings-4.0.2-1-aarch64.pkg.tar.xz" )
+( RELEASE_TAG=v4.0.2-1 SOURCE_DIR="$work/mac-source" PKGDIR="$work/mac-build" \
+    STAGING_DIR="$work/mac-stage" verify ) >/dev/null 2>&1 \
+  && no "hook drop-in without asahi is rejected" "a drop-in that stages no firmware passed" \
+  || ok "hook drop-in without asahi is rejected"
 
 echo
 if (( fail )); then
