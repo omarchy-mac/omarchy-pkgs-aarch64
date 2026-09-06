@@ -134,10 +134,27 @@ verify() {
   # These are x86 Limine/memory-stack defaults. Shipping any of them on ARM
   # can alter the next initramfs or enable services that Apple Silicon lacks.
   assert_absent_path "$settings" etc/limine-entry-tool.d
-  assert_absent_path "$settings" etc/mkinitcpio.conf.d
   assert_absent_path "$settings" usr/share/omarchy/default/limine
   assert_absent_path "$settings" etc/systemd/oomd.conf.d
   assert_absent_path "$settings" etc/systemd/zram-generator.conf
+
+  # etc/mkinitcpio.conf.d used to be on that list, on upstream's reasoning that
+  # its omarchy_hooks.conf is an x86 drop-in that would inject Limine hooks
+  # into an Asahi initramfs. Ours is not that file. This fork rewrote it to
+  # insert the asahi hook, which stages the Apple Silicon display, Wi-Fi and
+  # neural-engine firmware into early boot. Asserting it absent enforced the
+  # one package that must never ship: the machine installs it happily and then
+  # wedges in the initramfs at the next mkinitcpio run, with no display left to
+  # report why. Require the hook instead, and read it out of the packaged file
+  # rather than trusting the path to exist -- an empty drop-in would satisfy a
+  # path check while restoring nothing.
+  local hooks_conf
+  hooks_conf="$(bsdtar -xOqf "$settings" ./etc/mkinitcpio.conf.d/omarchy_hooks.conf \
+    2>/dev/null || bsdtar -xOqf "$settings" etc/mkinitcpio.conf.d/omarchy_hooks.conf 2>/dev/null)"
+  [[ -n "$hooks_conf" ]] \
+    || die "omarchy-settings is missing etc/mkinitcpio.conf.d/omarchy_hooks.conf, which stages the Apple Silicon firmware into early boot"
+  grep -q 'asahi' <<<"$hooks_conf" \
+    || die "omarchy_hooks.conf does not mention the asahi hook; the Apple Silicon firmware would not be staged into the initramfs"
 
   bsdtar -tf "$omarchy" | sed 's#^\./##' \
     | grep -Fxq usr/share/omarchy/install/helpers/arm-package-sources.sh \
