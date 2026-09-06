@@ -8,6 +8,7 @@ set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 source scripts/common.sh
+source scripts/omarchy-mac-release.sh
 
 pass=0; fail=0
 ok()   { pass=$((pass+1)); printf '  \033[1;32mok\033[0m   %s\n' "$1"; }
@@ -46,6 +47,19 @@ is "epoch beats a bigger plain version" "$(vercmp '1:1.0-1' '9.9-1')"          1
 is "pkgrel breaks a version tie"        "$(vercmp '2026.8.14-4' '2026.8.14-1')" 1
 is "equal versions compare equal"       "$(vercmp '1.2.3-1' '1.2.3-1')"         0
 is "VCS r16 sorts above r9"             "$(vercmp '0.2.1.r16.g0ef9b30-1' '0.2.1.r9.ge2f30ff-1')" 1
+
+echo "== Omarchy Mac release coordinates"
+parse_release_tag v4.0.2
+is "plain tag uses pkgver" "$RELEASE_PKGVER" '4.0.2'
+is "plain tag defaults pkgrel" "$RELEASE_PKGREL" '1'
+is "plain tag maps to package version" "$RELEASE_VERSION" '4.0.2-1'
+parse_release_tag v4.0.2-3
+is "Mac rebuild tag sets pkgrel" "$RELEASE_PKGREL" '3'
+parse_release_tag v4.1.0rc2-1
+is "attached prerelease is accepted" "$RELEASE_VERSION" '4.1.0rc2-1'
+( parse_release_tag v4.1.0-rc2 ) >/dev/null 2>&1 \
+  && no "separated prerelease is rejected" "accepted a tag pacman orders incorrectly" \
+  || ok "separated prerelease is rejected"
 
 echo "== package identification (.PKGINFO, not the filename)"
 mkdir -p "$work/p1/usr/bin"; mkelf 183 "$work/p1/usr/bin/tool"
@@ -114,6 +128,39 @@ while read -r base; do
   [[ -f "pkgbuilds/$base/PKGBUILD" ]] || nolocal=$((nolocal+1))
 done < <(jq -r '.packages | map(select(.source == "local")) | .[].pkgbase' packages.json | sort -u)
 is "every local source has an in-tree PKGBUILD" "$nolocal" '0'
+
+echo "== Omarchy Mac atomic package policy"
+mkdir -p "$work/mac-source" "$work/mac-build/omarchy/usr/share/omarchy/install/helpers" \
+  "$work/mac-build/settings" "$work/mac-stage"
+printf '4.0.2\n' > "$work/mac-source/version"
+cat > "$work/mac-build/omarchy/.PKGINFO" <<'INFO'
+pkgname = omarchy
+pkgver = 4.0.2-1
+arch = aarch64
+depend = omarchy-settings=4.0.2
+depend = iwd
+depend = networkmanager
+INFO
+touch "$work/mac-build/omarchy/usr/share/omarchy/install/helpers/arm-package-sources.sh"
+( cd "$work/mac-build/omarchy" && tar -cf - . | xz > "$work/mac-build/omarchy-4.0.2-1-aarch64.pkg.tar.xz" )
+cat > "$work/mac-build/settings/.PKGINFO" <<'INFO'
+pkgname = omarchy-settings
+pkgver = 4.0.2-1
+arch = aarch64
+INFO
+( cd "$work/mac-build/settings" && tar -cf - . | xz > "$work/mac-build/omarchy-settings-4.0.2-1-aarch64.pkg.tar.xz" )
+( RELEASE_TAG=v4.0.2-1 SOURCE_DIR="$work/mac-source" PKGDIR="$work/mac-build" \
+    STAGING_DIR="$work/mac-stage" verify ) >/dev/null 2>&1 \
+  && ok "matching safe pair verifies" || no "matching safe pair verifies" "policy rejected a safe pair"
+is "both packages stage together" "$(find "$work/mac-stage" -name '*.pkg.tar.*' | wc -l)" '2'
+
+mkdir -p "$work/mac-build/settings/etc/mkinitcpio.conf.d"
+touch "$work/mac-build/settings/etc/mkinitcpio.conf.d/omarchy_hooks.conf"
+( cd "$work/mac-build/settings" && tar -cf - . | xz > "$work/mac-build/omarchy-settings-4.0.2-1-aarch64.pkg.tar.xz" )
+( RELEASE_TAG=v4.0.2-1 SOURCE_DIR="$work/mac-source" PKGDIR="$work/mac-build" \
+    STAGING_DIR="$work/mac-stage" verify ) >/dev/null 2>&1 \
+  && no "x86 initramfs policy is rejected" "unsafe settings package passed" \
+  || ok "x86 initramfs policy is rejected"
 
 echo
 if (( fail )); then

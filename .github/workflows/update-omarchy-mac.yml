@@ -1,0 +1,211 @@
+name: Update Omarchy Mac packages
+
+# omarchy and omarchy-settings are an atomic, fork-owned pair. They deliberately
+# stay out of the AUR updater: both must be built from the same immutable Mac
+# release, and neither may publish unless the Apple Silicon policy checks pass.
+on:
+  schedule:
+    - cron: '41 * * * *'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Omarchy Mac release tag (blank = latest release)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Build and verify without changing edge'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
+
+# Shared with update-packages.yml because both workflows replace the same
+# mutable database. Never cancel a job that may already be uploading assets.
+concurrency:
+  group: edge-publish
+  cancel-in-progress: false
+
+env:
+  ARCH_IMAGE_ARM: menci/archlinuxarm:base-devel
+  ARCH_IMAGE_X86: archlinux:base-devel
+
+jobs:
+  detect:
+    name: Detect Omarchy Mac release
+    runs-on: ubuntu-24.04
+    outputs:
+      release_tag: ${{ steps.detect.outputs.release_tag }}
+      pkgver: ${{ steps.detect.outputs.pkgver }}
+      pkgrel: ${{ steps.detect.outputs.pkgrel }}
+      version: ${{ steps.detect.outputs.version }}
+      has_update: ${{ steps.detect.outputs.has_update }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare the latest release with edge
+        id: detect
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          : > .gh_output
+          docker run --rm -v "$PWD:/w" -w /w \
+            -e GH_REPO -e GH_TOKEN -e RELEASE_TAG \
+            -e GITHUB_OUTPUT=/w/.gh_output \
+            "$ARCH_IMAGE_X86" bash -c \
+            'bash scripts/container-bootstrap.sh >/dev/null && bash scripts/omarchy-mac-release.sh detect'
+          cat .gh_output >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build and verify package pair
+    needs: detect
+    if: needs.detect.outputs.has_update == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the exact Omarchy Mac release
+        uses: actions/checkout@v4
+        with:
+          repository: omarchy-mac/omarchy-mac
+          ref: ${{ needs.detect.outputs.release_tag }}
+          path: vendor/omarchy-mac
+          persist-credentials: false
+
+      - name: Check out the package definitions
+        uses: actions/checkout@v4
+        with:
+          repository: omacom-io/omarchy-pkgs
+          path: vendor/omarchy-pkgs
+          persist-credentials: false
+
+      - name: Build from the release checkout
+        env:
+          OMARCHY_PKGREL: ${{ needs.detect.outputs.pkgrel }}
+        run: |
+          mkdir -p build-output source-cache staging
+          docker run --rm -v "$PWD:/w" -w /w \
+            -e OMARCHY_PKGREL \
+            -e OMARCHY_PKGS_PATH=/w/vendor/omarchy-pkgs/pkgbuilds \
+            -e OMARCHY_PACKAGE_OUTPUT=/w/build-output \
+            -e OMARCHY_PACKAGE_SRCDEST=/w/source-cache \
+            "$ARCH_IMAGE_ARM" bash -c '
+              set -euo pipefail
+              bash scripts/container-bootstrap.sh build >/dev/null
+              pacman -S --noconfirm --needed sudo >/dev/null
+              useradd -m builder
+              printf "builder ALL=(ALL) NOPASSWD: ALL\n" >/etc/sudoers.d/builder
+              chmod 0440 /etc/sudoers.d/builder
+              chown -R builder:builder /w/vendor /w/build-output /w/source-cache
+              runuser -u builder -- env \
+                OMARCHY_PKGREL="$OMARCHY_PKGREL" \
+                OMARCHY_PKGS_PATH="$OMARCHY_PKGS_PATH" \
+                OMARCHY_PACKAGE_OUTPUT="$OMARCHY_PACKAGE_OUTPUT" \
+                OMARCHY_PACKAGE_SRCDEST="$OMARCHY_PACKAGE_SRCDEST" \
+                bash /w/vendor/omarchy-mac/build-packages.sh
+            '
+          sudo chown -R "$(id -u):$(id -g)" build-output source-cache vendor
+
+      - name: Enforce the Apple Silicon package contract
+        env:
+          RELEASE_TAG: ${{ needs.detect.outputs.release_tag }}
+          SOURCE_DIR: vendor/omarchy-mac
+          PKGDIR: build-output
+          STAGING_DIR: staging
+        run: |
+          docker run --rm -v "$PWD:/w" -w /w \
+            -e RELEASE_TAG -e SOURCE_DIR=/w/$SOURCE_DIR \
+            -e PKGDIR=/w/$PKGDIR -e STAGING_DIR=/w/$STAGING_DIR \
+            "$ARCH_IMAGE_ARM" bash -c \
+            'bash scripts/container-bootstrap.sh build >/dev/null && bash scripts/omarchy-mac-release.sh verify'
+          sudo chown -R "$(id -u):$(id -g)" staging
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: omarchy-mac-${{ needs.detect.outputs.version }}
+          path: staging/*.pkg.tar.*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish package pair to edge
+    needs: [detect, build]
+    if: needs.detect.outputs.has_update == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: omarchy-mac-${{ needs.detect.outputs.version }}
+          path: staging
+
+      - name: Publish both packages and replace the database
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+        run: |
+          mkdir -p .newdb
+          docker run --rm -v "$PWD:/w" -w /w \
+            -e GH_REPO -e GH_TOKEN -e DRY_RUN \
+            -e PKGDIR=/w/staging -e DB_OUT=/w/.newdb \
+            "$ARCH_IMAGE_X86" bash -c \
+            'bash scripts/container-bootstrap.sh >/dev/null && bash scripts/publish.sh'
+          sudo chown -R "$(id -u):$(id -g)" .newdb
+
+      - name: Smoke-test edge
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_REPO: ${{ github.repository }}
+        run: |
+          docker run --rm -v "$PWD:/w" -w /w \
+            -e GH_REPO "$ARCH_IMAGE_X86" bash -c \
+            'bash scripts/container-bootstrap.sh >/dev/null && bash scripts/smoke-test.sh'
+
+      - name: Sync the README version table
+        if: ${{ !inputs.dry_run }}
+        run: |
+          docker run --rm -v "$PWD:/w" -w /w \
+            -e DB=/w/.newdb/omarchy-aarch64.db.tar.zst \
+            "$ARCH_IMAGE_X86" bash -c \
+            'bash scripts/container-bootstrap.sh >/dev/null && bash scripts/update-readme.sh'
+          sudo chown "$(id -u):$(id -g)" README.md
+          if ! git diff --quiet -- README.md; then
+            git config user.name github-actions[bot]
+            git config user.email github-actions[bot]@users.noreply.github.com
+            git add README.md
+            git commit -m "Sync README for Omarchy Mac ${{ needs.detect.outputs.release_tag }}"
+            git push
+          fi
+
+  notify:
+    name: Report release failure
+    needs: [detect, build, publish]
+    if: failure()
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open or update the release failure issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.detect.outputs.release_tag }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="CI: Omarchy Mac package release failed"
+          body="$(printf 'Omarchy Mac release `%s` did not reach edge.\n\nRun: %s\n' \
+            "${RELEASE_TAG:-unknown}" "$RUN_URL")"
+          existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --search "in:title $title" --json number,title \
+            --jq "[.[] | select(.title == \"$title\")] | .[0].number // empty")"
+          if [[ -n "$existing" ]]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi
