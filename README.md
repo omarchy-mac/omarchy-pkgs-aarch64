@@ -57,7 +57,7 @@ changes. Packages come from four places:
 | `omarchy-webapp-theme` | 0.3.6-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
 | `omawrite` | 0.5.0-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
 | `openai-codex-desktop` | 26.901.20858-1 | ChatGPT desktop app with Codex |
-| `tensaku` | 0.28.0-1 | Screenshot annotation for Wayland |
+| `tensaku` | 0.29.0-1 | Screenshot annotation for Wayland |
 | `ttf-ia-writer` | 20181225-1 | iA Writer font subset |
 | `ttfx` | 0.3.2-1 | Terminal text effects, static binary |
 | `tzupdate` | 3.1.0-1 | Set timezone from IP geolocation |
