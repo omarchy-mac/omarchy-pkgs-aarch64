@@ -135,6 +135,13 @@ is "every local source has an in-tree PKGBUILD" "$nolocal" '0'
 # matcher is checked separately for exactness.
 badexcl="$(jq -r '.packages | map(select(.exclude_build_deps and (.category != "compile"))) | length' packages.json)"
 is "exclude_build_deps only on compile packages" "$badexcl" '0'
+# detect-updates.sh unions both fields across a pkgbase group, so one member
+# adding a name to extra_makedepends while another excludes it would have them
+# cancel. build-package.sh dies on that, but catching it here is cheaper.
+clash="$(jq -r '.packages | group_by(.pkgbase)
+  | map({ x: (map(.extra_makedepends // []) | add), e: (map(.exclude_build_deps // []) | add) })
+  | map(select(((.x - (.x - .e)) | length) > 0)) | length' packages.json)"
+is "no name is both an extra makedepend and excluded" "$clash" '0'
 
 echo "== build-time dep exclusion"
 EXCLUDE_BUILD_DEPS='hyprland'

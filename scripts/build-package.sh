@@ -140,6 +140,20 @@ mapfile -t deps < <(
     [[ -n "$EXTRA_MAKEDEPENDS" ]] && tr ',' '\n' <<< "$EXTRA_MAKEDEPENDS"
   } | sed '/^$/d' | sort -u
 )
+# The build-time half of that list, collected separately. exclude_build_deps
+# is only ever meant to drop a *runtime* depend, but $deps has both kinds
+# merged by this point and a name can appear in both arrays. Without this the
+# exclusion could cancel a genuine makedepend, and since makepkg runs --nodeps
+# nothing would catch it until build() failed on a missing header.
+build_dep_re='^[[:space:]]*(make|check)depends(_[[:alnum:]_]+)?[[:space:]]*=[[:space:]]*(.+)'
+mapfile -t build_deps < <(
+  {
+    sed -nE "s/$build_dep_re/\3/p" "$srcinfo" \
+      | sed -E 's/[<>=].*$//' | tr -d ' '
+    [[ -n "$EXTRA_MAKEDEPENDS" ]] && tr ',' '\n' <<< "$EXTRA_MAKEDEPENDS"
+  } | sed '/^$/d' | sort -u
+)
+
 # packages.json can name depends that must not be installed to build. See
 # build_dep_excluded: this is for runtime-only depends whose availability is
 # not our problem, and it never changes what the built package declares.
@@ -147,11 +161,28 @@ if [[ -n "$EXCLUDE_BUILD_DEPS" ]] && ((${#deps[@]})); then
   keep_deps=()
   for d in "${deps[@]}"; do
     if build_dep_excluded "$d"; then
+      # Refuse rather than quietly do the wrong thing: if the PKGBUILD also
+      # declares it as a makedepend then the build genuinely needs it, the
+      # exclusion cannot be honoured, and the manifest is what has to change.
+      if printf '%s\n' "${build_deps[@]+"${build_deps[@]}"}" | grep -qxF -- "$d"; then
+        die "exclude_build_deps names '$d', but $PKGBASE declares it as a make/checkdepend, so the build needs it. Remove it from exclude_build_deps in packages.json."
+      fi
       log "Skipping runtime dep '$d' at build time (exclude_build_deps)"
     else
       keep_deps+=("$d")
     fi
   done
+
+  # An entry matching nothing has outlived its reason -- upstream renamed or
+  # dropped the dep. Harmless to the build, but it should not sit there
+  # pretending to do something.
+  IFS=',' read -r -a excl_names <<< "$EXCLUDE_BUILD_DEPS"
+  for e in "${excl_names[@]}"; do
+    [[ -n "$e" ]] || continue
+    printf '%s\n' "${deps[@]}" | grep -qxF -- "$e" \
+      || warn "exclude_build_deps names '$e', which $PKGBASE does not declare — stale manifest entry?"
+  done
+
   deps=("${keep_deps[@]+"${keep_deps[@]}"}")
 fi
 

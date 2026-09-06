@@ -126,7 +126,9 @@ elf_allowed() {
 # soname its own hyprland still required, which made hyprland uninstallable
 # for days -- and a Rust binary does not link against a compositor. Naming one
 # here drops it from the build-time install only; the built package still
-# declares it, so pacman still pulls it in on a user's machine.
+# declares it, so pacman still pulls it in on a user's machine. Whether a name
+# really is runtime-only is not this matcher's job to know: build-package.sh
+# checks it against the make/checkdepends and refuses the build if it is both.
 build_dep_excluded() {
   local dep="$1" ex exs
   [[ -n "$EXCLUDE_BUILD_DEPS" ]] || return 1
