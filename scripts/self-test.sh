@@ -155,6 +155,10 @@ EXCLUDE_BUILD_DEPS=''
 build_dep_excluded hyprland && no "empty list excludes nothing" || ok "empty list excludes nothing"
 
 echo "== Omarchy Mac atomic package policy"
+# These invoke the script rather than the sourced function on purpose. It only
+# applies `set -euo pipefail` when executed directly, which is how CI runs it,
+# and that setting is what turns a SIGPIPE from `grep -q` into a failed check.
+# Calling the function in-process silently skips the mode the bug lives in.
 mkdir -p "$work/mac-source" "$work/mac-build/omarchy/usr/share/omarchy/install/helpers" \
   "$work/mac-build/settings" "$work/mac-stage"
 printf '4.0.2\n' > "$work/mac-source/version"
@@ -167,7 +171,17 @@ depend = iwd
 depend = networkmanager
 INFO
 touch "$work/mac-build/omarchy/usr/share/omarchy/install/helpers/arm-package-sources.sh"
-( cd "$work/mac-build/omarchy" && tar -cf - . | xz > "$work/mac-build/omarchy-4.0.2-1-aarch64.pkg.tar.xz" )
+# Pad the listing so `bsdtar | grep -Fxq` really does exit before the producer
+# finishes. A handful of files never triggers it, so a small fixture would let
+# the SIGPIPE-under-pipefail bug through — which is exactly what happened: CI
+# failed on a 1861-entry package while the tests stayed green.
+mkdir -p "$work/mac-build/omarchy/usr/share/omarchy/themes"
+for i in $(seq 1 2000); do : > "$work/mac-build/omarchy/usr/share/omarchy/themes/filler-$i.conf"; done
+# Order matters: the matched path has to come early with plenty of output
+# after it, or grep -q reaches the end anyway and never closes the pipe early.
+( cd "$work/mac-build/omarchy" \
+    && tar -cf - .PKGINFO ./usr/share/omarchy/install ./usr/share/omarchy/themes \
+     | xz > "$work/mac-build/omarchy-4.0.2-1-aarch64.pkg.tar.xz" )
 cat > "$work/mac-build/settings/.PKGINFO" <<'INFO'
 pkgname = omarchy-settings
 pkgver = 4.0.2-1
@@ -180,7 +194,7 @@ HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms)
 HOOKS
 ( cd "$work/mac-build/settings" && tar -cf - . | xz > "$work/mac-build/omarchy-settings-4.0.2-1-aarch64.pkg.tar.xz" )
 ( RELEASE_TAG=v4.0.2-1 SOURCE_DIR="$work/mac-source" PKGDIR="$work/mac-build" \
-    STAGING_DIR="$work/mac-stage" verify ) >/dev/null 2>&1 \
+    STAGING_DIR="$work/mac-stage" bash scripts/omarchy-mac-release.sh verify ) >/dev/null 2>&1 \
   && ok "matching safe pair verifies" || no "matching safe pair verifies" "policy rejected a safe pair"
 is "both packages stage together" "$(find "$work/mac-stage" -name '*.pkg.tar.*' | wc -l)" '2'
 
@@ -189,7 +203,7 @@ is "both packages stage together" "$(find "$work/mac-stage" -name '*.pkg.tar.*' 
 rm -rf "$work/mac-build/settings/etc/mkinitcpio.conf.d"
 ( cd "$work/mac-build/settings" && tar -cf - . | xz > "$work/mac-build/omarchy-settings-4.0.2-1-aarch64.pkg.tar.xz" )
 ( RELEASE_TAG=v4.0.2-1 SOURCE_DIR="$work/mac-source" PKGDIR="$work/mac-build" \
-    STAGING_DIR="$work/mac-stage" verify ) >/dev/null 2>&1 \
+    STAGING_DIR="$work/mac-stage" bash scripts/omarchy-mac-release.sh verify ) >/dev/null 2>&1 \
   && no "missing asahi hook is rejected" "settings package without the asahi hook passed" \
   || ok "missing asahi hook is rejected"
 
@@ -200,7 +214,7 @@ printf 'HOOKS=(base udev autodetect modconf block filesystems fsck)\n' \
   > "$work/mac-build/settings/etc/mkinitcpio.conf.d/omarchy_hooks.conf"
 ( cd "$work/mac-build/settings" && tar -cf - . | xz > "$work/mac-build/omarchy-settings-4.0.2-1-aarch64.pkg.tar.xz" )
 ( RELEASE_TAG=v4.0.2-1 SOURCE_DIR="$work/mac-source" PKGDIR="$work/mac-build" \
-    STAGING_DIR="$work/mac-stage" verify ) >/dev/null 2>&1 \
+    STAGING_DIR="$work/mac-stage" bash scripts/omarchy-mac-release.sh verify ) >/dev/null 2>&1 \
   && no "hook drop-in without asahi is rejected" "a drop-in that stages no firmware passed" \
   || ok "hook drop-in without asahi is rejected"
 

@@ -124,11 +124,18 @@ verify() {
     esac
   done < <(pkginfo_field "$omarchy" depend)
 
-  pkginfo_field "$omarchy" depend | grep -Fxq "omarchy-settings=$RELEASE_PKGVER" \
+  # Read once into a variable and match from a here-string rather than piping
+  # into grep -q. Under `set -o pipefail`, grep -q exits at the first match and
+  # the producer takes SIGPIPE, so the pipeline reports 141 and the || die
+  # fires on a package that is perfectly fine. See the arm-package-sources
+  # check below, where a 1861-entry listing made that happen every time.
+  local omarchy_depends
+  omarchy_depends="$(pkginfo_field "$omarchy" depend)"
+  grep -Fxq "omarchy-settings=$RELEASE_PKGVER" <<<"$omarchy_depends" \
     || die "omarchy does not pin omarchy-settings=$RELEASE_PKGVER"
-  pkginfo_field "$omarchy" depend | grep -Fxq iwd \
+  grep -Fxq iwd <<<"$omarchy_depends" \
     || die "omarchy aarch64 package does not depend on iwd"
-  pkginfo_field "$omarchy" depend | grep -Fxq networkmanager \
+  grep -Fxq networkmanager <<<"$omarchy_depends" \
     || die "omarchy aarch64 package does not depend on networkmanager"
 
   # These are x86 Limine/memory-stack defaults. Shipping any of them on ARM
@@ -156,8 +163,9 @@ verify() {
   grep -q 'asahi' <<<"$hooks_conf" \
     || die "omarchy_hooks.conf does not mention the asahi hook; the Apple Silicon firmware would not be staged into the initramfs"
 
-  bsdtar -tf "$omarchy" | sed 's#^\./##' \
-    | grep -Fxq usr/share/omarchy/install/helpers/arm-package-sources.sh \
+  local omarchy_paths
+  omarchy_paths="$(bsdtar -tf "$omarchy" | sed 's#^\./##')"
+  grep -Fxq usr/share/omarchy/install/helpers/arm-package-sources.sh <<<"$omarchy_paths" \
     || die "omarchy package is missing the ARM package-sources policy"
 
   mkdir -p "$STAGING_DIR"
