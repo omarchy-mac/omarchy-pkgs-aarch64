@@ -15,11 +15,21 @@ case "$role" in
 esac
 
 # pacman 7 sandboxes its downloader with Landlock, which qemu-user does not
-# implement. Retry rather than disable unconditionally, so a native ARM runner
-# keeps the sandbox.
+# implement and a container may not permit. Retry rather than disable
+# unconditionally, so an environment that can sandbox keeps doing so.
 if ! pacman -Syu --noconfirm --needed "${pkgs[@]}"; then
   echo "==> pacman -Syu failed; retrying with --disable-sandbox" >&2
   pacman -Syu --noconfirm --needed --disable-sandbox "${pkgs[@]}"
+  # Not every later pacman call in this container is ours to pass a flag to.
+  # update-omarchy-mac.yml hands control to build-packages.sh from the
+  # omarchy-mac checkout, which installs its own makedepends (imagemagick)
+  # and hits the same Landlock failure with no retry of its own. Record what
+  # the retry just proved so the rest of the container inherits it. Still not
+  # unconditional: we only reach this after the sandboxed attempt failed.
+  if ! grep -qx 'DisableSandbox' /etc/pacman.conf; then
+    echo "==> recording DisableSandbox in pacman.conf for later callers" >&2
+    sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf
+  fi
 fi
 
 for c in "${required[@]}"; do
