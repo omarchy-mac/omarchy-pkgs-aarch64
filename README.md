@@ -51,9 +51,9 @@ changes. Packages come from four places:
 | `obsidian-appimage` | 1.13.7-2 | Markdown knowledge base (AppImage) |
 | `omacalc` | 0.2.2-1 | Calculator — bound to `SUPER + CTRL + Q` |
 | `omacut` | 0.4.0-1 | Video length trimmer |
-| `omarchy` | 4.0.1-2 | Omarchy Mac scripts and desktop runtime |
+| `omarchy` | 4.0.2-2 | Omarchy Mac scripts and desktop runtime |
 | `omarchy-emacs` | 1.10.1-1 | Emacs theme/font syncing for Omarchy |
-| `omarchy-settings` | 4.0.1-2 | Apple Silicon system and user defaults |
+| `omarchy-settings` | 4.0.2-2 | Apple Silicon system and user defaults |
 | `omarchy-webapp-theme` | 0.3.6-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
 | `omawrite` | 0.5.0-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
 | `openai-codex-desktop` | 26.901.51231-1 | ChatGPT desktop app with Codex |
