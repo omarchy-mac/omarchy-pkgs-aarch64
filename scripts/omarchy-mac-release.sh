@@ -119,7 +119,7 @@ verify() {
 
   while IFS= read -r depend; do
     case "$depend" in
-      limine|limine-mkinitcpio-hook|limine-snapper-sync|snapper)
+      limine|limine-mkinitcpio-hook|limine-snapper-sync)
         die "omarchy aarch64 package has x86 boot dependency: $depend" ;;
     esac
   done < <(pkginfo_field "$omarchy" depend)
@@ -137,6 +137,20 @@ verify() {
     || die "omarchy aarch64 package does not depend on iwd"
   grep -Fxq networkmanager <<<"$omarchy_depends" \
     || die "omarchy aarch64 package does not depend on networkmanager"
+  grep -Fxq snapper <<<"$omarchy_depends" \
+    || die "omarchy aarch64 package does not depend on snapper"
+
+  # Older release sources do not ship or enable this service. When present,
+  # require the source unit in systemd's directory, not just the copy
+  # under /usr/share/omarchy that systemctl cannot enable.
+  local keyboard_unit=omarchy-brightness-keyboard-auto.service unit_contents
+  if [[ -f "$SOURCE_DIR/default/systemd/user/$keyboard_unit" ]]; then
+    unit_contents="$(bsdtar -xOqf "$settings" "./usr/lib/systemd/user/$keyboard_unit" 2>/dev/null \
+      || bsdtar -xOqf "$settings" "usr/lib/systemd/user/$keyboard_unit" 2>/dev/null)" \
+      || die "omarchy-settings is missing systemd user unit $keyboard_unit"
+    [[ "$unit_contents" == "$(<"$SOURCE_DIR/default/systemd/user/$keyboard_unit")" ]] \
+      || die "omarchy-settings has stale systemd user unit $keyboard_unit"
+  fi
 
   # These are x86 Limine/memory-stack defaults. Shipping any of them on ARM
   # can alter the next initramfs or enable services that Apple Silicon lacks.

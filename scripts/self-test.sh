@@ -169,6 +169,7 @@ arch = aarch64
 depend = omarchy-settings=4.0.2
 depend = iwd
 depend = networkmanager
+depend = snapper
 INFO
 touch "$work/mac-build/omarchy/usr/share/omarchy/install/helpers/arm-package-sources.sh"
 # Pad the listing so `bsdtar | grep -Fxq` really does exit before the producer
@@ -197,6 +198,64 @@ HOOKS
     STAGING_DIR="$work/mac-stage" bash scripts/omarchy-mac-release.sh verify ) >/dev/null 2>&1 \
   && ok "matching safe pair verifies" || no "matching safe pair verifies" "policy rejected a safe pair"
 is "both packages stage together" "$(find "$work/mac-stage" -name '*.pkg.tar.*' | wc -l)" '2'
+
+# Exercise the publication gate with real archive metadata and payloads.
+verify_first_run_fixture() {
+  RELEASE_TAG=v4.0.2-1 SOURCE_DIR="$work/mac-source" PKGDIR="$work/mac-build" \
+    STAGING_DIR="$work/mac-stage" bash scripts/omarchy-mac-release.sh verify
+}
+repack_first_run_fixture() {
+  ( cd "$work/mac-build/omarchy" && tar -cf - . | xz > "$work/mac-build/omarchy-4.0.2-1-aarch64.pkg.tar.xz" )
+  ( cd "$work/mac-build/settings" && tar -cf - . | xz > "$work/mac-build/omarchy-settings-4.0.2-1-aarch64.pkg.tar.xz" )
+}
+cp "$work/mac-build/omarchy/.PKGINFO" "$work/good-pkginfo"
+sed -i '/^depend = snapper$/d' "$work/mac-build/omarchy/.PKGINFO"
+repack_first_run_fixture
+if verify_first_run_fixture >"$work/verify-error" 2>&1; then
+  no "missing Snapper is rejected"
+elif grep -q 'does not depend on snapper' "$work/verify-error"; then
+  ok "missing Snapper is rejected"
+else
+  no "missing Snapper is rejected" "failed for an unrelated reason"
+fi
+cp "$work/good-pkginfo" "$work/mac-build/omarchy/.PKGINFO"
+for dependency in limine limine-mkinitcpio-hook limine-snapper-sync; do
+  cp "$work/good-pkginfo" "$work/mac-build/omarchy/.PKGINFO"
+  printf 'depend = %s\n' "$dependency" >>"$work/mac-build/omarchy/.PKGINFO"
+  repack_first_run_fixture
+  if verify_first_run_fixture >"$work/verify-error" 2>&1; then
+    no "$dependency remains forbidden"
+  elif grep -q "x86 boot dependency: $dependency" "$work/verify-error"; then
+    ok "$dependency remains forbidden"
+  else
+    no "$dependency remains forbidden" "failed for an unrelated reason"
+  fi
+done
+cp "$work/good-pkginfo" "$work/mac-build/omarchy/.PKGINFO"
+keyboard_unit=omarchy-brightness-keyboard-auto.service
+mkdir -p "$work/mac-source/default/systemd/user" "$work/mac-build/settings/usr/lib/systemd/user"
+printf '[Service]\nExecStart=/usr/bin/true\n' >"$work/mac-source/default/systemd/user/$keyboard_unit"
+repack_first_run_fixture
+if verify_first_run_fixture >"$work/verify-error" 2>&1; then
+  no "missing keyboard unit is rejected for newer sources"
+elif grep -q 'missing systemd user unit' "$work/verify-error"; then
+  ok "missing keyboard unit is rejected for newer sources"
+else
+  no "missing keyboard unit is rejected for newer sources" "failed for an unrelated reason"
+fi
+printf '[Service]\nExecStart=/usr/bin/false\n' >"$work/mac-build/settings/usr/lib/systemd/user/$keyboard_unit"
+repack_first_run_fixture
+if verify_first_run_fixture >"$work/verify-error" 2>&1; then
+  no "stale keyboard unit is rejected"
+elif grep -q 'stale systemd user unit' "$work/verify-error"; then
+  ok "stale keyboard unit is rejected"
+else
+  no "stale keyboard unit is rejected" "failed for an unrelated reason"
+fi
+cp "$work/mac-source/default/systemd/user/$keyboard_unit" "$work/mac-build/settings/usr/lib/systemd/user/$keyboard_unit"
+repack_first_run_fixture
+verify_first_run_fixture >/dev/null 2>&1 \
+  && ok "matching keyboard service verifies" || no "matching keyboard service verifies"
 
 # Dropping the hook is the boot-breaking case: the package installs fine and
 # the machine wedges at the next mkinitcpio run, with no display to say why.
@@ -237,6 +296,7 @@ arch = aarch64
 depend = omarchy-settings=4.0.2
 depend = iwd
 depend = networkmanager
+depend = snapper
 depend = omarchy-keyring
 depend = ttf-jetbrains-mono-nerd-basic
 INFO
@@ -259,6 +319,11 @@ rm -f "$work/mac-extra/omarchy-keyring-1-1-any.pkg.tar.xz"
     bash scripts/omarchy-mac-release.sh verify ) >/dev/null 2>&1 \
   && no "a missing dependency package is rejected" "published an omarchy whose depend is unavailable" \
   || ok "a missing dependency package is rejected"
+
+echo "== carried recipe patch"
+bash scripts/test-prepare-omarchy-recipes.sh \
+  && ok "recipe patch applies, is idempotent, and rejects drift" \
+  || no "recipe patch applies, is idempotent, and rejects drift"
 
 echo
 if (( fail )); then
