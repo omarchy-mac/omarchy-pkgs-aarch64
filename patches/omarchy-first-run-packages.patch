@@ -1,5 +1,5 @@
 diff --git a/pkgbuilds/omarchy-dev/PKGBUILD b/pkgbuilds/omarchy-dev/PKGBUILD
-index 58630ed..e79935f 100644
+index 58630ed..73cd245 100644
 --- a/pkgbuilds/omarchy-dev/PKGBUILD
 +++ b/pkgbuilds/omarchy-dev/PKGBUILD
 @@ -44,6 +44,7 @@ depends=(
@@ -10,7 +10,7 @@ index 58630ed..e79935f 100644
  )
  
  # Bootloader stack. Lives here rather than on omarchy-settings because
-@@ -57,11 +58,10 @@ depends_x86_64=(
+@@ -57,16 +58,16 @@ depends_x86_64=(
    'limine'
    'limine-mkinitcpio-hook'
    'limine-snapper-sync'
@@ -23,11 +23,17 @@ index 58630ed..e79935f 100644
  # apply. Wi-Fi on the Broadcom parts only scans reliably through the iwd
  # backend, which install/hardware/network.sh selects on Apple Silicon.
  depends_aarch64=(
+   'iwd'
+   'networkmanager'
++  'zram-generator' # Reads the compressed-swap configuration shipped on Apple Silicon.
+ )
+ 
+ makedepends=(
 diff --git a/pkgbuilds/omarchy-settings-dev/PKGBUILD b/pkgbuilds/omarchy-settings-dev/PKGBUILD
-index 8cda17b..4158b1c 100644
+index 6c7f8d9..2cf5edb 100644
 --- a/pkgbuilds/omarchy-settings-dev/PKGBUILD
 +++ b/pkgbuilds/omarchy-settings-dev/PKGBUILD
-@@ -193,6 +193,11 @@ package() {
+@@ -193,15 +193,20 @@ package() {
    install -Dm644 default/systemd/user/omarchy-tailscale-receive.service "$pkgdir/usr/lib/systemd/user/omarchy-tailscale-receive.service"
    install -Dm644 default/systemd/user/omarchy-fcitx5.service "$pkgdir/usr/lib/systemd/user/omarchy-fcitx5.service"
    install -Dm644 default/systemd/user/omarchy-crash-watch.service "$pkgdir/usr/lib/systemd/user/omarchy-crash-watch.service"
@@ -38,12 +44,25 @@ index 8cda17b..4158b1c 100644
 +  fi
    # Marks app.slice (and only app.slice) as a systemd-oomd kill candidate, so
    # memory pressure costs one app scope instead of the compositor session.
-   # Thresholds live in etc/systemd/oomd.conf.d/10-omarchy.conf. Both this and
+-  # Thresholds live in etc/systemd/oomd.conf.d/10-omarchy.conf. Both this and
+-  # the zram vendor drop-in belong to the x86_64 memory stack: the aarch64
+-  # install neither enables systemd-oomd nor configures zram swap.
++  # Thresholds live in etc/systemd/oomd.conf.d/10-omarchy.conf.
+   if [[ $CARCH == x86_64 ]]; then
+     install -Dm644 default/systemd/user/app.slice.d/10-oomd.conf "$pkgdir/usr/lib/systemd/user/app.slice.d/10-oomd.conf"
+-    install -Dm644 default/systemd/zram-generator.conf.d/90-omarchy.conf "$pkgdir/usr/lib/systemd/zram-generator.conf.d/90-omarchy.conf"
+   fi
++  # Apple Silicon also configures compressed swap. A source-only copy under
++  # /usr/share/omarchy is invisible to zram-generator; keep its runtime file.
++  install -Dm644 default/systemd/zram-generator.conf.d/90-omarchy.conf "$pkgdir/usr/lib/systemd/zram-generator.conf.d/90-omarchy.conf"
+   install -Dm644 default/systemd/system/plocate-updatedb.service.d/10-omarchy.conf "$pkgdir/usr/lib/systemd/system/plocate-updatedb.service.d/10-omarchy.conf"
+ 
+   # Same for applications/** — used by omarchy-refresh-applications,
 diff --git a/pkgbuilds/omarchy-settings/PKGBUILD b/pkgbuilds/omarchy-settings/PKGBUILD
-index a457e6d..ada2878 100644
+index f466293..f0bc20a 100644
 --- a/pkgbuilds/omarchy-settings/PKGBUILD
 +++ b/pkgbuilds/omarchy-settings/PKGBUILD
-@@ -188,6 +188,11 @@ package() {
+@@ -188,15 +188,20 @@ package() {
    install -Dm644 default/systemd/user/omarchy-tailscale-receive.service "$pkgdir/usr/lib/systemd/user/omarchy-tailscale-receive.service"
    install -Dm644 default/systemd/user/omarchy-fcitx5.service "$pkgdir/usr/lib/systemd/user/omarchy-fcitx5.service"
    install -Dm644 default/systemd/user/omarchy-crash-watch.service "$pkgdir/usr/lib/systemd/user/omarchy-crash-watch.service"
@@ -54,9 +73,22 @@ index a457e6d..ada2878 100644
 +  fi
    # Marks app.slice (and only app.slice) as a systemd-oomd kill candidate, so
    # memory pressure costs one app scope instead of the compositor session.
-   # Thresholds live in etc/systemd/oomd.conf.d/10-omarchy.conf. Both this and
+-  # Thresholds live in etc/systemd/oomd.conf.d/10-omarchy.conf. Both this and
+-  # the zram vendor drop-in belong to the x86_64 memory stack: the aarch64
+-  # install neither enables systemd-oomd nor configures zram swap.
++  # Thresholds live in etc/systemd/oomd.conf.d/10-omarchy.conf.
+   if [[ $CARCH == x86_64 ]]; then
+     install -Dm644 default/systemd/user/app.slice.d/10-oomd.conf "$pkgdir/usr/lib/systemd/user/app.slice.d/10-oomd.conf"
+-    install -Dm644 default/systemd/zram-generator.conf.d/90-omarchy.conf "$pkgdir/usr/lib/systemd/zram-generator.conf.d/90-omarchy.conf"
+   fi
++  # Apple Silicon also configures compressed swap. A source-only copy under
++  # /usr/share/omarchy is invisible to zram-generator; keep its runtime file.
++  install -Dm644 default/systemd/zram-generator.conf.d/90-omarchy.conf "$pkgdir/usr/lib/systemd/zram-generator.conf.d/90-omarchy.conf"
+   # Older release pins still configure locate through install/config/locate.sh.
+   if [[ -f default/systemd/system/plocate-updatedb.service.d/10-omarchy.conf ]]; then
+     install -Dm644 default/systemd/system/plocate-updatedb.service.d/10-omarchy.conf "$pkgdir/usr/lib/systemd/system/plocate-updatedb.service.d/10-omarchy.conf"
 diff --git a/pkgbuilds/omarchy/PKGBUILD b/pkgbuilds/omarchy/PKGBUILD
-index 2e20a38..7ec3267 100644
+index 2e20a38..95ea705 100644
 --- a/pkgbuilds/omarchy/PKGBUILD
 +++ b/pkgbuilds/omarchy/PKGBUILD
 @@ -58,6 +58,7 @@ depends=(
@@ -67,7 +99,7 @@ index 2e20a38..7ec3267 100644
  )
  
  # Bootloader stack. Lives here rather than on omarchy-settings because
-@@ -71,11 +72,10 @@ depends_x86_64=(
+@@ -71,16 +72,16 @@ depends_x86_64=(
    'limine'
    'limine-mkinitcpio-hook'
    'limine-snapper-sync'
@@ -80,3 +112,9 @@ index 2e20a38..7ec3267 100644
  # apply. Wi-Fi on the Broadcom parts only scans reliably through the iwd
  # backend, which install/hardware/network.sh selects on Apple Silicon.
  depends_aarch64=(
+   'iwd'
+   'networkmanager'
++  'zram-generator' # Reads the compressed-swap configuration shipped on Apple Silicon.
+ )
+ 
+ makedepends=(
