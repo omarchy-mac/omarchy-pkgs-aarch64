@@ -12,8 +12,8 @@ that lives in Omarchy's own repo is simply unavailable, which leaves keybindings
 pointing at binaries that can't be installed. `SUPER + CTRL + Q` (calculator)
 and `SUPER + SHIFT + W` (writer) are the visible casualties.
 
-Nothing is patched here. Sources are unmodified; only the build architecture
-changes. Packages come from four places:
+Application sources are unmodified. The Omarchy Mac package pair carries a
+small, checked packaging patch described below. Packages come from four places:
 
 - **Omarchy's own repo** ([omacom-io/omarchy-pkgs](https://github.com/omacom-io/omarchy-pkgs)),
   built with that repo's tooling, which already supports ARM:
@@ -123,6 +123,19 @@ ARM runner, and refuses to publish unless their versions match and the aarch64
 dependency and payload contracts hold. Failures in unrelated AUR packages
 therefore cannot block an Omarchy Mac release, and one half of the pair can
 never publish by itself.
+
+Before building the pair, `scripts/prepare-omarchy-recipes.sh` applies the
+checked-in recipe changes from [upstream PR #341](https://github.com/omacom/omarchy-pkgs/pull/341):
+Snapper is required on ARM, and settings packages install the keyboard-backlight
+user service when the release source contains it. The patch includes stable and
+development recipes, accepts an already-applied patch, and stops on conflicting
+upstream changes. Release verification requires Snapper while still rejecting
+Limine, and verifies the packaged keyboard service against the release source.
+Remove the carried patch once the upstream recipes provide these fixes.
+
+This changes future builds, not existing release assets. Publishing still needs
+an appropriately versioned Omarchy Mac release. Desktop CI that checks out
+`omacom/omarchy-pkgs` directly does not use this patch automatically.
 
 `herdr` currently fails to build anywhere: its PKGBUILD pins `zig0.15`, which
 Arch dropped from `[extra]` on the move to `zig 0.16`. It is left to fail

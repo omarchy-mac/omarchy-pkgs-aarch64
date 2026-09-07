@@ -21,6 +21,6 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/w" -w /w archlinux:base-devel bash -c '
             set -euo pipefail
-            pacman -Syu --noconfirm --needed jq zstd python >/dev/null
+            pacman -Syu --noconfirm --needed jq zstd python python-yaml git >/dev/null
             bash scripts/self-test.sh
           '

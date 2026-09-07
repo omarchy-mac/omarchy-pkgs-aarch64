@@ -79,9 +79,12 @@ jobs:
       - name: Check out the package definitions
         uses: actions/checkout@v4
         with:
-          repository: omacom-io/omarchy-pkgs
+          repository: omacom/omarchy-pkgs
           path: vendor/omarchy-pkgs
           persist-credentials: false
+
+      - name: Apply ARM first-run recipe fixes
+        run: bash scripts/prepare-omarchy-recipes.sh vendor/omarchy-pkgs
 
       - name: Build from the release checkout
         env:
