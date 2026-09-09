@@ -55,6 +55,17 @@ class SnapshotTests(unittest.TestCase):
                          publisher_sha='c' * 40, bootstrap=False, signed_inventory=None, signature_keyring='/unused-test-keyring'))
         return output
 
+    def test_reused_desktop_provenance_survives_snapshot(self):
+        build = dict(source_sha='a' * 40, recipe_sha='b' * 40, publisher_sha='d' * 40)
+        (self.packages / 'input-provenance.json').write_text(json.dumps(dict(desktop_build=build)))
+        manifest = snapshot.verify(self.prepare())
+        self.assertEqual(manifest['desktop_build'], build)
+        self.assertEqual(manifest['publisher_sha'], 'c' * 40)
+        build['source_sha'] = 'e' * 40
+        manifest['desktop_build'] = build
+        with self.assertRaises(ValueError):
+            snapshot.check_identity(manifest)
+
     def test_final_rc_promotes_same_bytes(self):
         source = self.prepare()
         target = self.root / 'stable'

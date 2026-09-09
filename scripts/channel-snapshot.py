@@ -79,6 +79,13 @@ def check_identity(manifest):
             continue  # Historical published baseline: never invent its recipe provenance.
         require(isinstance(manifest[key], str) and re.fullmatch(r'[0-9a-f]{40}', manifest[key]), f'{key} must be an immutable Git SHA')
 
+    if 'desktop_build' in manifest:
+        build = manifest['desktop_build']
+        require(isinstance(build, dict), 'Invalid desktop build provenance')
+        for key in ('source_sha', 'recipe_sha', 'publisher_sha'):
+            require(isinstance(build.get(key), str) and re.fullmatch(r'[0-9a-f]{40}', build[key]), 'Invalid desktop build provenance')
+        require(all(build[key] == manifest[key] for key in ('source_sha', 'recipe_sha')), 'Desktop build inputs differ from snapshot')
+
 
 def write_manifest(directory, manifest):
     (directory / 'channel-manifest.json').write_text(json.dumps(manifest, indent=2, sort_keys=True) + '\n')
@@ -135,6 +142,8 @@ def prepare(args):
     if provenance.exists():
         manifest['inputs'] = json.loads(provenance.read_text())
     if not args.bootstrap:
+        manifest['desktop_build'] = manifest.get('inputs', {}).get('desktop_build', {key: manifest[key] for key in ('source_sha', 'recipe_sha', 'publisher_sha')})
+        check_identity(manifest)
         desktop = next(row for row in rows if row['name'] == ('omarchy-dev' if args.channel == 'edge' else 'omarchy'))
         paths = run('bsdtar', '-tf', str(source / desktop['filename'])).splitlines()
         require(any(p.removeprefix('./') == 'usr/share/omarchy/install/helpers/arm-channel-manifest.py' for p in paths), 'Desktop does not support isolated ARM channel switching')

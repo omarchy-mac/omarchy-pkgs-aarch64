@@ -332,6 +332,9 @@ python3 scripts/test-channel-snapshot.py \
 python3 scripts/test-channel-collect.py \
   && ok "collector preserves the baseline and imported ABI dependencies" \
   || no "collector preserves the baseline and imported ABI dependencies"
+python3 scripts/test-edge-plan.py \
+  && ok "edge planner pins inputs and preserves immutable package identities" \
+  || no "edge planner pins inputs and preserves immutable package identities"
 python3 scripts/test-channel-workflow.py \
   && ok "channel workflow separates builds, qualification, publication and promotion" \
   || no "channel workflow separates builds, qualification, publication and promotion"
