@@ -43,8 +43,9 @@ with tempfile.TemporaryDirectory() as temporary:
     argv = ['collect-channel.py', '--base-url', baseline.as_uri(), '--base-db', str(baseline / 'base.db.tar.zst'),
             '--import-plan', str(plan), '--sync-db-dir', str(sync), '--overlay', str(overlay),
             '--output', str(root / 'collected'), '--channel', 'edge']
-    with mock.patch.object(sys, 'argv', argv), mock.patch.object(collect, 'run', side_effect=run):
+    with mock.patch.object(sys, 'argv', argv), mock.patch.object(collect, 'run', side_effect=run), mock.patch.object(collect, 'entries', wraps=collect.entries) as database_reads:
         collect.main()
+    assert sum(call.args[0] == sync / 'omarchy.db' for call in database_reads.call_args_list) == 1, 'capture each upstream database once per transaction'
     output = root / 'collected'
     inventory = json.loads((output / 'inventory.json').read_text())
     assert set(inventory) == {'overlay-tool', 'omarchy-keyring', 'hyprland', 'hyprtoolkit', 'hyprland-guiutils', 'aquamarine'}

@@ -329,6 +329,9 @@ echo "== channel snapshot and workflow tests"
 python3 scripts/test-channel-snapshot.py \
   && ok "channel snapshots preserve exact bytes and reject incomplete inventories" \
   || no "channel snapshots preserve exact bytes and reject incomplete inventories"
+python3 scripts/test-channel-database.py \
+  && ok "database imports validate selected records without rescanning unrelated packages" \
+  || no "database imports validate selected records without rescanning unrelated packages"
 python3 scripts/test-channel-collect.py \
   && ok "collector preserves the baseline and imported ABI dependencies" \
   || no "collector preserves the baseline and imported ABI dependencies"

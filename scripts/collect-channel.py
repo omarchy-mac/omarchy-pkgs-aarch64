@@ -4,11 +4,13 @@ import argparse
 import base64
 import hashlib
 import importlib.util
+import io
 import json
 from pathlib import Path
 import re
 import shutil
 import subprocess
+import tarfile
 
 
 def run(*args):
@@ -20,13 +22,53 @@ def sha(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
-def entries(db):
+def entries(db, selected=None):
+    """Read full managed inventories, or exact resolved upstream name/version records.
+
+    Upstream databases can contain unrelated damaged records. Only packages in
+    the captured transaction are inputs to this snapshot; those records remain
+    mandatory and strictly validated. Baseline/overlay inventories are exhaustive.
+    """
+    wanted = {f'{name}-{version}/desc': name for name, version in selected.items()} if selected is not None else None
+    # bsdtar handles zstd even where Python tarfile does not. One conversion per
+    # database avoids decompressing the entire ALARM extra DB for every record.
+    # Ustar materializes sparse NUL records without Python/PAX sparse extensions.
+    data = subprocess.run(['bsdtar', '-cf', '-', '--format=ustar', '@' + str(db)], check=True, capture_output=True).stdout
     result = {}
-    for member in run('bsdtar', '-tf', str(db)).splitlines():
-        if member.endswith('/desc'):
-            lines = run('bsdtar', '-xOf', str(db), member).splitlines()
-            fields = {line: lines[i + 1] for i, line in enumerate(lines[:-1]) if line.startswith('%')}
-            result[fields['%NAME%']] = fields
+    seen = set()
+    with tarfile.open(fileobj=io.BytesIO(data), mode='r:') as archive:
+        for member in archive:
+            path = member.name.removeprefix('./')
+            if not path.endswith('/desc') or wanted is not None and path not in wanted:
+                continue
+            if not member.isfile() or path in seen:
+                raise ValueError(f'Invalid or duplicate database record: {db}: {path}')
+            seen.add(path)
+            content = archive.extractfile(member).read().decode('utf-8')
+            if '\0' in content:
+                raise ValueError(f'Malformed database record: {db}: {path}')
+            lines = content.splitlines()
+            fields = {}
+            for index, line in enumerate(lines):
+                if re.fullmatch(r'%[A-Z0-9_]+%', line):
+                    if line in fields or index + 1 >= len(lines):
+                        raise ValueError(f'Malformed database field: {db}: {path}: {line}')
+                    fields[line] = lines[index + 1]
+            required = ('%NAME%', '%VERSION%', '%FILENAME%', '%SHA256SUM%')
+            if any(not fields.get(key) for key in required):
+                raise ValueError(f'Incomplete database record: {db}: {path}')
+            name = fields['%NAME%']
+            if not re.fullmatch(r'[A-Za-z0-9@_+.-]+', name) or not re.fullmatch(r'[A-Za-z0-9.+_:-]+', fields['%VERSION%']):
+                raise ValueError(f'Invalid database package identity: {db}: {path}')
+            if not re.fullmatch(r'[A-Za-z0-9@_+.:-]+', fields['%FILENAME%']):
+                raise ValueError(f'Unsafe database package filename: {db}: {path}')
+            if name in result or path != f"{name}-{fields['%VERSION%']}/desc":
+                raise ValueError(f'Database package identity differs or is duplicated: {db}: {path}')
+            if not re.fullmatch(r'[0-9a-f]{64}', fields['%SHA256SUM%']):
+                raise ValueError(f'Invalid database package hash: {db}: {path}')
+            result[name] = fields
+    if selected is not None and set(result) != set(selected):
+        raise ValueError(f'Resolved packages missing from captured database {db}: {sorted(set(selected) - set(result))}')
     return result
 
 
@@ -124,16 +166,29 @@ def main():
                 run('gpgv', '--keyring', args.signature_keyring, str(output / (filename + '.sig')), str(output / filename))
                 signed.append(name)
     db_hashes = {}
+    imports = []
+    selections = {}
     for line in Path(args.import_plan).read_text().splitlines():
-        if line.count('|') != 3:
+        if not line.strip():
             continue
+        if line.count('|') != 3:
+            raise ValueError('Malformed captured import transaction')
         repo, name, version, url = line.split('|')
+        if not re.fullmatch(r'[A-Za-z0-9@_+.-]+', repo):
+            raise ValueError('Unsafe source repository')
+        selected = selections.setdefault(repo, {})
+        if name in selected:
+            raise ValueError('Duplicate package in captured import transaction')
+        selected[name] = version
+        imports.append((repo, name, version, url))
+    databases = {repo: entries(Path(args.sync_db_dir) / (repo + '.db'), selected) for repo, selected in selections.items()}
+    db_hashes = {repo: sha(Path(args.sync_db_dir) / (repo + '.db')) for repo in selections}
+    for repo, name, version, url in imports:
         if reuse and name in pair_names:
             raise ValueError('Reuse cannot replace the desktop pair through imports')
         if not re.fullmatch(r'[A-Za-z0-9@_+.-]+', repo):
             raise ValueError('Unsafe source repository')
-        db = Path(args.sync_db_dir) / (repo + '.db')
-        row = entries(db)[name]
+        row = databases[repo][name]
         if row['%VERSION%'] != version:
             raise ValueError('Resolved package version differs from captured database')
         filename = row['%FILENAME%'].replace(':', '.')
@@ -147,7 +202,6 @@ def main():
         run('gpgv', '--keyring', args.signature_keyring, str(output / (filename + '.sig')), str(output / filename))
         files[name] = filename
         signed.append(name)
-        db_hashes[repo] = sha(db)
     if not {'hyprland', 'hyprtoolkit', 'hyprland-guiutils'} <= set(signed):
         raise ValueError('Resolution did not import the complete signed compositor stack')
     for package in overlay.glob('*.pkg.tar.*'):
