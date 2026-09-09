@@ -44,7 +44,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `herdr` | 0.8.2-1 | Terminal workspace manager for AI coding agents |
 | `hypa-ttfx-bin` | 0.3.1-1 | Hypa terminal text effects |
 | `hyprland-preview-share-picker-git` | 0.2.1.r16.g0ef9b30-1 | Share picker with window/monitor previews |
-| `libva-v4l2_request-avd` | 1.3-1 | VA-API driver so applications can reach the Apple Video Decoder |
+| `libva-v4l2_request-avd` | 1.3.r1-1 | VA-API driver so applications can reach the Apple Video Decoder |
 | `localsend` | 1.18.2-1 | Cross-platform AirDrop alternative |
 | `mise-bin` | 2026.9.2-1 | Dev tools, env vars, task runner |
 | `obs-studio` | 32.2.2-1 | Video recording and live streaming (no browser source) |
