@@ -1,0 +1,137 @@
+name: ARM package channels
+
+# Build first, qualify the artifact, then dispatch publish with that run ID.
+# All new channel database writers share this lock. Legacy edge is untouched.
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        options: [build, publish, promote]
+        default: build
+      channel:
+        type: choice
+        options: [rc, edge, stable]
+        default: rc
+      source_sha:
+        description: Exact desktop commit (build only)
+        default: ''
+      recipe_sha:
+        description: Exact upstream package recipe commit (build only)
+        default: ''
+      source_repo:
+        description: Desktop source repository
+        default: omarchy-mac/omarchy-mac
+      recipe_repo:
+        description: Package recipe repository
+        default: omacom/omarchy-pkgs
+      baseline_tag:
+        description: Complete overlay baseline release (build only)
+        default: channel-stable
+      pkgrel:
+        description: Package release integer (build only)
+        default: '1'
+      artifact_run:
+        description: Qualified build run ID (publish only)
+        default: ''
+      source_manifest_sha256:
+        description: Qualified source manifest SHA-256 (promotion only)
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: channel-publish
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: inputs.operation == 'build'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build pinned source and freeze the complete overlay
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          RECIPE_SHA: ${{ inputs.recipe_sha }}
+          SOURCE_REPO: ${{ inputs.source_repo }}
+          RECIPE_REPO: ${{ inputs.recipe_repo }}
+          BASE_TAG: ${{ inputs.baseline_tag }}
+          PKGREL: ${{ inputs.pkgrel }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          docker run --rm -v "$PWD:/w" -w /w \
+            -e CHANNEL -e SOURCE_SHA -e RECIPE_SHA -e SOURCE_REPO -e RECIPE_REPO \
+            -e BASE_TAG -e PKGREL -e GH_REPO \
+            menci/archlinuxarm:base-devel bash scripts/build-channel.sh
+          sudo chown -R "$(id -u):$(id -g)" channel-output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: channel-snapshot-${{ inputs.channel }}
+          path: channel-output/
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    if: inputs.operation == 'publish' || inputs.operation == 'promote'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download the qualified artifact or source channel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          OPERATION: ${{ inputs.operation }}
+          CHANNEL: ${{ inputs.channel }}
+          SOURCE_MANIFEST_SHA256: ${{ inputs.source_manifest_sha256 }}
+          ARTIFACT_RUN: ${{ inputs.artifact_run }}
+        run: |
+          if [[ $OPERATION == "publish" ]]; then
+            [[ $ARTIFACT_RUN =~ ^[0-9]+$ ]] || { echo 'An exact qualified build run is required'; exit 1; }
+            gh api "repos/$GH_REPO/actions/runs/$ARTIFACT_RUN" > artifact-run.json
+            jq -e '.conclusion == "success" and .event == "workflow_dispatch" and .path == ".github/workflows/channels.yml"' artifact-run.json
+            gh run download "$ARTIFACT_RUN" --repo "$GH_REPO" --name "channel-snapshot-$CHANNEL" --dir snapshot
+            [[ $(jq -r .publisher_sha snapshot/channel-manifest.json) == "$(jq -r .head_sha artifact-run.json)" ]] || { echo 'Artifact publisher provenance differs from its build run'; exit 1; }
+          else
+            [[ $SOURCE_MANIFEST_SHA256 =~ ^[0-9a-f]{64}$ ]] || { echo 'An exact qualified source manifest hash is required'; exit 1; }
+            [[ $CHANNEL == "stable" ]] || { echo 'Build RC from channel-edge with the release package pair; promotion is final RC to stable'; exit 1; }
+            source_channel=rc
+            gh release download "channel-$source_channel" --repo "$GH_REPO" --dir source-snapshot
+            printf '%s  %s\n' "$SOURCE_MANIFEST_SHA256" source-snapshot/channel-manifest.json | sha256sum -c -
+          fi
+      - name: Verify signatures and publish without rebuilding
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          OPERATION: ${{ inputs.operation }}
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          docker run --rm -v "$PWD:/w" -w /w \
+            -e GH_TOKEN -e GH_REPO -e OPERATION -e CHANNEL \
+            menci/archlinuxarm:base-devel bash -euo pipefail -c '
+              bash scripts/container-bootstrap.sh >/dev/null
+              pacman -S --needed --noconfirm python gnupg curl libarchive pacman-contrib >/dev/null
+              pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver hkps://keys.openpgp.org
+              pacman-key --lsign-key 40DFB630FF42BCFFB047046CF0134EE680CAC571
+              if [[ $OPERATION == "promote" ]]; then
+                python3 scripts/channel-snapshot.py promote --snapshot source-snapshot --channel "$CHANNEL" --output snapshot
+              fi
+              python3 - "$CHANNEL" <<"PY"
+          import json, sys
+          manifest = json.load(open("snapshot/channel-manifest.json"))
+          assert manifest["channel"] == sys.argv[1], "Artifact channel differs from dispatch"
+          assert not manifest.get("bootstrap"), "Historical bootstrap is not a qualified channel release"
+          PY
+              python3 scripts/channel-snapshot.py publish --snapshot snapshot --repo "$GH_REPO"
+            '

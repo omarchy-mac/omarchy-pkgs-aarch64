@@ -207,3 +207,22 @@ builds natively. Each of these takes well under a minute.
 Everything else comes from the AUR — clone the package and run `makepkg`.
 Packages marked `arch=('any')` need no rebuild at all; the AUR artifact works
 on ARM unchanged.
+
+## Isolated ARM channels
+
+The `ARM package channels` workflow builds complete managed snapshots for `channel-stable`, `channel-rc`, and `channel-edge`. These are package repository releases, not desktop source branches. The old `edge` release remains a compatibility endpoint for existing stable clients; this workflow never publishes to it or deletes its assets. ALARM and Asahi base repositories remain rolling.
+
+Every snapshot contains the managed ARM overlay and the selected compositor stack plus the ABI dependencies resolved for it, including ALARM providers such as Aquamarine. Both database aliases refer to that same inventory. Existing optional-signature policy remains for the Mac overlay; imported upstream packages retain their signatures and must verify against the package keyring. No new signing key is invented.
+
+1. Dispatch `operation=build` with exact desktop and recipe SHAs, a channel, package release integer, and a complete baseline release. Source tags are not required. Edge builds produce `omarchy-dev`/`omarchy-settings-dev`; RC and stable builds produce `omarchy`/`omarchy-settings`. The runtime version comes from the selected source commit.
+2. Edge refreshes the selected signed compositor dependency transaction. RC/final builds with a `channel-*` baseline preserve those frozen dependencies. To cut RC, build the release pair using `baseline_tag=channel-edge`; development archives are never renamed into release packages.
+3. Qualify the resulting `channel-snapshot-<channel>` artifact using its exact archives, manifest, source/recipe/publisher SHAs, hashes, and recorded dependency database inputs. Dispatch `operation=publish` with that successful build run ID only after its required checks pass. Publishing checks the run provenance and snapshot again.
+4. Build the final version into RC and validate those archives. Dispatch `operation=promote`, `channel=stable`, with the exact qualified RC manifest SHA-256. Promotion copies the same package, signature and database bytes; it never rebuilds them. The source manifest hash prevents a moving RC channel from silently substituting another candidate.
+
+Create the three destination GitHub releases explicitly before the first publication. All new channel publishing jobs share `channel-publish` concurrency. Package archives and signatures upload before the database; a filename already published with different bytes is rejected before mutation. Old package assets remain available for clients holding an older database.
+
+For local/offline preparation, `scripts/channel-snapshot.py prepare --help` documents the required inventory and immutable input SHAs. `verify`, `promote`, and `publish` use the same implementation as CI. Supply `--signature-keyring` when the trusted binary public keyring is outside `/etc/pacman.d/gnupg/pubring.gpg`.
+
+The historical published `4.0.2-2` pair can be captured with `--bootstrap --recipe-sha unknown` and its actual source SHA; its missing historical recipe provenance is recorded as null. Such a snapshot is deliberately not eligible for client channel switching. First deploy and qualify a channel-capable stable compatibility package, since the old update helper would reintroduce official edge after a downgrade. Dev activation similarly requires a Mac source checkout containing the channel implementation; a still-old default branch is rejected before changing the client configuration.
+
+At this stage the new workflow is explicitly dispatched: automated edge refresh is a separate follow-up. Existing legacy update workflows continue their current jobs. Ordinary stable clients must not be moved to the new URLs until the compatibility stable snapshot is available and tested.

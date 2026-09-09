@@ -41,6 +41,9 @@ class SnapshotTests(unittest.TestCase):
             info = tarfile.TarInfo('.PKGINFO')
             info.size = len(data)
             archive.addfile(info, io.BytesIO(data))
+            if name in ('omarchy', 'omarchy-dev'):
+                entry = tarfile.TarInfo('usr/share/omarchy/install/helpers/arm-channel-manifest.py')
+                archive.addfile(entry, io.BytesIO(b''))
         if name in snapshot.STACK:
             path.with_name(path.name + ".sig").write_bytes(b"detached signature fixture")
         return path

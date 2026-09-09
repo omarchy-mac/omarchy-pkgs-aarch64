@@ -325,6 +325,17 @@ bash scripts/test-prepare-omarchy-recipes.sh \
   && ok "recipe patch applies, is idempotent, and rejects drift" \
   || no "recipe patch applies, is idempotent, and rejects drift"
 
+echo "== channel snapshot and workflow tests"
+python3 scripts/test-channel-snapshot.py \
+  && ok "channel snapshots preserve exact bytes and reject incomplete inventories" \
+  || no "channel snapshots preserve exact bytes and reject incomplete inventories"
+python3 scripts/test-channel-collect.py \
+  && ok "collector preserves the baseline and imported ABI dependencies" \
+  || no "collector preserves the baseline and imported ABI dependencies"
+python3 scripts/test-channel-workflow.py \
+  && ok "channel workflow separates builds, qualification, publication and promotion" \
+  || no "channel workflow separates builds, qualification, publication and promotion"
+
 echo
 if (( fail )); then
   printf '\033[1;31m%d passed, %d FAILED\033[0m\n' "$pass" "$fail"; exit 1

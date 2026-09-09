@@ -102,6 +102,9 @@ def verify(directory, keyring='/etc/pacman.d/gnupg/pubring.gpg'):
         require(filename in {f'{db}.{ext}' for db in DATABASES for ext in ('db', 'db.tar.zst', 'files', 'files.tar.zst')}, 'Unexpected database filename')
         require(sha(directory / filename) == checksum, f'Database changed: {filename}')
     require(len(manifest['databases']) == 8, 'Incomplete repository databases')
+    for db in DATABASES:
+        for kind in ('db', 'files'):
+            require(manifest['databases'][f'{db}.{kind}'] == manifest['databases'][f'{db}.{kind}.tar.zst'], 'Database aliases differ')
     expected = {p['name']: (p['version'], p['filename'], p['sha256']) for p in manifest['packages']}
     for db in DATABASES:
         path = directory / (db + '.db')
@@ -125,9 +128,16 @@ def prepare(args):
     # or legacy repository plus the imported compositor dependency closure.
     required = json.loads(Path(args.inventory).read_text())
     require(isinstance(required, list) and all(isinstance(n, str) for n in required), 'Inventory must be a JSON array of required package names')
-    manifest = dict(schema=1, channel=args.channel, source_sha=args.source_sha, recipe_sha=None if args.bootstrap and args.recipe_sha == 'unknown' else args.recipe_sha,
+    manifest = dict(schema=1, client_protocol=0 if args.bootstrap else 1, channel=args.channel, source_sha=args.source_sha, recipe_sha=None if args.bootstrap and args.recipe_sha == 'unknown' else args.recipe_sha,
                     publisher_sha=args.publisher_sha, bootstrap=args.bootstrap, signed_packages=sorted(set(json.loads(Path(args.signed_inventory).read_text())) if args.signed_inventory else STACK), required_packages=sorted(set(required) - PAIRS), packages=rows)
     check_identity(manifest)
+    provenance = source / 'input-provenance.json'
+    if provenance.exists():
+        manifest['inputs'] = json.loads(provenance.read_text())
+    if not args.bootstrap:
+        desktop = next(row for row in rows if row['name'] == ('omarchy-dev' if args.channel == 'edge' else 'omarchy'))
+        paths = run('bsdtar', '-tf', str(source / desktop['filename'])).splitlines()
+        require(any(p.removeprefix('./') == 'usr/share/omarchy/install/helpers/arm-channel-manifest.py' for p in paths), 'Desktop does not support isolated ARM channel switching')
     with tempfile.TemporaryDirectory(dir=output.parent) as temporary:
         staged = Path(temporary)
         for row in rows:
