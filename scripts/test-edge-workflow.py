@@ -26,6 +26,8 @@ for name, job in jobs.items():
             assert result.returncode == 0, result.stderr
 assert 'GH_TOKEN' not in str(jobs['prepare']) and 'GH_TOKEN' not in str(jobs['qualify'])
 assert '$PWD:/w:ro' in str(jobs['qualify'])
+assert 'prepare-omarchy-recipes.sh' in str(jobs['source-tests'])
+assert '${{ github.sha }}' in str(jobs['source-tests'])
 for name in ('edge-follow.sh', 'qualify-edge.sh', 'publish-edge.sh', 'edge-version.sh'):
     subprocess.run(['bash', '-n', str(root / 'scripts' / name)], check=True)
 follow = (root / 'scripts/edge-follow.sh').read_text()

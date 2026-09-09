@@ -75,6 +75,13 @@ jobs:
           ref: ${{ needs.prepare.outputs.recipe_sha }}
           path: omarchy-pkgs
           persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          path: channel-publisher
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Apply the identical pinned publisher recipe adjustment
+        run: bash channel-publisher/scripts/prepare-omarchy-recipes.sh "$GITHUB_WORKSPACE/omarchy-pkgs"
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
