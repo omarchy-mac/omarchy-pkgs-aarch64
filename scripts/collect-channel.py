@@ -104,6 +104,12 @@ def main():
         for name, row in entries(Path(args.overlay_db)).items():
             if name in pair_names:
                 continue
+            # These are built from the pinned recipe checkout as well as the
+            # legacy feed. A lagging feed must not undo a newer qualified recipe
+            # version on the next tick; other dependency downgrades still fail.
+            if name in {'omarchy-keyring', 'ttf-jetbrains-mono-nerd-basic'} and name in baseline:
+                if int(run('vercmp', row['%VERSION%'], baseline[name]['%VERSION%']).strip()) < 0:
+                    continue
             filename = row['%FILENAME%']
             if Path(filename).name != filename:
                 raise ValueError('Unsafe overlay filename')

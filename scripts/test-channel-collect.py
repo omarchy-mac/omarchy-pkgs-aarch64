@@ -140,6 +140,22 @@ with tempfile.TemporaryDirectory() as temporary:
     assert not (root / 'feed-output/omarchy-2-1-aarch64.pkg.tar.xz').exists()
     assert (root / 'feed-output/omarchy-dev-1-1-aarch64.pkg.tar.xz').read_bytes() == (output / 'omarchy-dev-1-1-aarch64.pkg.tar.xz').read_bytes()
     assert 'new-overlay' in json.loads((root / 'feed-output/inventory.json').read_text())
+    stale_feed = root / 'stale-feed'
+    stale_feed.mkdir()
+    stale = package(stale_feed, 'omarchy-keyring', version='0.9-1')
+    subprocess.run(['repo-add', '--quiet', str(stale_feed / 'feed.db.tar.zst'), str(stale)], check=True)
+    changed = reuse_argv.copy()
+    changed[changed.index('--output') + 1] = str(root / 'stale-output')
+    changed += ['--overlay-db', str(stale_feed / 'feed.db.tar.zst'), '--overlay-url', stale_feed.as_uri()]
+    with mock.patch.object(sys, 'argv', changed), mock.patch.object(collect, 'run', side_effect=run):
+        collect.main()
+    for archive in archives:
+        assert (root / 'stale-output' / archive.name).read_bytes() == archive.read_bytes()
+    assert not list((root / 'stale-output').glob('omarchy-keyring-0.9-*'))
+    planner_spec = importlib.util.spec_from_file_location('planner', Path(__file__).with_name('edge-plan.py'))
+    planner = importlib.util.module_from_spec(planner_spec)
+    planner_spec.loader.exec_module(planner)
+    assert planner.plan(manifest, dict(build, pkgver='1', packages=rows))['action'] == 'skip'
     manifest['packages'][0]['sha256'] = 'f' * 64
     manifest_path.write_text(json.dumps(manifest))
     changed = reuse_argv.copy()
