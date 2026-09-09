@@ -332,6 +332,12 @@ python3 scripts/test-channel-snapshot.py \
 python3 scripts/test-channel-collect.py \
   && ok "collector preserves the baseline and imported ABI dependencies" \
   || no "collector preserves the baseline and imported ABI dependencies"
+python3 scripts/test-edge-execution.py \
+  && ok "edge execution binds archives and versions to the plan" \
+  || no "edge execution binds archives and versions to the plan"
+python3 scripts/test-edge-workflow.py \
+  && ok "automatic edge requires isolated qualification and stale baseline protection" \
+  || no "automatic edge requires isolated qualification and stale baseline protection"
 python3 scripts/test-edge-plan.py \
   && ok "edge planner pins inputs and preserves immutable package identities" \
   || no "edge planner pins inputs and preserves immutable package identities"

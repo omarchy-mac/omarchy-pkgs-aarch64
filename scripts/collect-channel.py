@@ -69,6 +69,8 @@ def main():
         parser.add_argument('--' + name, required=True)
     parser.add_argument('--channel', choices=('stable', 'rc', 'edge'), required=True)
     parser.add_argument('--signature-keyring', default='/etc/pacman.d/gnupg/pubring.gpg')
+    parser.add_argument('--overlay-db', help='Captured legacy overlay feed, excluding all desktop flavors')
+    parser.add_argument('--overlay-url')
     parser.add_argument('--reuse-edge-manifest')
     parser.add_argument('--source-sha')
     parser.add_argument('--recipe-sha')
@@ -96,6 +98,25 @@ def main():
             (output / (filename + '.sig')).write_bytes(base64.b64decode(row['%PGPSIG%'], validate=True))
             run('gpgv', '--keyring', args.signature_keyring, str(output / (filename + '.sig')), str(output / filename))
             signed.append(name)
+    if bool(args.overlay_db) != bool(args.overlay_url):
+        raise ValueError('Overlay database and URL must be supplied together')
+    if args.overlay_db:
+        for name, row in entries(Path(args.overlay_db)).items():
+            if name in pair_names:
+                continue
+            filename = row['%FILENAME%']
+            if Path(filename).name != filename:
+                raise ValueError('Unsafe overlay filename')
+            if name in files:
+                (output / files[name]).unlink()
+                (output / (files[name] + '.sig')).unlink(missing_ok=True)
+            download(args.overlay_url + '/' + filename, output / filename, row['%SHA256SUM%'])
+            files[name] = filename
+            signed = [item for item in signed if item != name]
+            if '%PGPSIG%' in row:
+                (output / (filename + '.sig')).write_bytes(base64.b64decode(row['%PGPSIG%'], validate=True))
+                run('gpgv', '--keyring', args.signature_keyring, str(output / (filename + '.sig')), str(output / filename))
+                signed.append(name)
     db_hashes = {}
     for line in Path(args.import_plan).read_text().splitlines():
         if line.count('|') != 3:
@@ -142,9 +163,10 @@ def main():
         if package.with_name(package.name + '.sig').exists():
             shutil.copy2(package.with_name(package.name + '.sig'), output / (package.name + '.sig'))
         files[name] = package.name
-    (output / 'inventory.json').write_text(json.dumps(sorted((set(baseline) - pair_names) | set(signed))))
+    (output / 'inventory.json').write_text(json.dumps(sorted(set(files) - pair_names)))
     (output / 'signed-inventory.json').write_text(json.dumps(sorted(set(signed))))
     (output / 'input-provenance.json').write_text(json.dumps(dict(base_url=args.base_url, base_database_sha256=sha(Path(args.base_db)),
+                                                               overlay_database_sha256=sha(Path(args.overlay_db)) if args.overlay_db else None,
                                                                import_database_sha256=db_hashes, resolution=Path(args.import_plan).read_text(), **reuse), indent=2))
 
 

@@ -17,9 +17,9 @@ with tempfile.TemporaryDirectory() as temporary:
     baseline, upstream, overlay, sync = [root / name for name in ('baseline', 'upstream', 'overlay', 'sync')]
     for path in (baseline, upstream, overlay, sync):
         path.mkdir()
-    def package(directory, name, signed=False):
-        path = directory / (name + '-1-1-aarch64.pkg.tar.xz')
-        data = f'pkgname = {name}\npkgver = 1-1\narch = aarch64\n'.encode()
+    def package(directory, name, signed=False, version='1-1'):
+        path = directory / (name + '-' + version + '-aarch64.pkg.tar.xz')
+        data = f'pkgname = {name}\npkgver = {version}\narch = aarch64\n'.encode()
         with tarfile.open(path, 'w:xz') as archive:
             member = tarfile.TarInfo('.PKGINFO')
             member.size = len(data)
@@ -125,6 +125,21 @@ with tempfile.TemporaryDirectory() as temporary:
     changed[changed.index('--output') + 1] = str(root / 'overlay-pair')
     changed[changed.index('--overlay') + 1] = str(overlay)
     reject(changed, 'new desktop overlay')
+    feed = root / 'feed'
+    feed.mkdir()
+    feed_packages = [package(feed, name, version='2-1') for name in ('overlay-tool', 'new-overlay', 'omarchy')]
+    subprocess.run(['repo-add', '--quiet', str(feed / 'feed.db.tar.zst'), *map(str, feed_packages)], check=True)
+    changed = reuse_argv.copy()
+    changed[changed.index('--output') + 1] = str(root / 'feed-output')
+    changed += ['--overlay-db', str(feed / 'feed.db.tar.zst'), '--overlay-url', feed.as_uri()]
+    with mock.patch.object(sys, 'argv', changed), mock.patch.object(collect, 'run', side_effect=run):
+        collect.main()
+    assert (root / 'feed-output/overlay-tool-2-1-aarch64.pkg.tar.xz').exists()
+    assert not (root / 'feed-output/overlay-tool-1-1-aarch64.pkg.tar.xz').exists()
+    assert (root / 'feed-output/new-overlay-2-1-aarch64.pkg.tar.xz').exists()
+    assert not (root / 'feed-output/omarchy-2-1-aarch64.pkg.tar.xz').exists()
+    assert (root / 'feed-output/omarchy-dev-1-1-aarch64.pkg.tar.xz').read_bytes() == (output / 'omarchy-dev-1-1-aarch64.pkg.tar.xz').read_bytes()
+    assert 'new-overlay' in json.loads((root / 'feed-output/inventory.json').read_text())
     manifest['packages'][0]['sha256'] = 'f' * 64
     manifest_path.write_text(json.dumps(manifest))
     changed = reuse_argv.copy()

@@ -75,6 +75,8 @@ def plan(baseline, desired, bootstrap=False):
     before, after = dependencies(baseline['packages']), dependencies(desired.get('packages'))
     require(before.keys() <= after.keys(), 'Desired inventory cannot silently remove managed packages')
     for name in before.keys() & after.keys():
+        ordering = int(subprocess.run(['vercmp', after[name]['version'], before[name]['version']], check=True, text=True, capture_output=True).stdout.strip())
+        require(ordering >= 0, f'Automatic dependency downgrade requires manual review: {name}')
         require(before[name]['version'] != after[name]['version'] or (before[name]['sha256'], before[name]['signature_sha256']) == (after[name]['sha256'], after[name]['signature_sha256']),
                 f'Immutable package version was repacked: {name}')
     reasons = [key.removesuffix('_sha') for key in PROVENANCE_KEYS if inputs[key] != previous_build[key]]
