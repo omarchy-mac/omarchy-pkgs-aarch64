@@ -54,6 +54,8 @@ prepare() {
 
 build() {
   cd "$_archive"
+  # A '-' suffix is a SemVer prerelease and selects Ghostty's tip channel.
+  # Keep the package revision as build metadata on the stable release.
   PATH="$srcdir/zig-aarch64-linux-$_zigver:$PATH" \
     DESTDIR=build \
     zig build \
@@ -64,7 +66,7 @@ build() {
       -Dcpu=baseline \
       -Dpie=true \
       -Demit-docs=false \
-      -Dversion-string="$pkgver-$pkgrel" \
+      -Dversion-string="$pkgver+omarchy.$pkgrel" \
       --build-id=sha1
 }
 

@@ -41,6 +41,10 @@ small, checked packaging patch described below. Packages come from four places:
 | `dotnet-host-bin` | 10.0.11.sdk400-1 | .NET CLI driver |
 | `dotnet-runtime-2.1` | 2.1.30.sdk818-1 | .NET Core 2.1 runtime |
 | `dotnet-sdk-2.1` | 2.1.30.sdk818-1 | .NET Core 2.1 SDK |
+| `ghostty` | Pending publication | Stable terminal emulator |
+| `ghostty-nautilus` | Pending publication | Open in Ghostty extension for GNOME Files |
+| `ghostty-shell-integration` | Pending publication | Ghostty shell integration scripts |
+| `ghostty-terminfo` | Pending publication | `xterm-ghostty` terminal definition |
 | `herdr` | 0.8.2-1 | Terminal workspace manager for AI coding agents |
 | `hermes-desktop` | Pending publication | Native desktop shell for Hermes Agent |
 | `hypa-ttfx-bin` | 0.3.1-1 | Hypa terminal text effects |
@@ -113,7 +117,7 @@ The packages differ only in where they can be built:
 |-------|-------|-----------|
 | `any` — `arch=('any')`, architecture-independent | 7 | yes |
 | `repack` — ships a vendor-prebuilt ARM binary | 9 | yes |
-| `compile` — built from source | 14 | yes |
+| `compile` — built from source | 18 | yes |
 
 Two packages stay deliberately excluded from that generic matrix. `omarchy`
 and `omarchy-settings` are built as an atomic pair by
@@ -137,6 +141,14 @@ Remove the carried patch once the upstream recipes provide these fixes.
 This changes future builds, not existing release assets. Publishing still needs
 an appropriately versioned Omarchy Mac release. Desktop CI that checks out
 `omacom/omarchy-pkgs` directly does not use this patch automatically.
+
+`ghostty` builds the stable upstream release with its required Zig toolchain,
+verified by checksum and used only during the build. Its four split packages
+are built together. Each manifest entry excludes the sibling runtime packages
+from build-time dependency installation, so the first build does not try to
+install its own unpublished output, including when just one split package is
+selected. The finished packages retain those runtime dependencies. Manpages
+are omitted because `pandoc-cli` is unavailable in Arch Linux ARM.
 
 `herdr` currently fails to build anywhere: its PKGBUILD pins `zig0.15`, which
 Arch dropped from `[extra]` on the move to `zig 0.16`. It is left to fail
