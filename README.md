@@ -42,7 +42,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `dotnet-runtime-2.1` | 2.1.30.sdk818-1 | .NET Core 2.1 runtime |
 | `dotnet-sdk-2.1` | 2.1.30.sdk818-1 | .NET Core 2.1 SDK |
 | `herdr` | 0.8.2-1 | Terminal workspace manager for AI coding agents |
-| `hermes-desktop` | Pending publication | Native desktop shell for Hermes Agent |
+| `hermes-desktop` | 2026.8.31-3 | Native desktop shell for Hermes Agent |
 | `hypa-ttfx-bin` | 0.3.1-1 | Hypa terminal text effects |
 | `hyprland-preview-share-picker-git` | 0.2.1.r16.g0ef9b30-1 | Share picker with window/monitor previews |
 | `libva-v4l2_request-avd` | 1.3-1 | VA-API driver so applications can reach the Apple Video Decoder |
