@@ -329,6 +329,9 @@ echo "== channel snapshot and workflow tests"
 python3 scripts/test-channel-snapshot.py \
   && ok "channel snapshots preserve exact bytes and reject incomplete inventories" \
   || no "channel snapshots preserve exact bytes and reject incomplete inventories"
+python3 scripts/test-channel-signatures.py \
+  && ok "offline signing verifies every package and preserves immutable bytes" \
+  || no "offline signing verifies every package and preserves immutable bytes"
 python3 scripts/test-channel-database.py \
   && ok "database imports validate selected records without rescanning unrelated packages" \
   || no "database imports validate selected records without rescanning unrelated packages"

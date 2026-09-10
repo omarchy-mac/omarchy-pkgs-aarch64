@@ -21,12 +21,16 @@ class SnapshotTests(unittest.TestCase):
         self.root = Path(self.tmp.name)
         real_run = snapshot.run
         def run(*args, **kwargs):
-            if args[0] == 'gpgv':
-                return ''  # Cryptographic key trust is exercised against imported upstream archives.
+            if args[0] in ('gpgv', 'gpg'):
+                return '[GNUPG:] VALIDSIG ' + 'A' * 40 + ' 2026-09-10 0 0 4 0 22 8 00 ' + 'A' * 40 + '\n'  # Real crypto cases live in test-channel-signatures.py.
             return real_run(*args, **kwargs)
         patch = mock.patch.object(snapshot, 'run', side_effect=run)
         patch.start()
         self.addCleanup(patch.stop)
+        self.keyring = self.root / 'public.gpg'
+        self.keyring.write_bytes(b'unit fixture')
+        self.policy = self.root / 'approved.json'
+        self.policy.write_text(json.dumps(['A' * 40]))
         self.packages = self.root / 'packages'
         self.packages.mkdir()
         for name in ['omarchy', 'omarchy-settings', *sorted(snapshot.STACK), 'overlay-tool']:
@@ -44,15 +48,16 @@ class SnapshotTests(unittest.TestCase):
             if name in ('omarchy', 'omarchy-dev'):
                 entry = tarfile.TarInfo('usr/share/omarchy/install/helpers/arm-channel-manifest.py')
                 archive.addfile(entry, io.BytesIO(b''))
-        if name in snapshot.STACK:
-            path.with_name(path.name + ".sig").write_bytes(b"detached signature fixture")
+        path.with_name(path.name + ".sig").write_bytes(b"detached signature fixture")
         return path
 
     def prepare(self, channel='rc'):
         output = self.root / channel
+        signed = self.root / 'signed.json'
+        signed.write_text(json.dumps([snapshot.inspect_package(p)['name'] for p in self.packages.glob('*.pkg.tar.xz')]))
         snapshot.prepare(argparse.Namespace(packages=str(self.packages), output=str(output), channel=channel,
                          inventory=str(self.inventory), source_sha='a' * 40, recipe_sha='b' * 40,
-                         publisher_sha='c' * 40, bootstrap=False, signed_inventory=None, signature_keyring='/unused-test-keyring'))
+                         publisher_sha='c' * 40, bootstrap=False, signed_inventory=str(signed), signature_keyring=str(self.keyring)))
         return output
 
     def test_reused_desktop_provenance_survives_snapshot(self):
@@ -69,7 +74,7 @@ class SnapshotTests(unittest.TestCase):
     def test_final_rc_promotes_same_bytes(self):
         source = self.prepare()
         target = self.root / 'stable'
-        snapshot.promote(argparse.Namespace(snapshot=str(source), output=str(target), channel='stable', signature_keyring='/unused-test-keyring'))
+        snapshot.promote(argparse.Namespace(snapshot=str(source), output=str(target), channel='stable', signature_keyring=str(self.keyring), approved_signers=str(self.policy)))
         before, after = snapshot.verify(source), snapshot.verify(target)
         self.assertEqual(before['packages'], after['packages'])
         self.assertEqual(before['databases'], after['databases'])
@@ -98,9 +103,16 @@ class SnapshotTests(unittest.TestCase):
         self.package('omarchy-dev')
         self.package('omarchy-settings-dev')
         source = self.prepare('edge')
+        before = snapshot.verify(source)
+        before['desktop_build']['publisher_sha'] = 'e' * 40
+        before['signing_assembly'] = {'input_manifest_sha256': 'f' * 64, 'publisher_sha': before['publisher_sha']}
+        snapshot.write_manifest(source, before)
         target = self.root / 'rc'
-        snapshot.promote(argparse.Namespace(snapshot=str(source), output=str(target), channel='rc', signature_keyring='/unused-test-keyring'))
-        self.assertFalse({'omarchy-dev', 'omarchy-settings-dev'} & {p['name'] for p in snapshot.verify(target)['packages']})
+        snapshot.promote(argparse.Namespace(snapshot=str(source), output=str(target), channel='rc', signature_keyring=str(self.keyring), approved_signers=str(self.policy)))
+        promoted = snapshot.verify(target)
+        self.assertFalse({'omarchy-dev', 'omarchy-settings-dev'} & {p['name'] for p in promoted['packages']})
+        self.assertEqual(promoted['desktop_build'], before['desktop_build'])
+        self.assertEqual(promoted['signing_assembly'], before['signing_assembly'])
         self.assertEqual((target / 'omarchy-4.0.3-1-aarch64.pkg.tar.xz').read_bytes(), (source / 'omarchy-4.0.3-1-aarch64.pkg.tar.xz').read_bytes())
 
     def test_stable_rejects_rc_version(self):

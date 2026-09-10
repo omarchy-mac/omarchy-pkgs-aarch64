@@ -6,6 +6,10 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 : "${EDGE_CANDIDATE:?qualified candidate directory}"
 : "${EDGE_EVIDENCE:?qualification directory}"
 : "${EXPECTED_PUBLISHER_SHA:?workflow commit}"
+: "${SIGNATURE_KEYRING:?explicit trusted public keyring}"
+: "${APPROVED_SIGNERS:?explicit approved signer policy}"
+# This is mandatory even after archive qualification; unsigned candidates are not publishable.
+python3 scripts/channel-snapshot.py verify --snapshot "$EDGE_CANDIDATE/snapshot" --require-all-signatures --signature-keyring "$SIGNATURE_KEYRING" --approved-signers "$APPROVED_SIGNERS"
 python3 scripts/edge-execution.py --plan "$EDGE_CANDIDATE/plan.json" --baseline "$EDGE_CANDIDATE/baseline.json" --snapshot "$EDGE_CANDIDATE/snapshot"
 python3 - "$EDGE_CANDIDATE" "$EDGE_EVIDENCE" "$EXPECTED_PUBLISHER_SHA" <<'PY'
 import hashlib, json, pathlib, sys
@@ -22,4 +26,4 @@ current=$(mktemp)
 trap 'rm -f "$current"' EXIT
 curl -fL --retry 3 "https://github.com/$GH_REPO/releases/download/channel-edge/channel-manifest.json" -o "$current"
 [[ $(sha256sum "$current" | cut -d' ' -f1) == "$(jq -r .baseline_manifest_sha256 "$EDGE_CANDIDATE/plan.json")" ]] || { echo 'Published edge baseline changed; retry capture and qualification' >&2; exit 1; }
-python3 scripts/channel-snapshot.py publish --snapshot "$EDGE_CANDIDATE/snapshot" --repo "$GH_REPO"
+python3 scripts/channel-snapshot.py publish --snapshot "$EDGE_CANDIDATE/snapshot" --repo "$GH_REPO" --signature-keyring "$SIGNATURE_KEYRING" --approved-signers "$APPROVED_SIGNERS"

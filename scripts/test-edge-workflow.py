@@ -38,6 +38,9 @@ assert 'scripts/edge-execution.py' in follow
 publish = (root / 'scripts/publish-edge.sh').read_text()
 assert publish.index('baseline_manifest_sha256') < publish.index('channel-snapshot.py publish')
 assert "manifest['channel'] == 'edge'" in publish
+assert '--require-all-signatures' in publish and '--approved-signers' in publish
+assert publish.index('--require-all-signatures') < publish.index('scripts/edge-execution.py')
+assert 'signing/public-keyring.gpg' in str(jobs['publish']) and 'signing/approved-signers.json' in str(jobs['publish'])
 assert 'qualification.json' in publish and 'manifest_sha256' in publish
 qualify = (root / 'scripts/qualify-edge.sh').read_text()
 assert 'pacman -U --noconfirm "${archives[@]}"' in qualify

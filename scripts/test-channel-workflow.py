@@ -28,4 +28,15 @@ assert 'ARTIFACT_RUN' in publish_text and 'gh run download' in publish_text
 assert 'channel-$source_channel' in publish_text
 assert 'SOURCE_MANIFEST_SHA256' in publish_text and 'sha256sum -c -' in publish_text
 assert '.conclusion == "success"' in publish_text and '.publisher_sha' in publish_text
+assert 'publish-signed' in workflow['on']['workflow_dispatch']['inputs']['operation']['options']
+assert 'signed_artifact_tag' in workflow['on']['workflow_dispatch']['inputs']
+assert 'SIGNED_ARTIFACT_SHA256' in publish_text and 'channel-signatures.py unpack' in publish_text
+assert 'signing/public-keyring.gpg' in publish_text and 'signing/approved-signers.json' in publish_text
+assert '--manifest-sha256' in publish_text and '--archive-sha256' in publish_text
+assert '--repo "$GH_REPO" --pattern "$SIGNED_ARTIFACT_NAME"' in publish_text
+for step in publish['steps']:
+    script = step.get('run', '')
+    if 'channel-snapshot.py publish' in script:
+        assert 'publish --snapshot snapshot --repo "$GH_REPO" "${policy[@]}"' in script
+        assert 'promote --snapshot source-snapshot --channel "$CHANNEL" --output snapshot "${policy[@]}"' in script
 print('channel workflow validation PASS')

@@ -154,7 +154,7 @@ jobs:
             "$ARM_IMAGE" bash -euo pipefail -c '
               bash scripts/container-bootstrap.sh
               pacman -S --needed --noconfirm python gnupg curl libarchive pacman-contrib
-              pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver hkps://keys.openpgp.org
-              pacman-key --lsign-key 40DFB630FF42BCFFB047046CF0134EE680CAC571
+              [[ -f signing/public-keyring.gpg && -f signing/approved-signers.json ]] || { echo "Approved committed publication signing policy is not configured"; exit 1; }
+              export SIGNATURE_KEYRING=/w/signing/public-keyring.gpg APPROVED_SIGNERS=/w/signing/approved-signers.json
               bash scripts/publish-edge.sh
             '

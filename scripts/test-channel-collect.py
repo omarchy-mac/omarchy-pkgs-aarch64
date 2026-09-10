@@ -30,7 +30,7 @@ with tempfile.TemporaryDirectory() as temporary:
     old = [package(baseline, name) for name in ('omarchy', 'omarchy-settings', 'overlay-tool', 'omarchy-keyring')]
     imported = [package(upstream, name, True) for name in ('hyprland', 'hyprtoolkit', 'hyprland-guiutils', 'aquamarine')]
     for name in ('omarchy-dev', 'omarchy-settings-dev', 'omarchy-keyring'):
-        package(overlay, name)
+        package(overlay, name, signed=name == 'omarchy-dev')
     subprocess.run(['repo-add', '--quiet', str(baseline / 'base.db.tar.zst'), *map(str, old)], check=True)
     subprocess.run(['repo-add', '--quiet', str(sync / 'omarchy.db.tar.zst'), *map(str, imported)], check=True)
     plan = root / 'plan'
@@ -55,7 +55,7 @@ with tempfile.TemporaryDirectory() as temporary:
     for path in imported:
         assert (output / path.name).read_bytes() == path.read_bytes()
         assert (output / (path.name + '.sig')).read_bytes() == path.with_name(path.name + '.sig').read_bytes()
-    assert 'aquamarine' in json.loads((output / 'signed-inventory.json').read_text())
+    assert {'aquamarine', 'omarchy-dev'} <= set(json.loads((output / 'signed-inventory.json').read_text()))
     assert json.loads((output / 'input-provenance.json').read_text())['import_database_sha256']
     # A second dependency collection carries the exact development pair and its provenance.
     for name in ('omarchy-dev', 'omarchy-settings-dev'):
@@ -157,6 +157,16 @@ with tempfile.TemporaryDirectory() as temporary:
     planner = importlib.util.module_from_spec(planner_spec)
     planner_spec.loader.exec_module(planner)
     assert planner.plan(manifest, dict(build, pkgver='1', packages=rows))['action'] == 'skip'
+    # Replacing a signed import with a fresh unsigned overlay must remove its
+    # old signature identity; newly supplied overlay signatures are enrolled.
+    package(overlay, 'aquamarine', version='2-1')
+    changed = argv.copy()
+    changed[changed.index('--output') + 1] = str(root / 'replaced-signature')
+    with mock.patch.object(sys, 'argv', changed), mock.patch.object(collect, 'run', side_effect=run):
+        collect.main()
+    normalized = json.loads((root / 'replaced-signature/signed-inventory.json').read_text())
+    assert 'aquamarine' not in normalized and 'omarchy-dev' in normalized
+    assert not (root / 'replaced-signature/aquamarine-2-1-aarch64.pkg.tar.xz.sig').exists()
     manifest['packages'][0]['sha256'] = 'f' * 64
     manifest_path.write_text(json.dumps(manifest))
     changed = reuse_argv.copy()

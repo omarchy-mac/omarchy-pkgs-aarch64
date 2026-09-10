@@ -219,9 +219,12 @@ def main():
         if name in files:
             (output / files[name]).unlink()
             (output / (files[name] + '.sig')).unlink(missing_ok=True)
+        signed = [item for item in signed if item != name]
         shutil.copy2(package, output / package.name)
         if package.with_name(package.name + '.sig').exists():
             shutil.copy2(package.with_name(package.name + '.sig'), output / (package.name + '.sig'))
+            run('gpgv', '--keyring', args.signature_keyring, str(output / (package.name + '.sig')), str(output / package.name))
+            signed.append(name)
         files[name] = package.name
     (output / 'inventory.json').write_text(json.dumps(sorted(set(files) - pair_names)))
     (output / 'signed-inventory.json').write_text(json.dumps(sorted(set(signed))))
