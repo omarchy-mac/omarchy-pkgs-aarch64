@@ -42,7 +42,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `dotnet-runtime-2.1` | 2.1.30.sdk818-1 | .NET Core 2.1 runtime |
 | `dotnet-sdk-2.1` | 2.1.30.sdk818-1 | .NET Core 2.1 SDK |
 | `herdr` | 0.8.2-1 | Terminal workspace manager for AI coding agents |
-| `hermes-desktop` | 2026.8.31-4 | Native desktop shell for Hermes Agent |
+| `hermes-desktop` | Pending publication | Native desktop shell for Hermes Agent |
 | `hypa-ttfx-bin` | 0.3.1-1 | Hypa terminal text effects |
 | `hyprland-preview-share-picker-git` | 0.2.1.r16.g0ef9b30-1 | Share picker with window/monitor previews |
 | `libva-v4l2_request-avd` | 1.3-1 | VA-API driver so applications can reach the Apple Video Decoder |
@@ -142,6 +142,15 @@ an appropriately versioned Omarchy Mac release. Desktop CI that checks out
 Arch dropped from `[extra]` on the move to `zig 0.16`. It is left to fail
 visibly rather than carrying a from-source Zig toolchain build, and
 `fail-fast: false` stops it blocking anything else.
+
+`hermes-desktop` carries the ARM recipe fixes from
+[upstream PR #373](https://github.com/omacom/omarchy-pkgs/pull/373) locally.
+`scripts/prepare-hermes-recipe.sh` enables `aarch64` and selects Electron's
+`linux-arm64-unpacked` output before the generic builder reads the recipe.
+It accepts the same fixes already applied upstream and fails on conflicting
+recipe changes. The patch preserves upstream's `pkgver` and `pkgrel`, keeping
+version detection consistent with the published package. Remove this patch
+and its build hook once upstream includes the fixes.
 
 `hyprland-preview-share-picker-git` is a VCS package whose AUR `pkgver` is
 stale by construction, so a version diff can never trigger it. It rebuilds on a

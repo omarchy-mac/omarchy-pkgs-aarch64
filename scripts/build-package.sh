@@ -81,6 +81,9 @@ case "$SOURCE" in
       || die "no pkgbuilds/$PKGBASE in $OMARCHY_PKGS_REPO"
     [[ -f "$work/oma/pkgbuilds/$PKGBASE/PKGBUILD" ]] \
       || die "no PKGBUILD at pkgbuilds/$PKGBASE"
+    if [[ "$PKGBASE" == "hermes-desktop" ]]; then
+      bash scripts/prepare-hermes-recipe.sh "$work/oma"
+    fi
     mv "$work/oma/pkgbuilds/$PKGBASE" "$src"
     ;;
   local)
