@@ -41,17 +41,17 @@ small, checked packaging patch described below. Packages come from four places:
 | `dotnet-host-bin` | 10.0.11.sdk400-1 | .NET CLI driver |
 | `dotnet-runtime-2.1` | 2.1.30.sdk818-1 | .NET Core 2.1 runtime |
 | `dotnet-sdk-2.1` | 2.1.30.sdk818-1 | .NET Core 2.1 SDK |
-| `ghostty` | Pending publication | Stable terminal emulator |
-| `ghostty-nautilus` | Pending publication | Open in Ghostty extension for GNOME Files |
-| `ghostty-shell-integration` | Pending publication | Ghostty shell integration scripts |
-| `ghostty-terminfo` | Pending publication | `xterm-ghostty` terminal definition |
+| `ghostty` | 1.3.1-1 | Stable terminal emulator |
+| `ghostty-nautilus` | 1.3.1-1 | Open in Ghostty extension for GNOME Files |
+| `ghostty-shell-integration` | 1.3.1-1 | Ghostty shell integration scripts |
+| `ghostty-terminfo` | 1.3.1-1 | `xterm-ghostty` terminal definition |
 | `herdr` | 0.8.2-1 | Terminal workspace manager for AI coding agents |
 | `hermes-desktop` | 2026.8.31-3 | Native desktop shell for Hermes Agent |
 | `hypa-ttfx-bin` | 0.3.1-1 | Hypa terminal text effects |
 | `hyprland-preview-share-picker-git` | 0.2.1.r16.g0ef9b30-1 | Share picker with window/monitor previews |
 | `libva-v4l2_request-avd` | 1.3-1 | VA-API driver so applications can reach the Apple Video Decoder |
 | `localsend` | 1.18.2-1 | Cross-platform AirDrop alternative |
-| `mise-bin` | 2026.9.3-1 | Dev tools, env vars, task runner |
+| `mise-bin` | 2026.9.5-1 | Dev tools, env vars, task runner |
 | `obs-studio` | 32.2.2-1 | Video recording and live streaming (no browser source) |
 | `obsidian-appimage` | 1.13.7-2 | Markdown knowledge base (AppImage) |
 | `omacalc` | 0.2.2-1 | Calculator — bound to `SUPER + CTRL + Q` |
@@ -61,7 +61,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `omarchy-settings` | 4.0.2-2 | Apple Silicon system and user defaults |
 | `omarchy-webapp-theme` | 0.3.6-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
 | `omawrite` | 0.5.0-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
-| `openai-codex-desktop` | 26.901.51231-1 | ChatGPT desktop app with Codex |
+| `openai-codex-desktop` | 26.903.71938-1 | ChatGPT desktop app with Codex |
 | `tensaku` | 0.29.0-1 | Screenshot annotation for Wayland |
 | `ttf-ia-writer` | 20181225-1 | iA Writer font subset |
 | `ttfx` | 0.3.2-1 | Terminal text effects, static binary |
