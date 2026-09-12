@@ -351,6 +351,9 @@ echo "== carried recipe patch"
 bash scripts/test-prepare-hermes-recipe.sh \
   && ok "Hermes patch stages both architectures, preserves versions, and rejects drift" \
   || no "Hermes patch stages both architectures, preserves versions, and rejects drift"
+bash scripts/test-prepare-share-picker-recipe.sh \
+  && ok "share-picker recipe pin rewrites nightly to stable and rejects drift" \
+  || no "share-picker recipe pin rewrites nightly to stable and rejects drift"
 bash scripts/test-prepare-omarchy-recipes.sh \
   && ok "recipe patch applies, is idempotent, and rejects drift" \
   || no "recipe patch applies, is idempotent, and rejects drift"

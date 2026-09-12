@@ -1,0 +1,48 @@
+# Cursor for aarch64. Upstream omarchy-pkgs/AUR cursor-bin is arch=('x86_64')
+# and an amd64 .deb that strips Electron for the distro package. Official
+# aarch64 edge has cursor-cli, not Cursor. This ships the vendor linux-arm64
+# AppImage with its bundled Electron. package() must not execute the AppImage.
+#
+# Version bumps are edits to this file: update pkgver, the production URL
+# path, and sha256sums_aarch64.
+
+pkgname=cursor-bin
+pkgver=3.20.17
+pkgrel=1
+pkgdesc='AI-first coding environment'
+arch=('aarch64')
+url='https://www.cursor.com'
+license=('LicenseRef-Cursor_EULA')
+depends=('fuse2' 'hicolor-icon-theme')
+provides=('cursor')
+conflicts=('cursor')
+options=('!strip' '!debug')
+
+# The golden download API redirects here. Pin the production object so a
+# later golden bump cannot silently change the payload under the same pkgver.
+_commit=0c32194e3fb5ffaced9fb36430b860ec301e1fc8
+source_aarch64=("Cursor-${pkgver}-aarch64.AppImage::https://downloads.cursor.com/production/${_commit}/linux/arm64/Cursor-${pkgver}-aarch64.AppImage")
+sha256sums_aarch64=('d4238ce5a8ddb4147d903203e73e38a2b571ec1bf2f50541ca01bf6a4d40a6c5')
+
+package() {
+  install -Dm755 "${srcdir}/Cursor-${pkgver}-aarch64.AppImage" \
+    "${pkgdir}/opt/cursor/cursor.AppImage"
+
+  install -Dm755 /dev/stdin "${pkgdir}/usr/bin/cursor" <<'EOF'
+#!/bin/bash
+exec /opt/cursor/cursor.AppImage "$@"
+EOF
+
+  install -Dm644 /dev/stdin "${pkgdir}/usr/share/applications/cursor.desktop" <<'EOF'
+[Desktop Entry]
+Name=Cursor
+Comment=AI-first coding environment
+Exec=/usr/bin/cursor %F
+Terminal=false
+Type=Application
+Icon=cursor
+StartupWMClass=Cursor
+Categories=Development;IDE;
+MimeType=x-scheme-handler/cursor;
+EOF
+}
