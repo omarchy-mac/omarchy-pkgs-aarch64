@@ -1,0 +1,27 @@
+# Electron's chrome-sandbox needs either unprivileged user namespaces or a
+# setuid-root helper. Upstream omarchy-pkgs probes for user namespaces inside
+# package(), which is fine when makepkg runs on the machine that will run the
+# binary. This repo builds once on a CI runner and ships the result to every
+# Mac, and inside the runner's Docker container that probe fails, so a build
+# there would hand every user a setuid-root binary they may not need. Decide on
+# the installing host instead: the package ships chrome-sandbox as 0755 and
+# this hook raises it only where the kernel gives no other way to sandbox.
+_sandbox='/opt/Grok Bot/chrome-sandbox'
+
+_set_sandbox_mode() {
+  [[ -f "$_sandbox" ]] || return 0
+  if [[ -L /proc/self/ns/user ]] && unshare --user true 2>/dev/null; then
+    chmod 0755 "$_sandbox"
+  else
+    chmod 4755 "$_sandbox"
+    echo "==> Unprivileged user namespaces are unavailable; chrome-sandbox is setuid root."
+  fi
+}
+
+post_install() {
+  _set_sandbox_mode
+}
+
+post_upgrade() {
+  _set_sandbox_mode
+}

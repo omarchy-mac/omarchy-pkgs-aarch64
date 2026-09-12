@@ -37,7 +37,9 @@ small, checked packaging patch described below. Packages come from four places:
   `arch=('aarch64')` and `linux-arm64`, depending on this repo's
   `dotnet-*-bin` packages rather than Arch extra names that do not exist on
   ARM. `cursor-bin` is the vendor linux-arm64 AppImage with bundled Electron
-  under `/opt/cursor-bin`; the omarchy-pkgs recipe is x86_64-only. `avd-fw` and `libva-v4l2_request-avd` are in no repository at all,
+  under `/opt/cursor-bin`; the omarchy-pkgs recipe is x86_64-only. `grok-bot`
+  repacks the vendor linux-arm64 `.deb` that the x86_64-only omarchy-pkgs
+  recipe never reaches for. `avd-fw` and `libva-v4l2_request-avd` are in no repository at all,
   and together turn on hardware video decode on Apple Silicon.
 
 ## Packages
@@ -63,6 +65,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `ghostty-nautilus` | 1.3.1-1 | Open in Ghostty extension for GNOME Files |
 | `ghostty-shell-integration` | 1.3.1-1 | Ghostty shell integration scripts |
 | `ghostty-terminfo` | 1.3.1-1 | `xterm-ghostty` terminal definition |
+| `grok-bot` | 0.47.0-1 | Grok Bot desktop agent (vendor linux-arm64 .deb) |
 | `herdr` | 0.8.2-1 | Terminal workspace manager for AI coding agents |
 | `hermes-desktop` | 2026.9.7-1 | Native desktop shell for Hermes Agent |
 | `hypa-ttfx-bin` | 0.3.1-1 | Hypa terminal text effects |
@@ -138,7 +141,7 @@ The packages differ only in where they can be built:
 | Group | Count | Automated |
 |-------|-------|-----------|
 | `any` — `arch=('any')`, architecture-independent | 8 | yes |
-| `repack` — ships a vendor-prebuilt ARM binary | 18 | yes |
+| `repack` — ships a vendor-prebuilt ARM binary | 19 | yes |
 | `compile` — built from source | 20 | yes |
 
 Two packages stay deliberately excluded from that generic matrix. `omarchy`
@@ -211,6 +214,15 @@ executed. The quattro-mac follow-up must still delete the workaround files
 before `pacman -S cursor-bin`, or those paths under `/usr/share` still
 conflict.
 
+`grok-bot` repacks the vendor linux-arm64 `.deb`. It is omacom-io/omarchy-pkgs#244
+with two changes for a binary repo. Upstream decides whether `chrome-sandbox`
+is setuid by probing for user namespaces inside `package()`, which measures
+the build host; here that host is a CI container where the probe fails, so
+every user would get a setuid-root helper. The package ships it as `0755` and
+`grok-bot.install` raises it only on hosts without unprivileged user
+namespaces. `alsa-lib` is added because `libasound.so.2` is a direct
+dependency of the binary that nothing else in the depends pulls in.
+
 Signed source tarballs (`1password`, `1password-cli`, `vi`, `voxtype-bin`)
 import only the fingerprints listed in `validpgpkeys`, plus any matching key
 file the recipe already ships. Signature checks are not skipped.
@@ -218,7 +230,7 @@ file the recipe already ships. Signature checks are not skipped.
 [`packages.json`](packages.json) records which group each package belongs to and
 where its PKGBUILD comes from — the AUR for most, `omacom-io/omarchy-pkgs` for
 the ones that aren't in the AUR, and this repo's own `pkgbuilds/` for
-`obs-studio`, `pinta`, and `cursor-bin`. The source is per-package on purpose: for
+`obs-studio`, `pinta`, `cursor-bin`, and `grok-bot`. The source is per-package on purpose: for
 `omarchy-emacs` the AUR leads Omarchy's own repo, so switching it would be a
 downgrade.
 

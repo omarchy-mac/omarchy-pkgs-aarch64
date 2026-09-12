@@ -2,14 +2,15 @@
 # Contributor: Omarchy
 
 pkgname=grok-bot
-pkgver=0.30.0
+pkgver=0.47.0
 pkgrel=1
-_commit=2385d097738b3719cc5ecd9281a107aa106215f1
+_commit=c1e7d7a46549956d25f53e9c0b9f59666e03aa3a
 pkgdesc='Grok Bot desktop agent'
 arch=('x86_64' 'aarch64')
 url='https://x.ai/bot'
 license=('custom')
 depends=(
+  'alsa-lib'
   'at-spi2-core'
   'gtk3'
   'hicolor-icon-theme'
@@ -25,6 +26,7 @@ optdepends=('libappindicator-gtk3: tray support')
 provides=('sand')
 conflicts=('sand')
 options=('!strip' '!debug')
+install=grok-bot.install
 
 _deb_x86_64="grok-bot_${pkgver}_amd64.deb"
 _deb_aarch64="grok-bot_${pkgver}_arm64.deb"
@@ -40,8 +42,8 @@ source_aarch64=(
 )
 sha256sums=('6dfa6c305941afa6cbaefbeaae06d05ab5a88f31630005d25a819a160c20c7a3'
             '856056c9ca63dda5d01158ce8fb6a9a7cbb3f67c13a92b573cd196d3e50f26e7')
-sha256sums_x86_64=('fb888b2204c8a51c71a9f5f9a2913ac10561f3ef6939c1245ecae4e837d4ada2')
-sha256sums_aarch64=('7c4c81d576181a57b34b812258b2620626717cec84f100503a7363f37aa8e3fe')
+sha256sums_x86_64=('11ca0f51a535b97af51a352adf9c0f9ecd2e1b0430a69ae9451b688a7a065808')
+sha256sums_aarch64=('836f8d19d3826c6573c31ac45c7a9b797abc73381ae0d2b1e7a8dae5410e7e46')
 noextract=("${_deb_x86_64}" "${_deb_aarch64}")
 
 package() {
@@ -55,16 +57,6 @@ package() {
          "${pkgdir}/usr/share/applications/sand.desktop" \
          "${pkgdir}/usr/share/applications/grok-bot.desktop"
 
-  local icon1024="${pkgdir}/usr/share/icons/hicolor/1024x1024/apps"
-  if [[ -f "${icon1024}/sand.png" && ! -f "${icon1024}/grok-bot.png" ]]; then
-    install -Dm644 "${icon1024}/sand.png" "${icon1024}/grok-bot.png"
-  fi
-  rm -f "${icon1024}/sand.png"
-  if [[ -f "${icon1024}/grok-bot.png" ]]; then
-    install -Dm644 "${icon1024}/grok-bot.png" \
-      "${pkgdir}/usr/share/icons/hicolor/512x512/apps/grok-bot.png"
-  fi
-
   # Always install our Wayland wrapper; do not keep any /usr/bin from the .deb.
   rm -f "${pkgdir}/usr/bin/grok-bot" "${pkgdir}/usr/bin/sand"
   install -Dm755 "${srcdir}/grok-bot.sh" "${pkgdir}/usr/bin/grok-bot"
@@ -77,9 +69,8 @@ package() {
   install -Dm644 "${pkgdir}/opt/Grok Bot/LICENSES.chromium.html" \
     "${pkgdir}/usr/share/licenses/${pkgname}/LICENSES.chromium.html"
 
-  if ! { [[ -L /proc/self/ns/user ]] && unshare --user true; }; then
-    chmod 4755 "${pkgdir}/opt/Grok Bot/chrome-sandbox"
-  else
-    chmod 0755 "${pkgdir}/opt/Grok Bot/chrome-sandbox"
-  fi
+  # Ship chrome-sandbox without setuid. Whether this host needs the setuid
+  # helper is decided in grok-bot.install, on the machine that runs it, not
+  # by the CI container that happened to build the package.
+  chmod 0755 "${pkgdir}/opt/Grok Bot/chrome-sandbox"
 }
