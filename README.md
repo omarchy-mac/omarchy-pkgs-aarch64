@@ -215,13 +215,18 @@ before `pacman -S cursor-bin`, or those paths under `/usr/share` still
 conflict.
 
 `grok-bot` repacks the vendor linux-arm64 `.deb`. It is omacom-io/omarchy-pkgs#244
-with two changes for a binary repo. Upstream decides whether `chrome-sandbox`
+with three changes for a binary repo. Upstream decides whether `chrome-sandbox`
 is setuid by probing for user namespaces inside `package()`, which measures
 the build host; here that host is a CI container where the probe fails, so
-every user would get a setuid-root helper. The package ships it as `0755` and
-`grok-bot.install` raises it only on hosts without unprivileged user
-namespaces. `alsa-lib` is added because `libasound.so.2` is a direct
-dependency of the binary that nothing else in the depends pulls in.
+every user would get a setuid-root helper. A setuid helper could not work
+anyway: Electron cannot exec it from a path with a space, and this one lives
+under `/opt/Grok Bot/` (electron/electron#44414). The package always ships it
+as `0755`, and `grok-bot.install` probes as `nobody` and tells users on a
+kernel without unprivileged user namespaces to add `--no-sandbox` to
+`~/.config/grok-bot-flags.conf`. `alsa-lib` is added because `libasound.so.2`
+is a direct dependency of the binary that nothing else in the depends pulls
+in. `StartupWMClass` matches the vendor entry, `grok-bot`, not upstream's
+`Grok Bot`.
 
 Signed source tarballs (`1password`, `1password-cli`, `vi`, `voxtype-bin`)
 import only the fingerprints listed in `validpgpkeys`, plus any matching key
