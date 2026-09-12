@@ -359,6 +359,12 @@ grep -q '/opt/cursor-bin/' pkgbuilds/cursor-bin/PKGBUILD \
 grep -q 'unsquashfs' pkgbuilds/cursor-bin/PKGBUILD \
   && ok "cursor-bin unsquashes icons without executing the AppImage" \
   || no "cursor-bin unsquashes icons without executing the AppImage"
+grep -q -- '-no-xattrs' pkgbuilds/cursor-bin/PKGBUILD \
+  && ok "cursor-bin unsquashfs ignores selinux xattrs" \
+  || no "cursor-bin unsquashfs ignores selinux xattrs"
+grep -Fq 's|^Exec=/usr/share/cursor/cursor|Exec=/usr/bin/cursor|' pkgbuilds/cursor-bin/PKGBUILD \
+  && ok "cursor-bin rewrites the embedded Exec binary path" \
+  || no "cursor-bin rewrites the embedded Exec binary path"
 
 echo "== carried recipe patch"
 bash scripts/test-prepare-hermes-recipe.sh \

@@ -35,14 +35,19 @@ prepare() {
   local offset
   offset="$(LC_ALL=C grep -aobm1 $'hsqs' "$img" | cut -d: -f1)"
   [[ -n "$offset" ]] || { echo "no squashfs (hsqs) magic in $img" >&2; return 1; }
-  unsquashfs -f -o "$offset" -d "${srcdir}/squashfs-root" "$img"
+  # -no-xattrs: the squashfs carries security.selinux, and unsquashfs exits 2
+  # when the builder user cannot write them. Extract only the desktop/icon
+  # trees; the AppImage itself is the runtime payload.
+  unsquashfs -no-xattrs -f -o "$offset" -d "${srcdir}/squashfs-root" "$img" \
+    usr/share/applications usr/share/icons usr/share/pixmaps
 }
 
 _rewrite_desktop() {
   local src="$1" dest="$2"
+  # Embedded Exec lines are /usr/share/cursor/cursor plus arguments (%F,
+  # --new-window %F, --open-url %U). Rewrite only the binary path.
   sed -E \
-    -e 's|^Exec=.*[[:space:]]cursor|Exec=/usr/bin/cursor|' \
-    -e 's|^Exec=cursor|Exec=/usr/bin/cursor|' \
+    -e 's|^Exec=/usr/share/cursor/cursor|Exec=/usr/bin/cursor|' \
     -e 's|^TryExec=.*|TryExec=/usr/bin/cursor|' \
     "$src" | install -Dm644 /dev/stdin "$dest"
 }
@@ -67,6 +72,13 @@ EOF
   local icon_src icon_dest
   while IFS= read -r -d '' icon_src; do
     icon_dest="${icon_src#"$root"}"
+    # Desktop files say Icon=co.anysphere.cursor; the hicolor set in the
+    # squashfs is named cursor.png. Install under the name the entries use.
+    if [[ "$(basename "$icon_dest")" == cursor.png ]]; then
+      icon_dest="$(dirname "$icon_dest")/co.anysphere.cursor.png"
+    elif [[ "$(basename "$icon_dest")" == cursor.svg ]]; then
+      icon_dest="$(dirname "$icon_dest")/co.anysphere.cursor.svg"
+    fi
     install -Dm644 "$icon_src" "${pkgdir}${icon_dest}"
   done < <(find "$root/usr/share/icons" -type f \( -name '*.png' -o -name '*.svg' \) -print0 2>/dev/null)
 
