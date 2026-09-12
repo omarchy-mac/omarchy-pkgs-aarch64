@@ -1,7 +1,12 @@
 # Cursor for aarch64. Upstream omarchy-pkgs/AUR cursor-bin is arch=('x86_64')
 # and an amd64 .deb that strips Electron for the distro package. Official
 # aarch64 edge has cursor-cli, not Cursor. This ships the vendor linux-arm64
-# AppImage with its bundled Electron. package() must not execute the AppImage.
+# AppImage with its bundled Electron under /opt/cursor-bin, so it does not
+# collide with the Mac workaround at /opt/cursor.
+#
+# Icons and the URL-handler desktop file live inside the squashfs. They are
+# unsquashed with squashfs-tools at the hsqs offset; the AppImage is not
+# executed.
 #
 # Version bumps are edits to this file: update pkgver, the production URL
 # path, and sha256sums_aarch64.
@@ -14,6 +19,7 @@ arch=('aarch64')
 url='https://www.cursor.com'
 license=('LicenseRef-Cursor_EULA')
 depends=('fuse2' 'hicolor-icon-theme')
+makedepends=('squashfs-tools')
 provides=('cursor')
 conflicts=('cursor')
 options=('!strip' '!debug')
@@ -24,25 +30,48 @@ _commit=0c32194e3fb5ffaced9fb36430b860ec301e1fc8
 source_aarch64=("Cursor-${pkgver}-aarch64.AppImage::https://downloads.cursor.com/production/${_commit}/linux/arm64/Cursor-${pkgver}-aarch64.AppImage")
 sha256sums_aarch64=('d4238ce5a8ddb4147d903203e73e38a2b571ec1bf2f50541ca01bf6a4d40a6c5')
 
+prepare() {
+  local img="${srcdir}/Cursor-${pkgver}-aarch64.AppImage"
+  local offset
+  offset="$(LC_ALL=C grep -aobm1 $'hsqs' "$img" | cut -d: -f1)"
+  [[ -n "$offset" ]] || { echo "no squashfs (hsqs) magic in $img" >&2; return 1; }
+  unsquashfs -f -o "$offset" -d "${srcdir}/squashfs-root" "$img"
+}
+
+_rewrite_desktop() {
+  local src="$1" dest="$2"
+  sed -E \
+    -e 's|^Exec=.*[[:space:]]cursor|Exec=/usr/bin/cursor|' \
+    -e 's|^Exec=cursor|Exec=/usr/bin/cursor|' \
+    -e 's|^TryExec=.*|TryExec=/usr/bin/cursor|' \
+    "$src" | install -Dm644 /dev/stdin "$dest"
+}
+
 package() {
   install -Dm755 "${srcdir}/Cursor-${pkgver}-aarch64.AppImage" \
-    "${pkgdir}/opt/cursor/cursor.AppImage"
+    "${pkgdir}/opt/cursor-bin/cursor.AppImage"
 
   install -Dm755 /dev/stdin "${pkgdir}/usr/bin/cursor" <<'EOF'
 #!/bin/bash
-exec /opt/cursor/cursor.AppImage "$@"
+exec /opt/cursor-bin/cursor.AppImage "$@"
 EOF
 
-  install -Dm644 /dev/stdin "${pkgdir}/usr/share/applications/cursor.desktop" <<'EOF'
-[Desktop Entry]
-Name=Cursor
-Comment=AI-first coding environment
-Exec=/usr/bin/cursor %F
-Terminal=false
-Type=Application
-Icon=cursor
-StartupWMClass=Cursor
-Categories=Development;IDE;
-MimeType=x-scheme-handler/cursor;
-EOF
+  local root="${srcdir}/squashfs-root"
+  _rewrite_desktop \
+    "$root/usr/share/applications/cursor.desktop" \
+    "${pkgdir}/usr/share/applications/cursor.desktop"
+  _rewrite_desktop \
+    "$root/usr/share/applications/cursor-url-handler.desktop" \
+    "${pkgdir}/usr/share/applications/cursor-url-handler.desktop"
+
+  local icon_src icon_dest
+  while IFS= read -r -d '' icon_src; do
+    icon_dest="${icon_src#"$root"}"
+    install -Dm644 "$icon_src" "${pkgdir}${icon_dest}"
+  done < <(find "$root/usr/share/icons" -type f \( -name '*.png' -o -name '*.svg' \) -print0 2>/dev/null)
+
+  if [[ -f "$root/usr/share/pixmaps/co.anysphere.cursor.png" ]]; then
+    install -Dm644 "$root/usr/share/pixmaps/co.anysphere.cursor.png" \
+      "${pkgdir}/usr/share/pixmaps/co.anysphere.cursor.png"
+  fi
 }

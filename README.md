@@ -6,11 +6,15 @@ running [Asahi Linux](https://asahilinux.org/) and the
 
 ## Why this exists
 
-Omarchy's package repo at `pkgs.omarchy.org` publishes **x86_64 only** —
-`edge/aarch64` and `stable/aarch64` both return 404. So on ARM, every package
-that lives in Omarchy's own repo is simply unavailable, which leaves keybindings
-pointing at binaries that can't be installed. `SUPER + CTRL + Q` (calculator)
-and `SUPER + SHIFT + W` (writer) are the visible casualties.
+Omarchy's package repo at `pkgs.omarchy.org` now serves `edge/aarch64`, but
+Apple Silicon machines must not *install* from it. Mac `pacman.conf` sets
+`[omarchy]` to `Usage = Sync`: the db is refreshed, and only three explicit
+Hyprland targets (`omarchy/hyprland`, `omarchy/hyprtoolkit`,
+`omarchy/hyprland-guiutils`) come from official edge. Everything else —
+`omarchy-nvim`, `voxtype-bin`, `1password`, the share picker — is invisible
+to `pacman -S` and Restore Preinstalls. This repo is the install repo those
+names actually resolve from. Widening `[omarchy]` to normal Install is how
+you get official Hyprland fighting ALARM's `libaquamarine` SONAME.
 
 Application sources are unmodified. The Omarchy Mac package pair carries a
 small, checked packaging patch described below. Packages come from four places:
@@ -32,8 +36,8 @@ small, checked packaging patch described below. Packages come from four places:
   `ignorearch` on that recipe would still emit x64. Ours is that recipe with
   `arch=('aarch64')` and `linux-arm64`, depending on this repo's
   `dotnet-*-bin` packages rather than Arch extra names that do not exist on
-  ARM. `cursor-bin` is the vendor linux-arm64 AppImage with bundled Electron;
-  the omarchy-pkgs recipe is x86_64-only. `avd-fw` and `libva-v4l2_request-avd` are in no repository at all,
+  ARM. `cursor-bin` is the vendor linux-arm64 AppImage with bundled Electron
+  under `/opt/cursor-bin`; the omarchy-pkgs recipe is x86_64-only. `avd-fw` and `libva-v4l2_request-avd` are in no repository at all,
   and together turn on hardware video decode on Apple Silicon.
 
 ## Packages
@@ -194,13 +198,18 @@ db files, re-upload them, and delete the `-git` asset — and only while no
 `update-packages` run is in progress, or the workflow will clobber the upload.
 
 `omarchy-nvim` is `arch=('any')` but `build()` runs `nvim --headless` on the
-ARM runner, so bundled tree-sitter parsers match Apple Silicon. The first
-artifact should be inspected by hand for aarch64 `.so` files before treating
-it as architecture-independent.
+ARM runner. The official artifact has no tree-sitter `.so` files; the
+host-arch binaries to inspect are `mason/packages/shfmt` and `stylua`.
 
 `cursor-bin` is an in-tree AppImage: the omarchy-pkgs recipe is x86_64-only
 and strips Electron. Ours keeps the vendor linux-arm64 AppImage and its
-bundled Electron, and does not execute the AppImage while packaging.
+bundled Electron under `/opt/cursor-bin`, so it does not collide with the
+Mac workaround's `/opt/cursor`. Icons and the URL-handler desktop file are
+unsquashed from the image with `squashfs-tools`; the AppImage is not
+executed. The quattro-mac follow-up must still delete the workaround files
+(`/opt/cursor`, `/usr/local/bin/cursor`, the two `.desktop` files, icons)
+before `pacman -S cursor-bin`, or those paths under `/usr/share` still
+conflict.
 
 Signed source tarballs (`1password`, `1password-cli`, `vi`, `voxtype-bin`)
 import only the fingerprints listed in `validpgpkeys`, plus any matching key

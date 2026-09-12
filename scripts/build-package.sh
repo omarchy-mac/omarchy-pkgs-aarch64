@@ -229,6 +229,34 @@ fi
 # Import only fingerprints listed in validpgpkeys, plus any matching key
 # files the recipe already ships (vi carries its signing key in-tree).
 # Do not skip signature checks and do not recv keys the PKGBUILD did not name.
+gpg_as_builder() {
+  as_builder env HOME="$BUILDER_HOME" GNUPGHOME="$BUILDER_HOME/.gnupg" gpg --batch "$@"
+}
+
+# Recv only keys not already in the keyring. Try keys.openpgp.org first,
+# then keyserver.ubuntu.com, so a single keyserver outage does not fail a
+# build that already imported a bundled key (vi) or never needed the network
+# (1password-cli's validpgpkeys are unused under --nocheck).
+recv_missing_keys() {
+  local missing=() key server
+  for key in "$@"; do
+    if gpg_as_builder --list-keys "$key" >/dev/null 2>&1; then
+      log "validpgpkey $key already in the keyring"
+    else
+      missing+=("$key")
+    fi
+  done
+  ((${#missing[@]})) || return 0
+  for server in hkps://keys.openpgp.org hkps://keyserver.ubuntu.com; do
+    log "Receiving ${#missing[@]} key(s) from $server"
+    if gpg_as_builder --keyserver "$server" --recv-keys "${missing[@]}"; then
+      return 0
+    fi
+    warn "keyserver $server failed"
+  done
+  die "could not recv validpgpkeys for $PKGBASE from keys.openpgp.org or keyserver.ubuntu.com"
+}
+
 import_validpgpkeys() {
   local pkgbuild="$src/PKGBUILD" keys=() bundled
   [[ -f "$pkgbuild" ]] || return 0
@@ -251,14 +279,11 @@ import_validpgpkeys() {
   if [[ -d "$src/keys/pgp" ]]; then
     for bundled in "$src/keys/pgp"/*.asc; do
       [[ -f "$bundled" ]] || continue
-      as_builder env HOME="$BUILDER_HOME" GNUPGHOME="$BUILDER_HOME/.gnupg" \
-        gpg --batch --import "$bundled" \
+      gpg_as_builder --import "$bundled" \
         || die "could not import bundled key $bundled"
     done
   fi
-  as_builder env HOME="$BUILDER_HOME" GNUPGHOME="$BUILDER_HOME/.gnupg" \
-    gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys "${keys[@]}" \
-    || die "could not recv validpgpkeys for $PKGBASE"
+  recv_missing_keys "${keys[@]}"
 }
 
 import_validpgpkeys
