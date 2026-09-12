@@ -32,6 +32,10 @@ if ! pacman -Syu --noconfirm --needed "${pkgs[@]}"; then
   fi
 fi
 
+# Minimal ARM images contain distribution public keys but may lack the local
+# signing key required by pacman-key --lsign-key. This is idempotent.
+pacman-key --init
+
 for c in "${required[@]}"; do
   command -v "$c" >/dev/null || { echo "==> ERROR: $c missing after bootstrap" >&2; exit 1; }
 done
