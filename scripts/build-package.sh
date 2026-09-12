@@ -233,12 +233,12 @@ gpg_as_builder() {
   as_builder env HOME="$BUILDER_HOME" GNUPGHOME="$BUILDER_HOME/.gnupg" gpg --batch "$@"
 }
 
-# Recv only keys not already in the keyring. Try keys.openpgp.org first,
-# then keyserver.ubuntu.com, so a single keyserver outage does not fail a
-# build that already imported a bundled key (vi) or never needed the network
-# (1password-cli's validpgpkeys are unused under --nocheck).
+# Recv only keys not already in the keyring. keys.openpgp.org often returns
+# a key with no user ID (privacy policy); gpg then skips the import and still
+# exits 0, which is how 1password/voxtype-bin failed. After every recv, require
+# --list-keys to actually see the fingerprint, then try the next server.
 recv_missing_keys() {
-  local missing=() key server
+  local missing=() still=() key server
   for key in "$@"; do
     if gpg_as_builder --list-keys "$key" >/dev/null 2>&1; then
       log "validpgpkey $key already in the keyring"
@@ -249,12 +249,20 @@ recv_missing_keys() {
   ((${#missing[@]})) || return 0
   for server in hkps://keys.openpgp.org hkps://keyserver.ubuntu.com; do
     log "Receiving ${#missing[@]} key(s) from $server"
-    if gpg_as_builder --keyserver "$server" --recv-keys "${missing[@]}"; then
-      return 0
-    fi
-    warn "keyserver $server failed"
+    gpg_as_builder --keyserver "$server" --recv-keys "${missing[@]}" || true
+    still=()
+    for key in "${missing[@]}"; do
+      if gpg_as_builder --list-keys "$key" >/dev/null 2>&1; then
+        log "validpgpkey $key imported from $server"
+      else
+        still+=("$key")
+      fi
+    done
+    missing=("${still[@]}")
+    ((${#missing[@]})) || return 0
+    warn "$server did not import: ${missing[*]}"
   done
-  die "could not recv validpgpkeys for $PKGBASE from keys.openpgp.org or keyserver.ubuntu.com"
+  die "could not recv validpgpkeys for $PKGBASE: ${missing[*]}"
 }
 
 import_validpgpkeys() {
