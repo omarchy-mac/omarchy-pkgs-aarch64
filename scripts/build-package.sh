@@ -235,7 +235,7 @@ gpg_as_builder() {
 
 # Recv only keys not already in the keyring. keys.openpgp.org often returns
 # a key with no user ID (privacy policy); gpg then skips the import and still
-# exits 0, which is how 1password/voxtype-bin failed. After every recv, require
+# exits 0, which is how 1password failed. After every recv, require
 # --list-keys to actually see the fingerprint, then try the next server.
 recv_missing_keys() {
   local missing=() still=() key server
@@ -268,17 +268,14 @@ recv_missing_keys() {
 import_validpgpkeys() {
   local pkgbuild="$src/PKGBUILD" keys=() bundled
   [[ -f "$pkgbuild" ]] || return 0
-  mapfile -t keys < <(awk '
-    /^[[:space:]]*validpgpkeys=/ { grab=1 }
-    grab {
-      while (match($0, /[0-9A-Fa-f]{40}/)) {
-        print substr($0, RSTART, RLENGTH)
-        $0 = substr($0, RSTART + RLENGTH)
-      }
-      if ($0 ~ /\)/) exit
-    }
-  ' "$pkgbuild")
-  ((${#keys[@]})) || return 0
+  mapfile -t keys < <(extract_validpgpkeys "$pkgbuild")
+  if ((${#keys[@]} == 0)); then
+    if grep -qE '\.(sig|asc)' "$pkgbuild"; then
+      die "$PKGBASE has signed sources but extract_validpgpkeys found no fingerprints"
+    fi
+    log "no validpgpkeys found for $PKGBASE"
+    return 0
+  fi
   log "Importing ${#keys[@]} validpgpkeys for $PKGBASE"
   as_builder env HOME="$BUILDER_HOME" GNUPGHOME="$BUILDER_HOME/.gnupg" \
     mkdir -p "$BUILDER_HOME/.gnupg"

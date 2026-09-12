@@ -347,6 +347,30 @@ rm -f "$work/mac-extra/omarchy-keyring-1-1-any.pkg.tar.xz"
   && no "a missing dependency package is rejected" "published an omarchy whose depend is unavailable" \
   || ok "a missing dependency package is rejected"
 
+echo "== validpgpkeys extractor"
+cat > "$work/voxtype.keys" <<'PKG'
+validpgpkeys=(
+    # Peter Jackson's offline maintainer primary. Signed binary .asc files
+    # through v0.7.4 (and was used to cross-sign the CI signing primary
+    # below). Existing voxtype-bin users have this key in their local
+    # keyring from v0.6.x installs — keep listed so old assets verify.
+    'E79F5BAF8CD51A806AA27DBB7DA2709247D75BC6'
+    # Voxtype CI release signing primary (cross-signed by E79F5BAF...).
+    '9CCF7915B750CAE8B095ED1AA3FC9F33FD209279'
+)
+PKG
+is "comment with ) does not hide voxtype fingerprints" \
+  "$(extract_validpgpkeys "$work/voxtype.keys" | tr '\n' ' ')" \
+  "E79F5BAF8CD51A806AA27DBB7DA2709247D75BC6 9CCF7915B750CAE8B095ED1AA3FC9F33FD209279 "
+printf "validpgpkeys=('3FEF9748469ADBE15DA7CA80AC2D62742012EA22')\n" > "$work/one.key"
+is "one-line validpgpkeys still extracts" \
+  "$(extract_validpgpkeys "$work/one.key")" \
+  "3FEF9748469ADBE15DA7CA80AC2D62742012EA22"
+printf "depends=('foo')\n" > "$work/none.key"
+is "no validpgpkeys block yields nothing" \
+  "$(extract_validpgpkeys "$work/none.key")" \
+  ""
+
 echo "== cursor-bin does not reuse the Mac workaround prefix"
 if grep -qE '/opt/cursor/' pkgbuilds/cursor-bin/PKGBUILD; then
   no "cursor-bin stays off /opt/cursor" "PKGBUILD still mentions /opt/cursor/"

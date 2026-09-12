@@ -95,6 +95,22 @@ artifact_pkgname() {
   [[ -n "$name" ]] || die "could not read pkgname from $1 (.PKGINFO missing?)"
   printf '%s' "$name"
 }
+# Fingerprints from a PKGBUILD validpgpkeys=(...) block. Comments are stripped
+# first: voxtype-bin puts a ')' inside a comment before either fingerprint,
+# and an extractor that exits on the first ')' returns nothing.
+extract_validpgpkeys() {
+  awk '
+    { sub(/#.*/, "") }
+    /^[[:space:]]*validpgpkeys=/ { grab=1 }
+    grab {
+      while (match($0, /[0-9A-Fa-f]{40}/)) {
+        print substr($0, RSTART, RLENGTH)
+        $0 = substr($0, RSTART + RLENGTH)
+      }
+      if ($0 ~ /\)/) exit
+    }
+  ' "$1"
+}
 # e_machine is read straight out of the ELF header rather than matched against
 # file(1)'s prose, which spells the same architecture several ways ("x86-64",
 # "Intel 80386", "Intel i386").
