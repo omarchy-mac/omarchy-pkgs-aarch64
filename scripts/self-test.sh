@@ -347,10 +347,32 @@ rm -f "$work/mac-extra/omarchy-keyring-1-1-any.pkg.tar.xz"
   && no "a missing dependency package is rejected" "published an omarchy whose depend is unavailable" \
   || ok "a missing dependency package is rejected"
 
+echo "== cursor-bin does not reuse the Mac workaround prefix"
+if grep -qE '/opt/cursor/' pkgbuilds/cursor-bin/PKGBUILD; then
+  no "cursor-bin stays off /opt/cursor" "PKGBUILD still mentions /opt/cursor/"
+else
+  ok "cursor-bin stays off /opt/cursor"
+fi
+grep -q '/opt/cursor-bin/' pkgbuilds/cursor-bin/PKGBUILD \
+  && ok "cursor-bin installs under /opt/cursor-bin" \
+  || no "cursor-bin installs under /opt/cursor-bin"
+grep -q 'unsquashfs' pkgbuilds/cursor-bin/PKGBUILD \
+  && ok "cursor-bin unsquashes icons without executing the AppImage" \
+  || no "cursor-bin unsquashes icons without executing the AppImage"
+grep -q -- '-no-xattrs' pkgbuilds/cursor-bin/PKGBUILD \
+  && ok "cursor-bin unsquashfs ignores selinux xattrs" \
+  || no "cursor-bin unsquashfs ignores selinux xattrs"
+grep -Fq 's|^Exec=/usr/share/cursor/cursor|Exec=/usr/bin/cursor|' pkgbuilds/cursor-bin/PKGBUILD \
+  && ok "cursor-bin rewrites the embedded Exec binary path" \
+  || no "cursor-bin rewrites the embedded Exec binary path"
+
 echo "== carried recipe patch"
 bash scripts/test-prepare-hermes-recipe.sh \
   && ok "Hermes patch stages both architectures, preserves versions, and rejects drift" \
   || no "Hermes patch stages both architectures, preserves versions, and rejects drift"
+bash scripts/test-prepare-share-picker-recipe.sh \
+  && ok "share-picker recipe pin rewrites nightly to stable and rejects drift" \
+  || no "share-picker recipe pin rewrites nightly to stable and rejects drift"
 bash scripts/test-prepare-omarchy-recipes.sh \
   && ok "recipe patch applies, is idempotent, and rejects drift" \
   || no "recipe patch applies, is idempotent, and rejects drift"

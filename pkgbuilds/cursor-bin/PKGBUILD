@@ -1,0 +1,89 @@
+# Cursor for aarch64. Upstream omarchy-pkgs/AUR cursor-bin is arch=('x86_64')
+# and an amd64 .deb that strips Electron for the distro package. Official
+# aarch64 edge has cursor-cli, not Cursor. This ships the vendor linux-arm64
+# AppImage with its bundled Electron under /opt/cursor-bin, so it does not
+# collide with the Mac workaround at /opt/cursor.
+#
+# Icons and the URL-handler desktop file live inside the squashfs. They are
+# unsquashed with squashfs-tools at the hsqs offset; the AppImage is not
+# executed.
+#
+# Version bumps are edits to this file: update pkgver, the production URL
+# path, and sha256sums_aarch64.
+
+pkgname=cursor-bin
+pkgver=3.20.17
+pkgrel=1
+pkgdesc='AI-first coding environment'
+arch=('aarch64')
+url='https://www.cursor.com'
+license=('LicenseRef-Cursor_EULA')
+depends=('fuse2' 'hicolor-icon-theme')
+makedepends=('squashfs-tools')
+provides=('cursor')
+conflicts=('cursor')
+options=('!strip' '!debug')
+
+# The golden download API redirects here. Pin the production object so a
+# later golden bump cannot silently change the payload under the same pkgver.
+_commit=0c32194e3fb5ffaced9fb36430b860ec301e1fc8
+source_aarch64=("Cursor-${pkgver}-aarch64.AppImage::https://downloads.cursor.com/production/${_commit}/linux/arm64/Cursor-${pkgver}-aarch64.AppImage")
+sha256sums_aarch64=('d4238ce5a8ddb4147d903203e73e38a2b571ec1bf2f50541ca01bf6a4d40a6c5')
+
+prepare() {
+  local img="${srcdir}/Cursor-${pkgver}-aarch64.AppImage"
+  local offset
+  offset="$(LC_ALL=C grep -aobm1 $'hsqs' "$img" | cut -d: -f1)"
+  [[ -n "$offset" ]] || { echo "no squashfs (hsqs) magic in $img" >&2; return 1; }
+  # -no-xattrs: the squashfs carries security.selinux, and unsquashfs exits 2
+  # when the builder user cannot write them. Extract only the desktop/icon
+  # trees; the AppImage itself is the runtime payload.
+  unsquashfs -no-xattrs -f -o "$offset" -d "${srcdir}/squashfs-root" "$img" \
+    usr/share/applications usr/share/icons usr/share/pixmaps
+}
+
+_rewrite_desktop() {
+  local src="$1" dest="$2"
+  # Embedded Exec lines are /usr/share/cursor/cursor plus arguments (%F,
+  # --new-window %F, --open-url %U). Rewrite only the binary path.
+  sed -E \
+    -e 's|^Exec=/usr/share/cursor/cursor|Exec=/usr/bin/cursor|' \
+    -e 's|^TryExec=.*|TryExec=/usr/bin/cursor|' \
+    "$src" | install -Dm644 /dev/stdin "$dest"
+}
+
+package() {
+  install -Dm755 "${srcdir}/Cursor-${pkgver}-aarch64.AppImage" \
+    "${pkgdir}/opt/cursor-bin/cursor.AppImage"
+
+  install -Dm755 /dev/stdin "${pkgdir}/usr/bin/cursor" <<'EOF'
+#!/bin/bash
+exec /opt/cursor-bin/cursor.AppImage "$@"
+EOF
+
+  local root="${srcdir}/squashfs-root"
+  _rewrite_desktop \
+    "$root/usr/share/applications/cursor.desktop" \
+    "${pkgdir}/usr/share/applications/cursor.desktop"
+  _rewrite_desktop \
+    "$root/usr/share/applications/cursor-url-handler.desktop" \
+    "${pkgdir}/usr/share/applications/cursor-url-handler.desktop"
+
+  local icon_src icon_dest
+  while IFS= read -r -d '' icon_src; do
+    icon_dest="${icon_src#"$root"}"
+    # Desktop files say Icon=co.anysphere.cursor; the hicolor set in the
+    # squashfs is named cursor.png. Install under the name the entries use.
+    if [[ "$(basename "$icon_dest")" == cursor.png ]]; then
+      icon_dest="$(dirname "$icon_dest")/co.anysphere.cursor.png"
+    elif [[ "$(basename "$icon_dest")" == cursor.svg ]]; then
+      icon_dest="$(dirname "$icon_dest")/co.anysphere.cursor.svg"
+    fi
+    install -Dm644 "$icon_src" "${pkgdir}${icon_dest}"
+  done < <(find "$root/usr/share/icons" -type f \( -name '*.png' -o -name '*.svg' \) -print0 2>/dev/null)
+
+  if [[ -f "$root/usr/share/pixmaps/co.anysphere.cursor.png" ]]; then
+    install -Dm644 "$root/usr/share/pixmaps/co.anysphere.cursor.png" \
+      "${pkgdir}/usr/share/pixmaps/co.anysphere.cursor.png"
+  fi
+}

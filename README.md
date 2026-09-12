@@ -6,11 +6,15 @@ running [Asahi Linux](https://asahilinux.org/) and the
 
 ## Why this exists
 
-Omarchy's package repo at `pkgs.omarchy.org` publishes **x86_64 only** —
-`edge/aarch64` and `stable/aarch64` both return 404. So on ARM, every package
-that lives in Omarchy's own repo is simply unavailable, which leaves keybindings
-pointing at binaries that can't be installed. `SUPER + CTRL + Q` (calculator)
-and `SUPER + SHIFT + W` (writer) are the visible casualties.
+Omarchy's package repo at `pkgs.omarchy.org` now serves `edge/aarch64`, but
+Apple Silicon machines must not *install* from it. Mac `pacman.conf` sets
+`[omarchy]` to `Usage = Sync`: the db is refreshed, and only three explicit
+Hyprland targets (`omarchy/hyprland`, `omarchy/hyprtoolkit`,
+`omarchy/hyprland-guiutils`) come from official edge. Everything else —
+`omarchy-nvim`, `voxtype-bin`, `1password`, the share picker — is invisible
+to `pacman -S` and Restore Preinstalls. This repo is the install repo those
+names actually resolve from. Widening `[omarchy]` to normal Install is how
+you get official Hyprland fighting ALARM's `libaquamarine` SONAME.
 
 Application sources are unmodified. The Omarchy Mac package pair carries a
 small, checked packaging patch described below. Packages come from four places:
@@ -32,19 +36,23 @@ small, checked packaging patch described below. Packages come from four places:
   `ignorearch` on that recipe would still emit x64. Ours is that recipe with
   `arch=('aarch64')` and `linux-arm64`, depending on this repo's
   `dotnet-*-bin` packages rather than Arch extra names that do not exist on
-  ARM. `avd-fw` and `libva-v4l2_request-avd` are in no repository at all,
+  ARM. `cursor-bin` is the vendor linux-arm64 AppImage with bundled Electron
+  under `/opt/cursor-bin`; the omarchy-pkgs recipe is x86_64-only. `avd-fw` and `libva-v4l2_request-avd` are in no repository at all,
   and together turn on hardware video decode on Apple Silicon.
 
 ## Packages
 
 | Package | Version | Provides |
 |---------|---------|----------|
+| `1password` | 8.12.34-35 | Password manager |
+| `1password-cli` | 2.39.0-1 | 1Password CLI |
 | `aether` | 4.29.8-1 | Wallpaper-driven desktop theming |
 | `aspnet-runtime-bin` | 10.0.11.sdk400-1 | ASP.NET Core runtime |
 | `aspnet-targeting-pack-bin` | 10.0.11.sdk400-1 | ASP.NET Core targeting pack |
 | `avd-fw` | 0.1-1 | Apple Video Decoder firmware — H.264/HEVC/VP9 hardware decode |
 | `brave-origin-bin` | 1:1.95.101-1 | Minimalist browser from the Brave team |
 | `cliamp` | 2.2.0-1 | Retro terminal music player |
+| `cursor-bin` | 3.20.17-1 | Cursor editor (vendor linux-arm64 AppImage) |
 | `dotnet-host-bin` | 10.0.11.sdk400-1 | .NET CLI driver |
 | `dotnet-runtime-2.1` | 2.1.30.sdk818-1 | .NET Core 2.1 runtime |
 | `dotnet-runtime-bin` | 10.0.11.sdk400-1 | .NET runtime |
@@ -58,7 +66,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `herdr` | 0.8.2-1 | Terminal workspace manager for AI coding agents |
 | `hermes-desktop` | 2026.9.7-1 | Native desktop shell for Hermes Agent |
 | `hypa-ttfx-bin` | 0.3.1-1 | Hypa terminal text effects |
-| `hyprland-preview-share-picker-git` | 0.2.1.r16.g0ef9b30-1 | Share picker with window/monitor previews |
+| `hyprland-preview-share-picker` | 0.2.1-1 | Share picker with window/monitor previews |
 | `libva-v4l2_request-avd` | 1.3-1 | VA-API driver so applications can reach the Apple Video Decoder |
 | `localsend` | 1.18.2-1 | Cross-platform AirDrop alternative |
 | `mise-bin` | 2026.9.5-1 | Dev tools, env vars, task runner |
@@ -68,6 +76,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `omacut` | 0.4.0-1 | Video length trimmer |
 | `omarchy` | 4.0.2-2 | Omarchy Mac scripts and desktop runtime |
 | `omarchy-emacs` | 1.10.1-1 | Emacs theme/font syncing for Omarchy |
+| `omarchy-nvim` | 2026.8.13-1 | Pre-built LazyVim configuration |
 | `omarchy-settings` | 4.0.2-2 | Apple Silicon system and user defaults |
 | `omarchy-webapp-theme` | 0.3.6-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
 | `omawrite` | 0.5.0-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
@@ -78,6 +87,8 @@ small, checked packaging patch described below. Packages come from four places:
 | `ttfx` | 0.3.2-1 | Terminal text effects, static binary |
 | `tzupdate` | 3.1.0-1 | Set timezone from IP geolocation |
 | `ufw-docker` | 251123-1 | Fix the Docker/UFW security flaw |
+| `vi` | 1:070224-9 | Original ex/vi text editor |
+| `voxtype-bin` | 1.0.1-1 | Push-to-talk dictation |
 | `xdg-terminal-exec` | 0.14.3-1 | Launch desktop apps with `Terminal=true` |
 | `yaru-icon-theme` | 26.04.5.1ubuntu-1 | Yaru default Ubuntu icon theme |
 | `yay` | 13.0.1-1 | Pacman wrapper and AUR helper |
@@ -126,9 +137,9 @@ The packages differ only in where they can be built:
 
 | Group | Count | Automated |
 |-------|-------|-----------|
-| `any` — `arch=('any')`, architecture-independent | 7 | yes |
-| `repack` — ships a vendor-prebuilt ARM binary | 14 | yes |
-| `compile` — built from source | 19 | yes |
+| `any` — `arch=('any')`, architecture-independent | 8 | yes |
+| `repack` — ships a vendor-prebuilt ARM binary | 18 | yes |
+| `compile` — built from source | 20 | yes |
 
 Two packages stay deliberately excluded from that generic matrix. `omarchy`
 and `omarchy-settings` are built as an atomic pair by
@@ -175,14 +186,39 @@ recipe changes. The patch preserves upstream's `pkgver` and `pkgrel`, keeping
 version detection consistent with the published package. Remove this patch
 and its build hook once upstream includes the fixes.
 
-`hyprland-preview-share-picker-git` is a VCS package whose AUR `pkgver` is
-stale by construction, so a version diff can never trigger it. It rebuilds on a
-7-day timer measured from `%BUILDDATE%` in the published db.
+`hyprland-preview-share-picker` is the release package (command of that
+name) so `omarchy-base.packages` can ask for it. It is built against ALARM,
+not official-edge Hyprland; `exclude_build_deps` drops `hyprland` and
+`xdg-desktop-portal-hyprland` at build time. The omarchy-pkgs recipe pins
+`RUSTUP_TOOLCHAIN=nightly`; `scripts/prepare-share-picker-recipe.sh` rewrites
+that to stable, which is how the `-git` package this repo used to ship already
+built. After the release package is on `edge`, remove the leftover `-git`
+package from the published db with `repo-remove` on a downloaded copy of both
+db files, re-upload them, and delete the `-git` asset — and only while no
+`update-packages` run is in progress, or the workflow will clobber the upload.
+
+`omarchy-nvim` is `arch=('any')` but `build()` runs `nvim --headless` on the
+ARM runner. The official artifact has no tree-sitter `.so` files; the
+host-arch binaries to inspect are `mason/packages/shfmt` and `stylua`.
+
+`cursor-bin` is an in-tree AppImage: the omarchy-pkgs recipe is x86_64-only
+and strips Electron. Ours keeps the vendor linux-arm64 AppImage and its
+bundled Electron under `/opt/cursor-bin`, so it does not collide with the
+Mac workaround's `/opt/cursor`. Icons and the URL-handler desktop file are
+unsquashed from the image with `squashfs-tools`; the AppImage is not
+executed. The quattro-mac follow-up must still delete the workaround files
+(`/opt/cursor`, `/usr/local/bin/cursor`, the two `.desktop` files, icons)
+before `pacman -S cursor-bin`, or those paths under `/usr/share` still
+conflict.
+
+Signed source tarballs (`1password`, `1password-cli`, `vi`, `voxtype-bin`)
+import only the fingerprints listed in `validpgpkeys`, plus any matching key
+file the recipe already ships. Signature checks are not skipped.
 
 [`packages.json`](packages.json) records which group each package belongs to and
 where its PKGBUILD comes from — the AUR for most, `omacom-io/omarchy-pkgs` for
-the five that aren't in the AUR, and this repo's own `pkgbuilds/` for
-`obs-studio` and `pinta`. The source is per-package on purpose: for
+the ones that aren't in the AUR, and this repo's own `pkgbuilds/` for
+`obs-studio`, `pinta`, and `cursor-bin`. The source is per-package on purpose: for
 `omarchy-emacs` the AUR leads Omarchy's own repo, so switching it would be a
 downgrade.
 
