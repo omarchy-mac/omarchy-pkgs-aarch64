@@ -197,6 +197,7 @@ depend = omarchy-settings=4.0.2
 depend = iwd
 depend = networkmanager
 depend = snapper
+depend = zram-generator
 INFO
 touch "$work/mac-build/omarchy/usr/share/omarchy/install/helpers/arm-package-sources.sh"
 # Pad the listing so `bsdtar | grep -Fxq` really does exit before the producer
@@ -220,6 +221,11 @@ cat > "$work/mac-build/settings/etc/mkinitcpio.conf.d/omarchy_hooks.conf" <<'HOO
 HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms)
 # insert the asahi hook after base, where Asahi Alarm puts it
 HOOKS
+zram_source=default/systemd/zram-generator.conf.d/90-omarchy.conf
+zram_path=usr/lib/systemd/zram-generator.conf.d/90-omarchy.conf
+mkdir -p "$work/mac-source/$(dirname "$zram_source")" "$work/mac-build/settings/$(dirname "$zram_path")"
+printf '[zram0]\nzram-size = ram\ncompression-algorithm = zstd\nswap-priority = 100\n' >"$work/mac-source/$zram_source"
+install -m644 "$work/mac-source/$zram_source" "$work/mac-build/settings/$zram_path"
 ( cd "$work/mac-build/settings" && tar -cf - . | xz > "$work/mac-build/omarchy-settings-4.0.2-1-aarch64.pkg.tar.xz" )
 ( RELEASE_TAG=v4.0.2-1 SOURCE_DIR="$work/mac-source" PKGDIR="$work/mac-build" \
     STAGING_DIR="$work/mac-stage" bash scripts/omarchy-mac-release.sh verify ) >/dev/null 2>&1 \
@@ -284,6 +290,54 @@ repack_first_run_fixture
 verify_first_run_fixture >/dev/null 2>&1 \
   && ok "matching keyboard service verifies" || no "matching keyboard service verifies"
 
+# Reproduce the released regression: the source copy remains packaged while
+# the runtime drop-in vanishes. Symlinks and changed policy must fail too.
+for zram_case in missing source-only symlink stale mode dependency; do
+  cp "$work/good-pkginfo" "$work/mac-build/omarchy/.PKGINFO"
+  rm -f "$work/mac-build/settings/$zram_path"
+  install -m644 "$work/mac-source/$zram_source" "$work/mac-build/settings/$zram_path"
+  case "$zram_case" in
+    missing)
+      rm "$work/mac-build/settings/$zram_path"
+      zram_error='missing zram runtime configuration'
+      ;;
+    source-only)
+      rm "$work/mac-build/settings/$zram_path"
+      install -Dm644 "$work/mac-source/$zram_source" "$work/mac-build/settings/usr/share/omarchy/$zram_source"
+      zram_error='missing zram runtime configuration'
+      ;;
+    symlink)
+      rm "$work/mac-build/settings/$zram_path"
+      ln -s "/usr/share/omarchy/$zram_source" "$work/mac-build/settings/$zram_path"
+      zram_error='must be a regular mode-0644 file'
+      ;;
+    stale)
+      printf '[zram0]\nzram-size = 0\n' >"$work/mac-build/settings/$zram_path"
+      zram_error='stale zram runtime configuration'
+      ;;
+    mode)
+      chmod 0600 "$work/mac-build/settings/$zram_path"
+      zram_error='must be a regular mode-0644 file'
+      ;;
+    dependency)
+      sed -i '/^depend = zram-generator$/d' "$work/mac-build/omarchy/.PKGINFO"
+      zram_error='does not depend on zram-generator'
+      ;;
+  esac
+  repack_first_run_fixture
+  if verify_first_run_fixture >"$work/verify-error" 2>&1; then
+    no "zram $zram_case regression is rejected"
+  elif grep -q "$zram_error" "$work/verify-error"; then
+    ok "zram $zram_case regression is rejected"
+  else
+    no "zram $zram_case regression is rejected" "failed for an unrelated reason"
+  fi
+done
+cp "$work/good-pkginfo" "$work/mac-build/omarchy/.PKGINFO"
+repack_first_run_fixture
+verify_first_run_fixture >/dev/null 2>&1 \
+  && ok "restored zram configuration and dependency verify" || no "restored zram configuration and dependency verify"
+
 # Dropping the hook is the boot-breaking case: the package installs fine and
 # the machine wedges at the next mkinitcpio run, with no display to say why.
 rm -rf "$work/mac-build/settings/etc/mkinitcpio.conf.d"
@@ -324,6 +378,7 @@ depend = omarchy-settings=4.0.2
 depend = iwd
 depend = networkmanager
 depend = snapper
+depend = zram-generator
 depend = omarchy-keyring
 depend = ttf-jetbrains-mono-nerd-basic
 INFO

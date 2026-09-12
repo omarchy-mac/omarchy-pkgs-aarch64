@@ -141,13 +141,24 @@ therefore cannot block an Omarchy Mac release, and one half of the pair can
 never publish by itself.
 
 Before building the pair, `scripts/prepare-omarchy-recipes.sh` applies the
-checked-in recipe changes from [upstream PR #341](https://github.com/omacom/omarchy-pkgs/pull/341):
+checked-in recipe changes from [upstream PR #341](https://github.com/omacom/omarchy-pkgs/pull/341) and the Mac zram repair:
 Snapper is required on ARM, and settings packages install the keyboard-backlight
 user service when the release source contains it. The patch includes stable and
 development recipes, accepts an already-applied patch, and stops on conflicting
 upstream changes. Release verification requires Snapper while still rejecting
 Limine, and verifies the packaged keyboard service against the release source.
-Remove the carried patch once the upstream recipes provide these fixes.
+The ARM runtime also requires `zram-generator`, and the settings archive must
+contain the source-identical, regular mode-0644 vendor configuration at
+`/usr/lib/systemd/zram-generator.conf.d/90-omarchy.conf`. Keeping only the copy
+under `/usr/share/omarchy` removed working swap after the 4.0.1-2 to 4.0.2-2
+upgrade. The restored package-owned file reaches both fresh and existing installs;
+the generator reads it on the next boot. No migration takes over an active swap
+device or changes a locally installed workaround service.
+
+This complements [the pinned Mac profile in PR #353](https://github.com/omarchy-mac/omarchy-mac/pull/353)
+for the current release publisher. Its broader oomd profile still requires a
+separate review of the publisher's existing oomd rejection. Remove the carried
+patch once the upstream recipes provide all these fixes.
 
 This changes future builds, not existing release assets. Publishing still needs
 an appropriately versioned Omarchy Mac release. Desktop CI that checks out
