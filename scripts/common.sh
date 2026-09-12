@@ -82,6 +82,7 @@ fetch_current_dbs() {
 # These live here rather than in build-package.sh so scripts/self-test.sh can
 # exercise them directly. They are the fiddliest logic in the repo.
 ALLOW_FOREIGN_ELF="${ALLOW_FOREIGN_ELF:-}"
+ALLOW_EMPTY_ELF="${ALLOW_EMPTY_ELF:-}"
 EXCLUDE_BUILD_DEPS="${EXCLUDE_BUILD_DEPS:-}"
 
 # Read the name from .PKGINFO rather than inferring it from the filename.
@@ -115,6 +116,19 @@ elf_allowed() {
     [[ -n "$pat" ]] || continue
     # shellcheck disable=SC2053  # glob match is the point
     [[ "$rel" == $pat ]] && return 0
+  done
+  return 1
+}
+# Repack packages are supposed to be a vendor-prebuilt aarch64 payload, so
+# audit_elf dies when it finds no aarch64 ELF at all. Some splits are pure
+# managed code (the ASP.NET halves of AUR dotnet-core-bin) and have none.
+# Naming one here skips only that emptiness check; an x86 object still fails.
+empty_elf_allowed() {
+  local name="$1" n names
+  [[ -n "$ALLOW_EMPTY_ELF" ]] || return 1
+  IFS=',' read -r -a names <<< "$ALLOW_EMPTY_ELF"
+  for n in "${names[@]}"; do
+    [[ -n "$n" && "$n" == "$name" ]] && return 0
   done
   return 1
 }
@@ -170,5 +184,11 @@ audit_elf() {
 
   log "  ELF audit: $arm aarch64, $x86 x86, $other other-arch, $allowed allowed-foreign"
   (( x86 == 0 )) || die "$pkg carries $x86 x86 ELF object(s) — this is not an aarch64 build"
-  (( arm > 0 ))  || die "$pkg contains no aarch64 ELF objects — expected a prebuilt ARM payload"
+  if (( arm == 0 )); then
+    if [[ "${ELF_ALLOW_EMPTY:-}" == "true" ]]; then
+      warn "  no aarch64 ELF objects — allowed for this managed-only package"
+    else
+      die "$pkg contains no aarch64 ELF objects — expected a prebuilt ARM payload"
+    fi
+  fi
 }

@@ -105,6 +105,21 @@ mkpkg "$work/sneak" "$work/sneak.pkg.tar.xz" sneakpkg
 ( ALLOW_FOREIGN_ELF='*/prebuilds/*' audit_elf "$work/sneak.pkg.tar.xz" ) >/dev/null 2>&1 \
   && no "x86 outside the glob still fails" "allowance leaked to /usr/bin" || ok "x86 outside the glob still fails"
 
+# aspnet-runtime-bin / aspnet-targeting-pack-bin are pure managed code: no
+# aarch64 ELF at all. The default audit rejects that, because a repack is
+# supposed to be a prebuilt ARM payload. The waiver skips only emptiness.
+mkdir -p "$work/empty"
+printf 'managed\n' > "$work/empty/Pinta.dll"
+mkpkg "$work/empty" "$work/empty.pkg.tar.xz" empty
+( ELF_ALLOW_EMPTY= audit_elf "$work/empty.pkg.tar.xz" ) >/dev/null 2>&1 \
+  && no "package with no ELF is rejected" "audit accepted a managed-only payload without a waiver" \
+  || ok "package with no ELF is rejected"
+( ELF_ALLOW_EMPTY=true audit_elf "$work/empty.pkg.tar.xz" ) >/dev/null 2>&1 \
+  && ok "waiver permits a package with no ELF" || no "waiver permits a package with no ELF"
+( ELF_ALLOW_EMPTY=true audit_elf "$work/x86.pkg.tar.xz" ) >/dev/null 2>&1 \
+  && no "empty-elf waiver does not permit x86" "waiver leaked to an x86 payload" \
+  || ok "empty-elf waiver does not permit x86"
+
 echo "== repo db parsing"
 mkdir -p "$work/db/foo-1:2.3-4"
 { echo '%NAME%'; echo 'foo'; echo; echo '%VERSION%'; echo '1:2.3-4'; echo;
@@ -135,6 +150,9 @@ is "every local source has an in-tree PKGBUILD" "$nolocal" '0'
 # matcher is checked separately for exactness.
 badexcl="$(jq -r '.packages | map(select(.exclude_build_deps and (.category != "compile"))) | length' packages.json)"
 is "exclude_build_deps only on compile packages" "$badexcl" '0'
+# allow_empty_elf only changes the repack audit, which compile/any never run.
+badempty="$(jq -r '.packages | map(select(.allow_empty_elf and (.category != "repack"))) | length' packages.json)"
+is "allow_empty_elf only on repack packages" "$badempty" '0'
 # detect-updates.sh unions both fields across a pkgbase group, so one member
 # adding a name to extra_makedepends while another excludes it would have them
 # cancel. build-package.sh dies on that, but catching it here is cheaper.
@@ -153,6 +171,15 @@ EXCLUDE_BUILD_DEPS='hyprland,xdg-desktop-portal-hyprland'
 build_dep_excluded xdg-desktop-portal-hyprland && ok "second entry in the list matches" || no "second entry in the list matches"
 EXCLUDE_BUILD_DEPS=''
 build_dep_excluded hyprland && no "empty list excludes nothing" || ok "empty list excludes nothing"
+
+echo "== empty-elf waiver matcher"
+ALLOW_EMPTY_ELF='aspnet-runtime-bin,aspnet-targeting-pack-bin'
+empty_elf_allowed aspnet-runtime-bin && ok "named package is waived" || no "named package is waived"
+empty_elf_allowed aspnet-targeting-pack-bin && ok "second entry in the list matches" || no "second entry in the list matches"
+empty_elf_allowed dotnet-sdk-bin && no "unnamed package is not waived" || ok "unnamed package is not waived"
+empty_elf_allowed aspnet-runtime && no "prefix does not match" || ok "prefix does not match"
+ALLOW_EMPTY_ELF=''
+empty_elf_allowed aspnet-runtime-bin && no "empty list waives nothing" || ok "empty list waives nothing"
 
 echo "== Omarchy Mac atomic package policy"
 # These invoke the script rather than the sourced function on purpose. It only
