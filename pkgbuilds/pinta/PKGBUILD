@@ -1,0 +1,65 @@
+# Pinta for aarch64, built from upstream's release tarball.
+#
+# Why this is an in-tree PKGBUILD and not an AUR one: the AUR recipe is
+# arch=('x86_64') and hardcodes -p:RuntimeIdentifier=linux-x64. ALARM has
+# no pinta. ignorearch on that recipe would still emit a linux-x64 build
+# (or fail the same way). Omarchy's preinstall list wants pkgname=pinta.
+#
+# This is the AUR 3.1.2-1 recipe with two substitutions: arch=('aarch64')
+# and RuntimeIdentifier=linux-arm64. Makedepends/depends use this repo's
+# dotnet-*-bin packages from AUR dotnet-core-bin; Arch extra's unversioned
+# dotnet-sdk / dotnet-runtime / dotnet-host / dotnet-targeting-pack names
+# are not in ALARM extra, and must not resolve to the leftover 2.1 packages.
+#
+# Version bumps are edits to this file: update pkgver and sha256sums.
+
+pkgname=pinta
+pkgver=3.1.2
+pkgrel=1
+pkgdesc="Drawing/editing program modeled after Paint.NET. It's goal is to provide a simplified alternative to GIMP for casual users"
+
+arch=('aarch64')
+license=('MIT')
+url="https://pinta-project.com"
+
+makedepends=('pkgconf' 'autoconf-archive' 'intltool' 'dotnet-sdk-bin' 'dotnet-runtime-bin' 'dotnet-host-bin' 'dotnet-targeting-pack-bin' 'gtk4' 'perl')
+depends=('dotnet-runtime-bin' 'dotnet-host-bin' 'libadwaita' 'hicolor-icon-theme' 'webp-pixbuf-loader')
+
+provides=($pkgname)
+conflicts=($pkgname-git)
+
+source=("Pinta-${pkgver}.tar.gz::https://github.com/PintaProject/Pinta/archive/refs/tags/${pkgver}.tar.gz")
+sha256sums=('98ed517b33f0e40fd1e3915ea5146355845ac12efd3bb07812c68a52c714cac6')
+
+prepare() {
+  cd "${srcdir}/Pinta-${pkgver}"
+
+  for file in *.md *.txt; do
+    basename=$(tr '[:lower:]' '[:upper:]' <<< "${file%.*}")
+    newname="$basename.${file#*.}"
+    [ ! "$file" == "$newname" ] && mv "$file" "$newname"
+  done
+
+  sed -i 's/net8.0/net10.0/g' Directory.Build.props
+
+  ./autogen.sh --prefix=/usr --sysconfdir=/etc --localstatedir=/var
+}
+
+build() {
+  cd "${srcdir}/Pinta-${pkgver}"
+
+  sed -i -r 's|^(PINTA_BUILD_OPTS\s=\s.*)|\1 -p:RuntimeIdentifier=linux-arm64|g' Makefile
+
+  make
+}
+
+package() {
+  cd "${srcdir}/Pinta-${pkgver}"
+
+  make DESTDIR="${pkgdir}" install
+
+  chmod -v 755 "${pkgdir}/usr/lib/pinta/"*.dll
+
+  install -Dm644 -t "${pkgdir}/usr/share/doc/${pkgname}/" *.md
+  install -Dm644 -t "${pkgdir}/usr/share/licenses/${pkgname}/" LICENSE*.txt
+}

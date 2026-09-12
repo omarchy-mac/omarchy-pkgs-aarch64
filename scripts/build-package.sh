@@ -12,6 +12,7 @@
 #   OUTDIR      where to stage the kept artifacts
 #   IGNOREARCH  true to pass --ignorearch (for PKGBUILDs missing aarch64)
 #   EXCLUDE_BUILD_DEPS  comma-separated depends to skip installing at build time
+#   ALLOW_EMPTY_ELF  comma-separated pkgnames whose repack payload is managed-only
 #
 # This must run inside an aarch64 environment. On a native ARM runner that is
 # free; on an x86 runner it is an emulated aarch64 container (binfmt + qemu).
@@ -32,6 +33,7 @@ IGNOREARCH="${IGNOREARCH:-false}"
 EXTRA_MAKEDEPENDS="${EXTRA_MAKEDEPENDS:-}"
 EXCLUDE_BUILD_DEPS="${EXCLUDE_BUILD_DEPS:-}"
 ALLOW_FOREIGN_ELF="${ALLOW_FOREIGN_ELF:-}"
+ALLOW_EMPTY_ELF="${ALLOW_EMPTY_ELF:-}"
 
 case "$CATEGORY" in
   any)             want_arch=any ;;
@@ -117,6 +119,24 @@ host_arch="$(uname -m)"
 log "PKGEXT=$PKGEXT_WANTED, build arch=$host_arch, target arch=$want_arch"
 
 chown -R builder: "$work" 2>/dev/null || true
+
+# Packages in this repo can be makedepends of later ones. pinta needs the
+# aarch64 .NET 10 SDK we publish from AUR dotnet-core-bin; ALARM extra has
+# none of those names. Point pacman at the rolling tag the same way a user
+# would. Appended last, so ALARM extra wins on identical names and this
+# only adds packages ALARM does not have. Default the GitHub path so a
+# local run without GH_REPO still sees the repo already in pacman.conf
+# on these machines; CI overrides it.
+GH_REPO="${GH_REPO:-omarchy-mac/omarchy-pkgs-aarch64}"
+if [[ "$(id -u)" -eq 0 ]] && ! grep -q "^\[$DB_NAME\]" /etc/pacman.conf; then
+  cat >> /etc/pacman.conf <<CONF
+
+[$DB_NAME]
+SigLevel = Optional TrustAll
+Server = https://github.com/$GH_REPO/releases/download/$REPO_TAG
+CONF
+  log "Added [$DB_NAME] ($GH_REPO @$REPO_TAG) so builds can use packages this repo already publishes"
+fi
 
 # --- makedepends ------------------------------------------------------------
 # --printsrcinfo expands arch-specific arrays for us. It sources the PKGBUILD,
@@ -207,7 +227,11 @@ fi
 mkflags=(--config "$conf" --nodeps --nocheck --noconfirm --force --clean)
 [[ "$IGNOREARCH" == "true" ]] && mkflags+=(--ignorearch)
 log "Building $PKGBASE"
-( cd "$src" && as_builder makepkg "${mkflags[@]}" ) || die "makepkg failed for $PKGBASE"
+# MSBuild treats every environment variable as a property. OUTDIR is this
+# script's staging directory, so leaving it set redirects a .NET package's
+# compile output there — and that directory is not writable by the builder
+# user. Unset it for makepkg; any future .NET package would hit the same leak.
+( cd "$src" && as_builder env -u OUTDIR makepkg "${mkflags[@]}" ) || die "makepkg failed for $PKGBASE"
 
 # --- collect and verify -----------------------------------------------------
 shopt -s nullglob
@@ -234,7 +258,13 @@ for name in "${wanted[@]}"; do
   [[ "$base" == *"-$want_arch$PKGEXT_WANTED" ]] \
     || die "$base is not a '-$want_arch$PKGEXT_WANTED' artifact"
   log "Keeping $base"
-  [[ "$CATEGORY" == "repack" ]] && audit_elf "$found"
+  if [[ "$CATEGORY" == "repack" ]]; then
+    if empty_elf_allowed "$name"; then
+      ELF_ALLOW_EMPTY=true audit_elf "$found"
+    else
+      ELF_ALLOW_EMPTY= audit_elf "$found"
+    fi
+  fi
 
   # An epoch puts a ':' in the filename, which neither a GitHub release asset
   # nor an actions/upload-artifact path can contain. Rename here so the name is

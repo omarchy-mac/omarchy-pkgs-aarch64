@@ -167,6 +167,7 @@ matrix="$(jq -c --slurpfile scope <(cat "$work/scope.json") \
       ignorearch: (map(.ignorearch // false) | any),
       extra_makedepends: (map(.extra_makedepends // []) | add | unique | join(",")),
       allow_foreign_elf: (map(.allow_foreign_elf // []) | add | unique | join(",")),
+      allow_empty_elf: (map(select(.allow_empty_elf // false) | .name) | join(",")),
       exclude_build_deps: (map(.exclude_build_deps // []) | add | unique | join(","))
     }
     # Every build runs in an aarch64 container, so every build wants a native

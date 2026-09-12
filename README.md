@@ -27,7 +27,12 @@ small, checked packaging patch described below. Packages come from four places:
   every AUR pkgbase hardcodes obsproject's prebuilt CEF browser bundle, which
   is published for x86_64 only; ours builds upstream's unmodified release
   sources with `ENABLE_BROWSER=OFF` — no browser source/dock, everything else
-  enabled. `avd-fw` and `libva-v4l2_request-avd` are in no repository at all,
+  enabled. `pinta` is Omarchy's default simple image editor, but the AUR
+  recipe is `arch=('x86_64')` and hardcodes `linux-x64`; ALARM has none, and
+  `ignorearch` on that recipe would still emit x64. Ours is that recipe with
+  `arch=('aarch64')` and `linux-arm64`, depending on this repo's
+  `dotnet-*-bin` packages rather than Arch extra names that do not exist on
+  ARM. `avd-fw` and `libva-v4l2_request-avd` are in no repository at all,
   and together turn on hardware video decode on Apple Silicon.
 
 ## Packages
@@ -35,12 +40,17 @@ small, checked packaging patch described below. Packages come from four places:
 | Package | Version | Provides |
 |---------|---------|----------|
 | `aether` | 4.29.8-1 | Wallpaper-driven desktop theming |
+| `aspnet-runtime-bin` | 10.0.11.sdk400-1 | ASP.NET Core runtime |
+| `aspnet-targeting-pack-bin` | 10.0.11.sdk400-1 | ASP.NET Core targeting pack |
 | `avd-fw` | 0.1-1 | Apple Video Decoder firmware — H.264/HEVC/VP9 hardware decode |
 | `brave-origin-bin` | 1:1.95.101-1 | Minimalist browser from the Brave team |
 | `cliamp` | 2.2.0-1 | Retro terminal music player |
 | `dotnet-host-bin` | 10.0.11.sdk400-1 | .NET CLI driver |
 | `dotnet-runtime-2.1` | 2.1.30.sdk818-1 | .NET Core 2.1 runtime |
+| `dotnet-runtime-bin` | 10.0.11.sdk400-1 | .NET runtime |
 | `dotnet-sdk-2.1` | 2.1.30.sdk818-1 | .NET Core 2.1 SDK |
+| `dotnet-sdk-bin` | 10.0.11.sdk400-1 | .NET SDK |
+| `dotnet-targeting-pack-bin` | 10.0.11.sdk400-1 | .NET targeting pack |
 | `ghostty` | 1.3.1-1 | Stable terminal emulator |
 | `ghostty-nautilus` | 1.3.1-1 | Open in Ghostty extension for GNOME Files |
 | `ghostty-shell-integration` | 1.3.1-1 | Ghostty shell integration scripts |
@@ -62,6 +72,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `omarchy-webapp-theme` | 0.3.6-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
 | `omawrite` | 0.5.0-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
 | `openai-codex-desktop` | 26.903.71938-1 | ChatGPT desktop app with Codex |
+| `pinta` | 3.1.2-1 | Simple image editor |
 | `tensaku` | 0.29.0-1 | Screenshot annotation for Wayland |
 | `ttf-ia-writer` | 20181225-1 | iA Writer font subset |
 | `ttfx` | 0.3.2-1 | Terminal text effects, static binary |
@@ -116,8 +127,8 @@ The packages differ only in where they can be built:
 | Group | Count | Automated |
 |-------|-------|-----------|
 | `any` — `arch=('any')`, architecture-independent | 7 | yes |
-| `repack` — ships a vendor-prebuilt ARM binary | 9 | yes |
-| `compile` — built from source | 18 | yes |
+| `repack` — ships a vendor-prebuilt ARM binary | 14 | yes |
+| `compile` — built from source | 19 | yes |
 
 Two packages stay deliberately excluded from that generic matrix. `omarchy`
 and `omarchy-settings` are built as an atomic pair by
@@ -171,7 +182,7 @@ stale by construction, so a version diff can never trigger it. It rebuilds on a
 [`packages.json`](packages.json) records which group each package belongs to and
 where its PKGBUILD comes from — the AUR for most, `omacom-io/omarchy-pkgs` for
 the five that aren't in the AUR, and this repo's own `pkgbuilds/` for
-`obs-studio`. The source is per-package on purpose: for
+`obs-studio` and `pinta`. The source is per-package on purpose: for
 `omarchy-emacs` the AUR leads Omarchy's own repo, so switching it would be a
 downgrade.
 
