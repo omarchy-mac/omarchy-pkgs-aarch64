@@ -1,0 +1,157 @@
+name: Convert approved edge inventory to signing
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_run_id:
+        description: 'Same-repository Actions run containing the approved bundle artifact'
+        type: string
+        required: true
+      artifact_name:
+        description: 'Retained complete final stable bundle: manifest.json, assets/, rollback/, provenance/; never an RC'
+        type: string
+        required: true
+      manifest_sha256:
+        description: 'Approved exact input manifest SHA256 (unsigned initial input or retained signed retry)'
+        type: string
+        required: true
+      source_commit:
+        description: 'Approved exact desktop source commit (40 hex characters)'
+        type: string
+        required: true
+      expected_edge_db:
+        description: 'Approved published edge database SHA256; package bytes must be unchanged'
+        type: string
+        required: true
+      accept_client_trust_bootstrap:
+        description: 'Confirm clients received and trust the fork keyring already present in this approved edge baseline'
+        type: boolean
+        required: true
+        default: false
+      dry_run:
+        description: 'Seal and verify locally; read remote state without changing any release'
+        type: boolean
+        required: true
+        default: true
+      accept_mutable_alias_window:
+        description: 'Accept transient fail-closed DB/signature mismatch while selecting the edge alias'
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+# Share exclusion with both legacy edge writers, never cancel an upload run.
+concurrency:
+  group: edge-publish
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    name: Verify and convert existing edge only
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment: package-signing
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Validate operator inputs and disk storage
+        env:
+          INPUT_RUN: ${{ inputs.artifact_run_id }}
+          INPUT_HASH: ${{ inputs.manifest_sha256 }}
+          INPUT_SOURCE: ${{ inputs.source_commit }}
+          INPUT_PREVIOUS: ${{ inputs.expected_edge_db }}
+          EXECUTE: ${{ !inputs.dry_run && '1' || '0' }}
+          ACCEPT_WINDOW: ${{ inputs.accept_mutable_alias_window && '1' || '0' }}
+          ACCEPT_TRUST: ${{ inputs.accept_client_trust_bootstrap && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == omarchy-mac/omarchy-pkgs-aarch64 ]]
+          [[ "$INPUT_RUN" =~ ^[1-9][0-9]*$ && "$INPUT_HASH" =~ ^[a-f0-9]{64}$ && "$INPUT_SOURCE" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$INPUT_PREVIOUS" =~ ^[a-f0-9]{64}$ ]]
+          [[ "$ACCEPT_TRUST" == 1 ]]
+          [[ "$EXECUTE" == 0 || "$ACCEPT_WINDOW" == 1 ]]
+          case $(findmnt -n -o FSTYPE -T "$RUNNER_TEMP") in ''|tmpfs|ramfs) exit 1;; esac
+          mkdir -p "$RUNNER_TEMP/edge-conversion"/{input,output,tmp,logs}
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.artifact_run_id }}
+          name: ${{ inputs.artifact_name }}
+          path: ${{ runner.temp }}/edge-conversion/input
+
+      - name: Prepare signing tools without credentials
+        run: docker build --build-arg BASE_IMAGE=archlinux:base-devel -f .github/publisher.Dockerfile -t omarchy-publisher .
+
+      - name: Verify exact inventory and retain a signed derivation
+        env:
+          INPUT_HASH: ${{ inputs.manifest_sha256 }}
+          INPUT_SOURCE: ${{ inputs.source_commit }}
+          PACMAN_SIGNING_SUBKEY_B64: ${{ secrets.PACMAN_SIGNING_SUBKEY_B64 }}
+          PACMAN_SIGNING_PASSPHRASE: ${{ secrets.PACMAN_SIGNING_PASSPHRASE }}
+          PACMAN_SIGNING_PRIMARY_FPR: ${{ vars.PACMAN_SIGNING_PRIMARY_FPR }}
+          PACMAN_SIGNING_SUBKEY_FPR: ${{ vars.PACMAN_SIGNING_SUBKEY_FPR }}
+        run: |
+          set -euo pipefail
+          docker run --rm --network none -v "$PWD:/w:ro" -w /w \
+            -v "$RUNNER_TEMP/edge-conversion:/task" \
+            -e INPUT_HASH -e INPUT_SOURCE \
+            -e PACMAN_SIGNING_SUBKEY_B64 -e PACMAN_SIGNING_PASSPHRASE \
+            -e PACMAN_SIGNING_PRIMARY_FPR -e PACMAN_SIGNING_SUBKEY_FPR \
+            -e TMPDIR=/task/tmp -e TMP=/task/tmp -e TEMP=/task/tmp -e PYTHONDONTWRITEBYTECODE=1 \
+            omarchy-publisher bash -euo pipefail -c \
+            'python3 scripts/convert-edge-signing.py prepare --input /task/input --output /task/output/bundle --manifest-sha256 "$INPUT_HASH" --source-commit "$INPUT_SOURCE"' \
+            2>&1 | tee "$RUNNER_TEMP/edge-conversion/logs/prepare.log"
+          sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/edge-conversion/output"
+
+      # Persist exact signed bytes before any network mutation. An interrupted
+      # retry consumes this artifact; resealing would produce different sigs/DBs.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: signed-edge-baseline-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/edge-conversion/output/bundle/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Dry-run or publish only the signed edge baseline
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_SOURCE: ${{ inputs.source_commit }}
+          INPUT_PREVIOUS: ${{ inputs.expected_edge_db }}
+          PUBLISHER_COMMIT: ${{ github.sha }}
+          EXECUTE: ${{ !inputs.dry_run && '1' || '0' }}
+          ACCEPT_WINDOW: ${{ inputs.accept_mutable_alias_window && '1' || '0' }}
+          ACCEPT_TRUST: ${{ inputs.accept_client_trust_bootstrap && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD:/w:ro" -w /w \
+            -v "$RUNNER_TEMP/edge-conversion:/task" \
+            -e GH_TOKEN -e INPUT_SOURCE -e INPUT_PREVIOUS -e PUBLISHER_COMMIT -e EXECUTE -e ACCEPT_WINDOW -e ACCEPT_TRUST \
+            -e TMPDIR=/task/tmp -e TMP=/task/tmp -e TEMP=/task/tmp -e PYTHONDONTWRITEBYTECODE=1 \
+            omarchy-publisher bash -euo pipefail -c '
+              hash=$(sha256sum /task/output/bundle/manifest.json); hash=${hash%% *}
+              [[ "$ACCEPT_TRUST" == 1 ]]
+              args=(--accept-client-trust-bootstrap)
+              [[ "$EXECUTE" == 0 ]] || args+=(--execute)
+              [[ "$ACCEPT_WINDOW" == 0 ]] || args+=(--accept-mutable-alias-window)
+              python3 scripts/convert-edge-signing.py publish --bundle /task/output/bundle \
+                --manifest-sha256 "$hash" --source-commit "$INPUT_SOURCE" \
+                --publisher-commit "$PUBLISHER_COMMIT" --expected-edge-db "$INPUT_PREVIOUS" "${args[@]}"
+            ' 2>&1 | tee "$RUNNER_TEMP/edge-conversion/logs/publication.log"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: signed-edge-conversion-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/edge-conversion/logs/
+          if-no-files-found: warn
+          retention-days: 90

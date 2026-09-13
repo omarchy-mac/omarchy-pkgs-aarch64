@@ -50,7 +50,7 @@ class Remote:
         return __import__('hashlib').sha256(data).hexdigest()
     def tag_commit(self,tag):return self.tags.get(tag)
     def create(self,tag,commit,body):
-        self.events.append(('create',tag));assert tag=='rc' or tag.startswith(('rc-baseline-','rc4-old-trust-'));assert tag not in self.releases
+        self.events.append(('create',tag));assert tag=='rc' or tag.startswith(('rc-baseline-','rc4-old-trust-','edge-signed-baseline-'));assert tag not in self.releases
         assert self.tags.get(tag) in (None,commit);self.tags[tag]=commit
         self.releases[tag]={'draft':True,'commit':commit,'assets':{}}
     def upload(self,tag,path,clobber=False):
@@ -177,6 +177,7 @@ class BootstrapTests(unittest.TestCase):
     def test_09_producer_capture_and_stage_complete_artifact(self):
         remote=Remote();remote.releases['edge']={'draft':False,'commit':'b'*40,'assets':{}}
         remote.releases['edge']['assets']['omarchy-aarch64.db.tar.zst']=Fixture.base_db.read_bytes()
+        remote.releases['edge']['assets']['omarchy-aarch64.db']=Fixture.base_db.read_bytes()
         for path in Fixture.base.iterdir():remote.releases['edge']['assets'][path.name]=path.read_bytes()
         original=boot.GitHub;boot.GitHub=lambda scratch:remote
         capture=Fixture.root/'producer-capture'
@@ -281,9 +282,9 @@ class BootstrapTests(unittest.TestCase):
             self.assertRaisesRegex(ValueError,'already be published',boot.capture,argparse.Namespace(lane='rc',database_sha256=approved,output=Fixture.root/'draft-capture'),Fixture.keys.policy)
             remote.releases['rc']['draft']=False
             del remote.releases['rc']['assets']['omarchy-aarch64.db']
-            self.assertRaisesRegex(ValueError,'selected RC database',boot.capture,argparse.Namespace(lane='rc',database_sha256=approved,output=Fixture.root/'absent-selected-capture'),Fixture.keys.policy)
+            self.assertRaisesRegex(ValueError,'selected database',boot.capture,argparse.Namespace(lane='rc',database_sha256=approved,output=Fixture.root/'absent-selected-capture'),Fixture.keys.policy)
             remote.releases['rc']['assets']['omarchy-aarch64.db']=b'different selected DB'
-            self.assertRaisesRegex(ValueError,'selected RC database',boot.capture,argparse.Namespace(lane='rc',database_sha256=approved,output=Fixture.root/'different-selected-capture'),Fixture.keys.policy)
+            self.assertRaisesRegex(ValueError,'selected database',boot.capture,argparse.Namespace(lane='rc',database_sha256=approved,output=Fixture.root/'different-selected-capture'),Fixture.keys.policy)
             remote.releases['rc']['assets']['omarchy-aarch64.db']=selected
             boot.capture(argparse.Namespace(lane='rc',database_sha256=approved,output=capture),Fixture.keys.policy)
         finally:boot.GitHub=original

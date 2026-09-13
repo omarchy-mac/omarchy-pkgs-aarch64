@@ -325,6 +325,7 @@ depend = iwd
 depend = networkmanager
 depend = snapper
 depend = omarchy-keyring
+depend = omarchy-mac-keyring
 depend = ttf-jetbrains-mono-nerd-basic
 INFO
 ( cd "$work/mac-build/omarchy" \
@@ -333,12 +334,12 @@ INFO
 mkpkgany() { mkdir -p "$work/x-$1"; printf 'pkgname = %s\npkgver = 1-1\narch = any\n' "$1" > "$work/x-$1/.PKGINFO"
   ( cd "$work/x-$1" && tar -cf - .PKGINFO | xz > "$work/mac-extra/$1-1-1-any.pkg.tar.xz" ); }
 
-# declared and present -> all four stage
-mkpkgany omarchy-keyring; mkpkgany ttf-jetbrains-mono-nerd-basic
+# declared and present -> all five stage
+mkpkgany omarchy-mac-keyring; mkpkgany omarchy-keyring; mkpkgany ttf-jetbrains-mono-nerd-basic
 ( RELEASE_TAG=v4.0.2-1 SOURCE_DIR="$work/mac-source" PKGDIR="$work/mac-extra" STAGING_DIR="$work/mac-xstage" \
     bash scripts/omarchy-mac-release.sh verify ) >/dev/null 2>&1
 is "omarchy's dependency packages are published too" \
-  "$(find "$work/mac-xstage" -name '*.pkg.tar.*' | wc -l | tr -d ' ')" '4'
+  "$(find "$work/mac-xstage" -name '*.pkg.tar.*' | wc -l | tr -d ' ')" '5'
 
 # declared but missing -> refuse, rather than publish an uninstallable omarchy
 rm -f "$work/mac-extra/omarchy-keyring-1-1-any.pkg.tar.xz"

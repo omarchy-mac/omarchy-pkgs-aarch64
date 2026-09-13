@@ -35,6 +35,19 @@ def policy(path=POLICY):
     require(re.fullmatch('[a-f0-9]{64}', p['public_key_sha256']), 'Missing public key digest')
     return p
 
+def normalize_credentials(encoded, password):
+    require(isinstance(encoded, str) and isinstance(password, str), 'Protected signing credentials missing')
+    # Base64 commonly arrives wrapped by the export tool or GitHub secret input.
+    compact = re.sub(r'[ \t\r\n\f\v]', '', encoded)
+    if password.endswith('\r\n'):
+        password = password[:-2]
+    elif password.endswith('\n'):
+        password = password[:-1]
+    # Preserve significant spaces; only one terminal text-file newline is normalized.
+    require(compact and password, 'Protected signing credentials missing')
+    require('\n' not in password and '\r' not in password, 'Unsupported passphrase encoding')
+    return base64.b64decode(compact, validate=True), (password + '\n').encode()
+
 class Keyring:
     def __init__(self, public=PUBLIC, policy_path=POLICY, secret=False):
         self.public, self.policy = Path(public), policy(policy_path)
@@ -61,9 +74,7 @@ class Keyring:
                     require(os.environ.get(env) == self.policy[field], 'Protected signing fingerprint differs from reviewed policy')
                 encoded = os.environ.get('PACMAN_SIGNING_SUBKEY_B64', '')
                 password = os.environ.get('PACMAN_SIGNING_PASSPHRASE')
-                require(encoded and password, 'Protected signing credentials missing')
-                require('\n' not in password and '\r' not in password, 'Unsupported passphrase encoding')
-                raw = base64.b64decode(encoded, validate=True)
+                raw, normalized_password = normalize_credentials(encoded, password)
                 run(*self.gpg, '--import', data=raw)
                 del raw
                 records = run(*self.gpg, '--with-colons', '--list-secret-keys').stdout.decode().splitlines()
@@ -81,7 +92,7 @@ class Keyring:
                             usable.append(fields[9])
                         pending = None
                 require(usable == [self.policy['signing_subkey_fingerprint']], 'CI must contain exactly the approved usable signing subkey')
-                self.password = (password + '\n').encode()
+                self.password = normalized_password
         except BaseException:
             self.close()
             raise

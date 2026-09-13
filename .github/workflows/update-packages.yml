@@ -26,7 +26,7 @@ on:
         default: false
 
 permissions:
-  contents: write
+  contents: read
 
 # One mutable db on one rolling tag: two overlapping runs would clobber each
 # other's repo-add. Never cancel a run that may be mid-upload.
@@ -122,9 +122,11 @@ jobs:
     name: Publish to edge
     needs: [detect, build]
     # always(): publish whatever did build, even if a sibling package failed.
-    if: always() && needs.detect.outputs.has_updates == 'true'
+    if: always() && needs.detect.outputs.has_updates == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    environment: package-signing
+    environment: package-signing-edge
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -174,9 +176,10 @@ jobs:
         if: steps.staged.outputs.count != '0' && !inputs.dry_run
         env:
           GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           docker run --rm -v "$PWD:/w" -w /w \
-            -e GH_REPO \
+            -e GH_REPO -e GH_TOKEN -e PKGDIR=/w/.newdb/smoke-packages \
             "$ARCH_IMAGE_X86" bash -c \
             'bash scripts/container-bootstrap.sh >/dev/null && bash scripts/smoke-test.sh'
 

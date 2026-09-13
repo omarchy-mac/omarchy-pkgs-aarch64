@@ -31,15 +31,28 @@ def guard(path, reserve=0):
     require(shutil.disk_usage(path).free >= FLOOR + reserve, '3 GiB storage floor/reserve required')
 
 
-def validate(path, expected_manifest, expected_source, trust_policy=bundle.SIGNING_POLICY, signed=True):
+def temporary_root():
+    location = Path(os.environ.get('TMPDIR') or Path.home() / '.cache/omarchy-publisher/tmp')
+    parent = location
+    while not parent.exists():
+        parent = parent.parent
+    guard(parent)
+    location.mkdir(parents=True, exist_ok=True)
+    guard(location)
+    os.environ.update(TMPDIR=str(location), TMP=str(location), TEMP=str(location))
+    return location
+
+
+def validate(path, expected_manifest, expected_source, trust_policy=bundle.SIGNING_POLICY, signed=True, channel="rc"):
     require(re.fullmatch('[a-f0-9]{64}', expected_manifest), 'Exact manifest SHA256 required')
     require(re.fullmatch('[a-f0-9]{40}', expected_source), 'Exact source commit required')
     require(bundle.digest(path / 'manifest.json') == expected_manifest, 'Input manifest differs from approval')
     manifest = bundle.check(path, trust_policy)
     names = [p['name'] for p in manifest['packages']]
     inventory = [p['name'] for p in json.loads((ROOT / 'packages.json').read_text())['packages']]
-    require(len(names) == len(inventory) == 52 and set(names) == set(inventory), 'Complete exact 52-package inventory required')
-    require(manifest['channel'] == 'rc' and 'rc' in manifest['version'], 'Only an RC baseline is supported')
+    require(len(names) == len(inventory) and len(names) == len(set(names)) and set(names) == set(inventory), 'Complete exact configured package inventory required')
+    require(channel in ('rc', 'stable') and manifest['channel'] == channel, 'Baseline channel differs')
+    require(('rc' in manifest['version']) == (channel == 'rc'), 'Baseline version/channel differs')
     require(manifest['source']['commit'] == expected_source, 'Source differs from approved commit')
     if signed:
         require(manifest['signature_policy'] == bundle.STRICT_POLICY, 'Strict signed baseline required')
@@ -48,7 +61,7 @@ def validate(path, expected_manifest, expected_source, trust_policy=bundle.SIGNI
 
 def prepare(args):
     guard(args.output.parent)
-    manifest = validate(args.input, args.manifest_sha256, args.source_commit, args.trust_policy, signed=False)
+    manifest = validate(args.input, args.manifest_sha256, args.source_commit, args.trust_policy, signed=False, channel=getattr(args, "channel", "rc"))
     require(not args.output.exists(), 'Output already exists; preserve/reuse its exact signed artifact')
     # Conservatively reserve a full copy even when reflinks are available.
     reserve = sum(p.stat().st_size for p in args.input.rglob('*') if p.is_file())
@@ -62,7 +75,7 @@ def prepare(args):
         bundle.seal(argparse.Namespace(bundle=args.input, output=args.output,
                                       public_key=args.public_key, trust_policy=args.trust_policy))
     digest = bundle.digest(args.output / 'manifest.json')
-    validate(args.output, digest, args.source_commit, args.trust_policy)
+    validate(args.output, digest, args.source_commit, args.trust_policy, channel=getattr(args, "channel", "rc"))
     guard(args.output.parent)
     print(json.dumps({'bundle': str(args.output), 'manifest_sha256': digest,
                       'source_commit': args.source_commit, 'signature_policy': bundle.STRICT_POLICY}))
@@ -208,8 +221,12 @@ def preflight(release, expected, transport, allowed_db=(), obsolete=None):
         require(transport.read(release, name) == expected[name].sha256, f'Remote byte collision: {name}')
 
 
+def lane_release(transport, tag):
+    return transport.release(tag, require_prerelease=False) if tag == "edge" else transport.release(tag)
+
+
 def readback(tag, expected, transport, public=False, obsolete=None):
-    release = transport.release(tag)
+    release = lane_release(transport, tag)
     require(release is not None and set(expected) <= set(release['asset_map']) <= set(expected) | set(obsolete or {}), 'Incomplete/unexpected remote inventory')
     for name, artifact in expected.items():
         require(transport.read(release, name, public=public) == artifact.sha256, f'Readback failed: {name}')
@@ -244,9 +261,13 @@ def selection_guard(current, previous, target, transport, expected_rc, db_assets
                 f'Unrecognized interrupted selection: {name}')
 
 
-def publish_checked(args, manifest, transport, *, old_trust_transition=False):
+def publish_checked(args, manifest, transport, *, old_trust_transition=False, edge_conversion=False):
     """The caller has completed canonical package/bundle validation before this operation."""
-    require(args.lane == 'rc', 'RC is the only permitted destination')
+    require(args.lane == ('edge' if edge_conversion else 'rc'), 'Unexpected destination')
+    if edge_conversion:
+        require(not old_trust_transition and manifest['channel'] == 'stable' and 'rc' not in manifest['version'], 'Edge conversion requires a final stable inventory')
+        require(getattr(args, 'accept_client_trust_bootstrap', False), 'Explicit completed client trust bootstrap acceptance required')
+        require(args.expected_rc_db != 'absent', 'Edge conversion requires an existing approved database')
     require(re.fullmatch('[a-f0-9]{40}', args.publisher_commit), 'Exact publisher commit required')
     require(args.expected_rc_db == 'absent' or re.fullmatch('[a-f0-9]{64}', args.expected_rc_db), 'Explicit previous RC database hash or absent required')
     require(not args.execute or args.accept_mutable_alias_window, 'Execution requires explicit mutable DB/signature window acceptance')
@@ -261,12 +282,21 @@ def publish_checked(args, manifest, transport, *, old_trust_transition=False):
     digest = args.manifest_sha256
     require(bundle.digest(args.bundle / 'manifest.json') == digest, 'Manifest changed after validation')
     target = manifest['files'][f'assets/{DB}.db']
-    prefix = 'rc4-old-trust' if old_trust_transition else 'rc-baseline'
+    prefix = 'edge-signed-baseline' if edge_conversion else ('rc4-old-trust' if old_trust_transition else 'rc-baseline')
     snapshot = f'{prefix}-{manifest["version"]}-{digest[:16]}'
     expected_snapshot = assets_for(args.bundle, manifest, digest)
     expected_rc = {p.name: expected_snapshot[p.name] for p in (args.bundle / 'assets').iterdir()}
     db_assets = {name for name in expected_rc if name in DATABASES or name.removesuffix('.sig') in DATABASES}
-    current = transport.release('rc')
+    if edge_conversion:
+        marker = args.scratch / 'edge-signing.json'
+        marker.write_text(json.dumps({'schema': 1, 'manifest_sha256': digest, 'target_database_sha256': target,
+                                      'snapshot': snapshot, 'signature_policy': bundle.STRICT_POLICY}, sort_keys=True) + '\n')
+        marker_asset = Asset(marker, bundle.digest(marker), marker.stat().st_size)
+        expected_snapshot[marker.name] = marker_asset
+        expected_rc = {marker.name: marker_asset, **expected_rc}
+    current = lane_release(transport, args.lane)
+    if edge_conversion:
+        require(current is not None and not current['draft'], 'Published existing edge baseline required')
     prior_snapshot = transport.release(snapshot)
     if old_trust_transition and current is not None:
         require(not any(name in current['asset_map'] for name in (f'{DB}.db.sig', f'{DB}.db.tar.zst.sig')),
@@ -274,7 +304,7 @@ def publish_checked(args, manifest, transport, *, old_trust_transition=False):
     require(transport.tag_commit(snapshot) in (None, args.publisher_commit), 'Snapshot tag commit differs')
     require(prior_snapshot is None or transport.tag_commit(snapshot) == args.publisher_commit, 'Snapshot tag missing or differs')
     if current is None:
-        require(transport.tag_commit('rc') in (None, args.publisher_commit), 'Orphan RC tag differs')
+        require(transport.tag_commit(args.lane) in (None, args.publisher_commit), 'Orphan RC tag differs')
     obsolete = {}
     if args.expected_rc_db != 'absent':
         previous = args.scratch / 'previous-rc.db'
@@ -286,6 +316,13 @@ def publish_checked(args, manifest, transport, *, old_trust_transition=False):
             transport.read(prior_snapshot, 'previous-rc.db', destination=previous)
         require(bundle.digest(previous) == args.expected_rc_db, 'Retained previous database differs from approval')
         rows = bundle.database(previous)
+        if edge_conversion:
+            candidate = {p['name']: (args.bundle / 'assets' / p['filename'], p) for p in manifest['packages']}
+            bundle.validate_inventory(rows, candidate)
+            require('omarchy-mac-keyring' in candidate, 'Approved edge lacks fork trust bootstrap package')
+            verify_initial_keyring(candidate['omarchy-mac-keyring'][0], args.trust_policy)
+            if selected(current, transport) == args.expected_rc_db:
+                require(transport.read(current, f'{DB}.db', public=True) == args.expected_rc_db, 'Public selected edge database differs')
         if old_trust_transition:
             for name in ('omarchy', 'omarchy-settings'):
                 require(name in rows and int(bundle.run('vercmp', bundle.field(rows[name], 'VERSION'), manifest['version']).strip()) <= 0,
@@ -306,8 +343,8 @@ def publish_checked(args, manifest, transport, *, old_trust_transition=False):
     preflight(prior_snapshot, expected_snapshot, transport)
     selection_guard(current, args.expected_rc_db, target, transport, expected_rc, db_assets,
                     snapshot, expected_snapshot, args.publisher_commit)
-    plan = {'mode': 'execute' if args.execute else 'dry-run', 'repo': REPO, 'lane': 'rc',
-            'snapshot_tag': snapshot, 'manifest_sha256': digest, 'packages': 52,
+    plan = {'mode': 'execute' if args.execute else 'dry-run', 'repo': REPO, 'lane': args.lane,
+            'snapshot_tag': snapshot, 'manifest_sha256': digest, 'packages': len(manifest['packages']),
             'previous_rc_db': args.expected_rc_db, 'target_rc_db': target,
             'mutable_alias_risk': ('DB aliases are separate assets; interruption can temporarily remove the selected DB' if old_trust_transition
                                    else 'DB and signature are separate assets; clients can fail closed during replacement'),
@@ -316,7 +353,7 @@ def publish_checked(args, manifest, transport, *, old_trust_transition=False):
             'final_old_trust_transition': old_trust_transition}
     if not args.execute:
         return plan
-    label = 'FINAL unsigned old-trust RC4 transition' if old_trust_transition else 'Signed RC baseline'
+    label = 'FINAL unsigned old-trust RC4 transition' if old_trust_transition else ('Signed edge conversion' if edge_conversion else 'Signed RC baseline')
     body = f'{label} {manifest["version"]}.\n\nManifest SHA256: {digest}\nSource: {manifest["source"]["commit"]}\nPublisher: {args.publisher_commit}\n\nPackage integrity verified; this does not assert full installer or physical-hardware qualification.\n'
     guard(args.scratch, sum(artifact.size for artifact in expected_snapshot.values()))
     with tempfile.TemporaryDirectory(prefix='bootstrap-uploads-', dir=args.scratch) as temporary:
@@ -339,48 +376,48 @@ def publish_checked(args, manifest, transport, *, old_trust_transition=False):
         readback(snapshot, expected_snapshot, transport, public=True)
         require(transport.tag_commit(snapshot) == args.publisher_commit, 'Public snapshot tag differs')
         print(json.dumps({'phase': 'immutable_snapshot_verified_public', 'snapshot': snapshot}), flush=True)
-        current = transport.release('rc')
+        current = lane_release(transport, args.lane)
         selection_guard(current, args.expected_rc_db, target, transport, expected_rc, db_assets,
                         snapshot, expected_snapshot, args.publisher_commit)
         preflight(current, expected_rc, transport, db_assets, obsolete)
         if current is None:
-            transport.create('rc', args.publisher_commit, body)
-            current = transport.release('rc')
+            transport.create(args.lane, args.publisher_commit, body)
+            current = lane_release(transport, args.lane)
         for name, artifact in expected_rc.items():
             if name not in db_assets and name not in current['asset_map']:
                 require(bundle.digest(upload / name) == artifact.sha256, 'Upload staging changed')
-                transport.upload('rc', upload / name)
+                transport.upload(args.lane, upload / name)
         # Verify every package/signature, then recheck the selection immediately
         # before replacing DB aliases under the shared workflow writer lock.
-        current = transport.release('rc')
+        current = lane_release(transport, args.lane)
         preflight(current, expected_rc, transport, db_assets, obsolete)
         require(set(expected_rc) - db_assets <= set(current['asset_map']), 'Missing package/signature after upload')
         selection_guard(current, args.expected_rc_db, target, transport, expected_rc, db_assets,
                         snapshot, expected_snapshot, args.publisher_commit)
-        print(json.dumps({'phase': 'rc_packages_and_signatures_verified'}), flush=True)
+        print(json.dumps({'phase': args.lane + '_packages_and_signatures_verified'}), flush=True)
         for name in DATABASES:
             for asset in ([name + '.sig'] if name + '.sig' in expected_rc else []) + [name]:
                 artifact = expected_rc[asset]
                 path = upload / asset
                 require(bundle.digest(path) == artifact.sha256, 'Database staging changed')
-                current = transport.release('rc')
+                current = lane_release(transport, args.lane)
                 if asset in current['asset_map'] and transport.read(current, asset) == artifact.sha256:
                     continue
-                transport.upload('rc', path, clobber=asset in current['asset_map'])
-        current = readback('rc', expected_rc, transport, obsolete=obsolete)
+                transport.upload(args.lane, path, clobber=asset in current['asset_map'])
+        current = readback(args.lane, expected_rc, transport, obsolete=obsolete)
         if current['draft']:
-            transport.expose('rc')
-        readback('rc', expected_rc, transport, public=True, obsolete=obsolete)
-        print(json.dumps({'phase': 'rc_database_and_full_inventory_verified_public'}), flush=True)
+            transport.expose(args.lane)
+        readback(args.lane, expected_rc, transport, public=True, obsolete=obsolete)
+        print(json.dumps({'phase': args.lane + '_database_and_full_inventory_verified_public'}), flush=True)
         for name in sorted(obsolete):
-            current = transport.release('rc')
+            current = lane_release(transport, args.lane)
             require(selected(current, transport) == target, 'RC changed before obsolete cleanup')
             if name in current['asset_map']:
                 if obsolete[name] is not None:
                     require(transport.read(current, name) == obsolete[name], 'Obsolete archive changed; preserving it')
-                transport.delete('rc', name)
-        readback('rc', expected_rc, transport, public=True)
-    plan['result'] = 'PASS complete snapshot and RC public readback'
+                transport.delete(args.lane, name)
+        readback(args.lane, expected_rc, transport, public=True)
+    plan['result'] = 'PASS complete snapshot and lane public readback'
     if old_trust_transition:
         plan['next_gate'] = 'Existing clients must install/verify the fork trust anchor before separately approved strict signed bootstrap; no automatic transition'
     return plan
@@ -397,10 +434,9 @@ def capture(args, trust_policy=bundle.SIGNING_POLICY):
     transport = GitHub(args.output)
     release = transport.release(lane, require_prerelease=lane == 'rc')
     require(release is not None, 'Existing approved baseline is missing')
-    if lane == 'rc':
-        require(not release['draft'], 'RC baseline must already be published')
-        require(f'{DB}.db' in release['asset_map'] and transport.read(release, f'{DB}.db', public=True) == args.database_sha256,
-                'Published selected RC database differs from approved baseline')
+    require(not release['draft'], 'Baseline must already be published')
+    require(f'{DB}.db' in release['asset_map'] and transport.read(release, f'{DB}.db', public=True) == args.database_sha256,
+            'Published selected database differs from approved baseline')
     path = args.output / f'{DB}.db.tar.zst'
     transport.read(release, path.name, destination=path)
     require(bundle.digest(path) == args.database_sha256, 'Baseline database changed from approved capture')
@@ -427,21 +463,29 @@ def capture(args, trust_policy=bundle.SIGNING_POLICY):
 
 
 def functional_payload(path):
-    # Only reproducibility metadata is excluded. File kinds/content/modes/
-    # ownership/links and functional .PKGINFO fields must remain identical.
+    # libarchive handles zstd/xz irrespective of the runner Python version.
+    # PACKAGER, build-date, MTREE and timestamps are reproducibility metadata;
+    # file kinds, content, links, modes, ownership and other PKGINFO fields match.
     result = {}
-    with tarfile.open(path, 'r:*') as archive:
-        for item in archive.getmembers():
-            name = item.name.removeprefix('./').rstrip('/')
-            if not name or name in {'.BUILDINFO', '.MTREE'}:
-                continue
-            require(name not in result, 'Duplicate package payload entry')
-            content = archive.extractfile(item).read() if item.isfile() else b''
-            if name == '.PKGINFO':
-                content = b'\n'.join(line for line in content.splitlines() if line and not line.startswith((b'builddate = ', b'#')))
-            result[name] = (item.type, item.mode, item.uid, item.gid, item.linkname, hashlib.sha256(content).hexdigest())
+    process = subprocess.Popen(['bsdtar', '-cf', '-', '--format=pax', '@' + str(path)],
+                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    try:
+        with tarfile.open(fileobj=process.stdout, mode='r|') as archive:
+            for item in archive:
+                name = item.name.removeprefix('./').rstrip('/')
+                if not name or name in {'.BUILDINFO', '.MTREE'}:
+                    continue
+                require(name not in result, 'Duplicate package payload entry')
+                content = archive.extractfile(item).read() if item.isfile() else b''
+                if name == '.PKGINFO':
+                    content = b'\n'.join(line for line in content.splitlines() if line and not line.startswith((b'builddate = ', b'packager = ', b'#')))
+                result[name] = (item.type, item.mode, item.uid, item.gid, item.linkname, hashlib.sha256(content).hexdigest())
+        require(process.wait() == 0, 'libarchive could not read package payload')
+    finally:
+        process.stdout.close()
+        if process.poll() is None:
+            process.kill(); process.wait()
     return result
-
 
 
 def verify_initial_keyring(path, trust_policy=bundle.SIGNING_POLICY):
@@ -455,6 +499,23 @@ def verify_initial_keyring(path, trust_policy=bundle.SIGNING_POLICY):
     require(revoked == b'', 'Initial bootstrap revocation file must be present and empty')
 
 
+def reuse_published_extra(incoming, published, database, trust_policy=bundle.SIGNING_POLICY):
+    incoming, published = Path(incoming), Path(published)
+    require(incoming.name == published.name, 'Extra reuse requires the same immutable filename')
+    record = bundle.package_record(incoming)
+    require(record['name'] in {'omarchy-keyring', 'omarchy-mac-keyring', 'ttf-jetbrains-mono-nerd-basic'}, 'Ordinary package filename collision')
+    rows = bundle.database(database)
+    require(record['name'] in rows, 'Published extra is not in the approved current database')
+    bundle.validate_inventory({record['name']: rows[record['name']]},
+                              {record['name']: (published, bundle.package_record(published))})
+    require(functional_payload(incoming) == functional_payload(published), 'Published extra functional payload differs; bump version/pkgrel')
+    if record['name'] == 'omarchy-mac-keyring':
+        verify_initial_keyring(incoming, trust_policy)
+        verify_initial_keyring(published, trust_policy)
+    bundle.copy_file(published, incoming)
+    require(bundle.digest(incoming) == bundle.digest(published), 'Published extra reuse readback differs')
+
+
 def stage_input(args, trust_policy=bundle.SIGNING_POLICY):
     require(not args.candidates.exists(), 'Candidate directory must be new')
     guard(args.candidates.parent)
@@ -464,12 +525,19 @@ def stage_input(args, trust_policy=bundle.SIGNING_POLICY):
     release = (args.source / 'version').read_text().strip()
     capture_evidence = json.loads((args.capture / 'capture.json').read_text())
     require(capture_evidence['database_sha256'] == bundle.digest(args.capture / f'{DB}.db.tar.zst'), 'Capture provenance database differs')
+    conversion = getattr(args, 'edge_conversion', False)
+    if conversion:
+        require(capture_evidence['lane'] == 'edge' and 'rc' not in release and 'omarchy-mac-keyring' in baseline, 'Conversion producer requires final edge baseline with trust anchor')
     if release == '4.0.3rc5':
         require(capture_evidence['lane'] == 'rc' and 'omarchy-mac-keyring' in baseline, 'RC5 requires the approved published RC4 baseline and trust anchor')
         require(all(re.fullmatch(r'4\.0\.3rc4-[1-9][0-9]*', baseline[name][1]['version']) for name in ('omarchy', 'omarchy-settings')),
                 'RC5 initial signing baseline must be RC4')
     args.candidates.mkdir()
     for name, (path, record) in built.items():
+        if conversion:
+            require(name in baseline and path.name == baseline[name][0].name, 'Conversion cannot change package identity')
+            require(functional_payload(path) == functional_payload(baseline[name][0]), 'Conversion rebuilt payload differs from published package')
+            path = baseline[name][0]
         if name == 'omarchy-mac-keyring':
             verify_initial_keyring(path, trust_policy)
             if name in baseline and path.name == baseline[name][0].name:
@@ -490,13 +558,17 @@ def stage_input(args, trust_policy=bundle.SIGNING_POLICY):
                                     source=args.source, source_git=None, source_commit=args.source_commit,
                                     release=release, output=args.output))
     digest = bundle.digest(args.output / 'manifest.json')
-    validate(args.output, digest, args.source_commit, signed=False)
+    manifest = validate(args.output, digest, args.source_commit, trust_policy, signed=False, channel='stable' if conversion else 'rc')
     print(json.dumps({'manifest_sha256': digest, 'source_commit': args.source_commit,
-                      'packages': 52, 'qualification': 'build/capture/integrity only; runtime approval is separate'}))
+                      'packages': len(manifest['packages']), 'qualification': 'build/capture/integrity only; runtime approval is separate'}))
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
+    reuse_parser = commands.add_parser('reuse-extra')
+    reuse_parser.add_argument('--incoming', type=Path, required=True)
+    reuse_parser.add_argument('--published', type=Path, required=True)
+    reuse_parser.add_argument('--database', type=Path, required=True)
     capture_parser = commands.add_parser('capture')
     capture_parser.add_argument('--database-sha256', required=True)
     capture_parser.add_argument('--lane', choices=['edge', 'rc'], default='edge')
@@ -505,6 +577,7 @@ def main():
     for option in ['capture', 'built', 'candidates', 'source', 'output']:
         stage_parser.add_argument('--' + option, type=Path, required=True)
     stage_parser.add_argument('--source-commit', required=True)
+    stage_parser.add_argument('--edge-conversion', action='store_true')
     prepare_parser = commands.add_parser('prepare')
     prepare_parser.add_argument('--input', type=Path, required=True)
     prepare_parser.add_argument('--output', type=Path, required=True)
@@ -521,7 +594,9 @@ def main():
         sub.add_argument('--trust-policy', type=Path, default=bundle.SIGNING_POLICY)
     prepare_parser.add_argument('--public-key', type=Path, default=bundle.signing.PUBLIC)
     args = parser.parse_args()
-    if args.command == 'capture':
+    if args.command == 'reuse-extra':
+        reuse_published_extra(args.incoming, args.published, args.database)
+    elif args.command == 'capture':
         capture(args)
     elif args.command == 'stage-input':
         stage_input(args)
@@ -529,7 +604,7 @@ def main():
         prepare(args)
     else:
         manifest = validate(args.bundle, args.manifest_sha256, args.source_commit, args.trust_policy)
-        with tempfile.TemporaryDirectory(prefix='rc-bootstrap-', dir=os.environ.get('TMPDIR')) as temp:
+        with tempfile.TemporaryDirectory(prefix='rc-bootstrap-', dir=temporary_root()) as temp:
             args.scratch = Path(temp)
             guard(args.scratch)
             print(json.dumps(publish_checked(args, manifest, GitHub(args.scratch)), indent=2))

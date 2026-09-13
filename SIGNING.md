@@ -5,13 +5,25 @@ The fork has a separate `omarchy-mac-keyring`; it does not replace upstream
 and primary/subkey fingerprints are in `pkgbuilds/omarchy-mac-keyring/`.
 Only public material belongs in Git. The primary remains offline.
 
-Both publishing jobs use the `package-signing` GitHub Environment. Restrict this
-environment to reviewed publishing branches and required approval. Configure:
+Configure two separate GitHub Environments (YAML does not configure these):
 
-- Secrets: `PACMAN_SIGNING_SUBKEY_B64`, `PACMAN_SIGNING_PASSPHRASE`.
-- Variables: `PACMAN_SIGNING_PRIMARY_FPR`, `PACMAN_SIGNING_SUBKEY_FPR`.
+- `package-signing-edge`: deployment branch `main` only, **no required reviewer**.
+  Scheduled rolling updates must remain unattended. Only the publishing job
+  receives its secrets; build jobs and no-op runs do not enter this environment.
+- `package-signing`: reviewed publishing branches and required approval for
+  manual RC publication, artifact production and rare full edge conversion.
 
-The base64 secret must contain only the protected signing subkey with a dummy
+Both signing environments use secrets `PACMAN_SIGNING_SUBKEY_B64` and
+`PACMAN_SIGNING_PASSPHRASE`, and variables `PACMAN_SIGNING_PRIMARY_FPR` and
+`PACMAN_SIGNING_SUBKEY_FPR`. The read-only producer receives neither secret.
+
+ASCII whitespace and line wrapping are removed from the base64 input before
+strict decoding. One trailing LF or CRLF is removed from the passphrase; internal
+newlines and empty values are rejected, while significant spaces are preserved.
+Malformed base64 was already rejected through `ValueError`; normalization adds
+copy/paste compatibility without relaxing decoded key checks.
+
+The decoded secret must contain only the protected signing subkey with a dummy
 primary. The helper refuses a usable primary, additional usable secret subkeys,
 missing credentials, mismatched public-key hashes/fingerprints, and expired,
 revoked or wrong-signer signatures. Its private GnuPG directory is ephemeral,
@@ -66,9 +78,55 @@ stop; desktop integration is a separate requirement.
 Retain the matched prior signed snapshot and use exact retries/readback. Do not
 claim atomic database/signature replacement. Automated legacy edge publishing
 retains this compatibility behavior and the shared `edge-publish` writer lock.
-It now requires a signed existing baseline: bootstrap that baseline explicitly
-before enabling scheduled jobs. Archives and signatures upload before DB assets;
-GC keeps signatures for every retained current archive.
+Before conversion, an entirely unsigned approved edge database selects the
+legacy unsigned publisher and requires no signer. A signing marker, any detached
+signature asset, or embedded package signature permanently selects strict
+verification. Missing or invalid signatures then stop the job; there is no
+unsigned fallback. Updating PR/main code alone does not convert edge. No-op
+detection still skips publication; previously it was update runs that would
+have waited for review or failed on the unsigned baseline.
+
+First run **Prepare complete baseline artifact** with `edge_conversion=true`,
+an exact final source commit and the approved edge DB hash. Its no-secret build
+compares functional payloads for all five rebuilt inputs and reuses the exact
+published archives; changed package identity/payload fails. This emits the
+complete input artifact consumed by conversion.
+
+The manual **Convert approved edge inventory to signing** workflow uses
+`package-signing` and the shared `edge-publish` writer lock. It requires a retained
+complete **final stable** bundle matching every archive/version/hash in the
+approved currently published edge database. RC bundles are refused. The approved
+baseline must already include the exact fork keyring (public certificate, trusted
+fingerprint and empty initial revoked file), and the operator must explicitly
+confirm that clients completed trust bootstrap. Package presence alone does not
+prove that clients trust it. If no exact matching retained bundle exists, stop
+and prepare/review one; rebuilding different bytes under the same filename is
+not an acceptable conversion input.
+
+The workflow defaults to dry-run, seals and independently verifies the bundle,
+and retains its exact signed artifact before any mutation. Publication first
+creates and publicly verifies the immutable signed snapshot, then adds permanent
+`edge-signing.json` before any edge signature or database change. All package
+bytes remain unchanged. A partial conversion leaves strict mode selected and
+requires retry with that exact retained signed artifact and original approved DB
+hash. The marker must never be removed to regain unsigned publishing. Database
+aliases/signatures still have a transient fail-closed selection window. Converted
+edge resumes unattended signed updates; GC preserves current archive signatures.
+An interrupted rolling archive upload can regenerate only a missing signature
+for hash-identical bytes, reuse an existing valid signature, and reject collisions.
+For an unchanged filename, the three desktop-owned extras may reuse the exact
+published archive after functional comparison; the fork keyring must additionally
+match the approved certificate/trust/revocation payload. Changed functional data
+still requires a version/pkgrel bump. Incoming build artifacts remain unchanged;
+workflow smoke uses the normalized actual published archives under
+`DB_OUT/smoke-packages`.
+Later rolling database/signature interruption may require manual recovery of a
+matching signed database; do not treat arbitrary failures as a downgrade signal.
+
+Smoke checks still resolve the whole database and use HEAD requests for every
+package URL. Publisher jobs reuse their hash-matched changed archives for native
+verification; standalone checks fetch the smallest package. Set `SMOKE_FULL=1`
+for an explicit complete download, or `SMOKE_PACKAGES=name,...` for a subset.
 
 Rotation/revocation requires reviewed keyring/public-policy updates and a newly
 verified signed inventory. Current verification intentionally authorizes one
@@ -85,7 +143,7 @@ A PR branch push alone does not activate them; default-branch deployment remains
 a separately authorized step. All use the protected `package-signing` Environment. The producer has read-only
 repository permission and receives no signing secret:
 
-1. Run **Prepare complete RC baseline artifact** with an approved exact desktop
+1. Run **Prepare complete baseline artifact** with an approved exact desktop
    source commit, selected baseline lane and its reviewed database SHA256. Select
    `edge` for initial RC4 preparation; select the published `rc` RC4 baseline for
    RC5. RC5 staging rejects an edge capture. It captures every
@@ -95,9 +153,9 @@ repository permission and receives no signing secret:
    captured RC4 baseline after matching its public key, trust fingerprint, empty
    revocation file and functional payload; any changed payload requires an explicit
    version/pkgrel bump. This preserves archive identity when the signed stage adds its detached
-   signature. Comparison excludes build-date/comments, `.BUILDINFO`, `.MTREE` and timestamps
-   only. File contents, types, links, modes and ownership must agree. It stages
-   the complete 52-name `packages.json` inventory and uploads
+   signature. Comparison uses `bsdtar` for compression portability and excludes only
+   build-date/packager/comments, `.BUILDINFO`, `.MTREE` and timestamps. File contents, types, links, modes and ownership must agree. It stages
+   the complete configured `packages.json` inventory and uploads
    `unsigned-rc-baseline-RUN-ATTEMPT` plus logs containing the manifest digest.
    A changed baseline, missing package or functional reuse mismatch stops it.
    This proves build/capture/integrity, not runtime qualification; review and test
@@ -159,3 +217,46 @@ not described as atomic. All other writers must honor the shared `edge-publish`
 concurrency group or be excluded for this operation.
 
 No real workflow execution or release publication is performed by the test suite.
+
+## Temporary storage and producer exclusion
+
+Shell entrypoints validate `TMPDIR` with `findmnt`, export `TMP`/`TEMP` to the
+same disk-backed location, and reject tmpfs/ramfs. If unset, the default is
+`$XDG_CACHE_HOME/omarchy-publisher/tmp` (or `$HOME/.cache/...`). Workflows verify
+runner storage; tests bind a verified disk directory to short paths for GnuPG
+sockets. Remove only task-owned scratch after evidence is retained.
+
+The artifact producer has its own non-cancelling `rc-baseline-producer` lock.
+It does not hold the live writer lock while awaiting approval or compiling;
+exact captured database hashes and publication preflight detect baseline drift.
+The two rolling publishers and every alias-changing manual workflow share
+`edge-publish`, also without cancellation.
+
+## Signing subkey rotation runbook
+
+The current signing subkey expires **2027-09-13T16:10:07Z**. Begin a reviewed
+rotation well before that instant:
+
+1. Verify expiry/fingerprints from the public certificate and retain the current
+   signed inventory, keyring and policy. Keep the primary offline.
+2. On the offline owner-controlled system, add the replacement signing subkey,
+   export only the protected subkey with a dummy primary, and prepare updated
+   public certificate/keyring with a new version/pkgrel. Never put secret material
+   in Git, logs, command-line arguments or RAM-backed temporary files.
+3. Deliver the new public keyring while the old trusted signer is still valid.
+   Require evidence that target clients received the new trust before changing
+   the publisher signer. Preserve overlap and recovery access; revoke a compromised
+   signer through the reviewed public revocation/keyring delivery process.
+4. Review a migration supporting the overlap/complete signed inventory and
+   immutable signature filenames before changing Environment fingerprints.
+   Current verification allows one exact active primary/subkey pair; simply
+   rotating variables would reject the old baseline. The initial edge conversion
+   is deliberately **not** a general rotation implementation and must not overwrite
+   an existing signature with different bytes.
+5. Independently verify the new signed inventory and client acceptance, then
+   retire the old signer through the reviewed migration. If a gate fails, stop
+   and retain the last valid matched inventory; never disable verification.
+
+These are operator gates, not evidence that rotation or Environment configuration
+has already been performed. Production signing and client bootstrap remain
+separately authorized operations.

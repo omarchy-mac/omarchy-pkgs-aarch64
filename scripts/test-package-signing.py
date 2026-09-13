@@ -77,6 +77,21 @@ class SigningTests(unittest.TestCase):
         directory=self.root/'orphan';directory.mkdir();(directory/'test.pkg.tar.xz').write_bytes(b'archive');(directory/'lost.pkg.tar.xz.sig').write_bytes(b'sig')
         with self.assertRaises(ValueError):s.packages(directory)
 
+    def test_06b_normalize_credentials(self):
+        encoded = os.environ['PACMAN_SIGNING_SUBKEY_B64']
+        wrapped = '\r\n'.join(encoded[i:i+64] for i in range(0, len(encoded), 64)) + '\n'
+        old = {name: os.environ[name] for name in ('PACMAN_SIGNING_SUBKEY_B64', 'PACMAN_SIGNING_PASSPHRASE')}
+        try:
+            os.environ['PACMAN_SIGNING_SUBKEY_B64'] = wrapped
+            for ending in ('\n', '\r\n'):
+                os.environ['PACMAN_SIGNING_PASSPHRASE'] = 'fixture secret' + ending
+                ring = self.ring(True); ring.close()
+        finally:
+            os.environ.update(old)
+        self.assertEqual(s.normalize_credentials(' YQ== \n', ' space ')[1], b' space \n')
+        for key, password in [('not$base64', 'valid'), ('YQ==', ''), ('YQ==', 'a\nb'), ('YQ==', 'a\n\n'), ('', 'valid')]:
+            self.assertRaises(ValueError, s.normalize_credentials, key, password)
+
     def test_07_other_subkey_rejected(self):
         self.run_gpg('--quick-add-key',self.primary,'ed25519','sign','1d')
         other=self.fingerprints()[-1]

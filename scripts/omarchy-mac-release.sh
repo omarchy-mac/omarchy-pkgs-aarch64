@@ -195,7 +195,7 @@ verify() {
   # hold is that they are the depends omarchy names, so an omarchy that stops
   # requiring one stops publishing it.
   local extras=() extra extra_pkg extra_arch
-  for extra in omarchy-keyring ttf-jetbrains-mono-nerd-basic; do
+  for extra in omarchy-keyring omarchy-mac-keyring ttf-jetbrains-mono-nerd-basic; do
     grep -Fxq "$extra" <<<"$omarchy_depends" || continue
     extra_pkg="$(find_package "$PKGDIR" "$extra")"
     extra_arch="$(pkginfo_field "$extra_pkg" arch)"

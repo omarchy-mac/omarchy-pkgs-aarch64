@@ -15,6 +15,7 @@ spec.loader.exec_module(boot)
 
 def validate(args, trust_policy=boot.bundle.SIGNING_POLICY):
     manifest = boot.validate(args.bundle, args.manifest_sha256, args.source_commit, trust_policy, signed=False)
+    boot.require(len(manifest['packages']) == 52, 'The one-shot RC4 transition requires its exact 52-package inventory')
     boot.require(boot.re.fullmatch(r'4\.0\.3rc4-[1-9][0-9]*', manifest['version']), 'Only the prepared 4.0.3rc4 bundle is permitted')
     boot.require(manifest['signature_policy'] == 'optional-existing-signatures; no signer authority asserted',
                  'Strict/signed manifests must use the signed bootstrap')
@@ -43,7 +44,7 @@ def main():
     parser.add_argument('--accept-mutable-alias-window', action='store_true')
     args = parser.parse_args()
     manifest = validate(args)
-    with tempfile.TemporaryDirectory(prefix='rc4-old-trust-', dir=os.environ.get('TMPDIR')) as temporary:
+    with tempfile.TemporaryDirectory(prefix='rc4-old-trust-', dir=boot.temporary_root()) as temporary:
         args.scratch = Path(temporary)
         boot.guard(args.scratch)
         print(json.dumps(boot.publish_checked(args, manifest, boot.GitHub(args.scratch), old_trust_transition=True), indent=2))

@@ -19,7 +19,7 @@ on:
         default: false
 
 permissions:
-  contents: write
+  contents: read
 
 # Shared with update-packages.yml because both workflows replace the same
 # mutable database. Never cancel a job that may already be uploading assets.
@@ -156,9 +156,11 @@ jobs:
   publish:
     name: Publish package pair to edge
     needs: [detect, build]
-    if: needs.detect.outputs.has_update == 'true'
+    if: needs.detect.outputs.has_update == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    environment: package-signing
+    environment: package-signing-edge
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -193,9 +195,10 @@ jobs:
         if: ${{ !inputs.dry_run }}
         env:
           GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           docker run --rm -v "$PWD:/w" -w /w \
-            -e GH_REPO "$ARCH_IMAGE_X86" bash -c \
+            -e GH_REPO -e GH_TOKEN -e PKGDIR=/w/.newdb/smoke-packages "$ARCH_IMAGE_X86" bash -c \
             'bash scripts/container-bootstrap.sh >/dev/null && bash scripts/smoke-test.sh'
 
       - name: Sync the README version table

@@ -7,6 +7,16 @@ log()  { printf '\033[1;34m==>\033[0m %s\n' "$*" >&2; }
 warn() { printf '\033[1;33m==> WARNING:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m==> ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
+# mktemp and child tools inherit one explicitly verified disk-backed location.
+ensure_disk_tmp() {
+  local candidate=${TMPDIR:-${XDG_CACHE_HOME:-$HOME/.cache}/omarchy-publisher/tmp} filesystem
+  mkdir -p -- "$candidate" || die "cannot create temporary storage"
+  filesystem=$(findmnt -n -o FSTYPE -T "$candidate") || die "cannot identify temporary storage"
+  [[ -n $filesystem && $filesystem != tmpfs && $filesystem != ramfs ]] || die "temporary storage must be disk-backed"
+  export TMPDIR="$candidate" TMP="$candidate" TEMP="$candidate"
+}
+ensure_disk_tmp
+
 manifest() { jq -r "$1" "$MANIFEST"; }
 
 DB_NAME="$(manifest '.repo.db')"
