@@ -39,7 +39,9 @@ small, checked packaging patch described below. Packages come from four places:
   ARM. `cursor-bin` is the vendor linux-arm64 AppImage with bundled Electron
   under `/opt/cursor-bin`; the omarchy-pkgs recipe is x86_64-only. `grok-bot`
   repacks the vendor linux-arm64 `.deb` that the x86_64-only omarchy-pkgs
-  recipe never reaches for. `avd-fw` and `libva-v4l2_request-avd` are in no repository at all,
+  recipe never reaches for. `zed` is the vendor linux aarch64 release; Arch's `zed`
+  is x86_64-only and the Omarchy installer asks for that exact name.
+  `avd-fw` and `libva-v4l2_request-avd` are in no repository at all,
   and together turn on hardware video decode on Apple Silicon.
 
 ## Packages
@@ -83,6 +85,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `omarchy-settings` | 4.0.2-2 | Apple Silicon system and user defaults |
 | `omarchy-webapp-theme` | 0.3.6-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
 | `omawrite` | 0.5.0-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
+| `omazed` | 2.1.2-1 | Live Omarchy theme sync for Zed |
 | `openai-codex-desktop` | 26.908.40834-1 | ChatGPT desktop app with Codex |
 | `pinta` | 3.1.2-1 | Simple image editor |
 | `tensaku` | 0.29.0-1 | Screenshot annotation for Wayland |
@@ -95,6 +98,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `xdg-terminal-exec` | 0.14.3-1 | Launch desktop apps with `Terminal=true` |
 | `yaru-icon-theme` | 26.04.5.1ubuntu-1 | Yaru default Ubuntu icon theme |
 | `yay` | 13.0.1-1 | Pacman wrapper and AUR helper |
+| `zed` | 1.19.2-1 | Zed editor (vendor linux aarch64 release) |
 
 ## Usage
 
@@ -140,8 +144,8 @@ The packages differ only in where they can be built:
 
 | Group | Count | Automated |
 |-------|-------|-----------|
-| `any` — `arch=('any')`, architecture-independent | 8 | yes |
-| `repack` — ships a vendor-prebuilt ARM binary | 19 | yes |
+| `any` — `arch=('any')`, architecture-independent | 9 | yes |
+| `repack` — ships a vendor-prebuilt ARM binary | 20 | yes |
 | `compile` — built from source | 20 | yes |
 
 Two packages stay deliberately excluded from that generic matrix. `omarchy`
@@ -228,6 +232,19 @@ is a direct dependency of the binary that nothing else in the depends pulls
 in. `StartupWMClass` matches the vendor entry, `grok-bot`, not upstream's
 `Grok Bot`.
 
+`zed` is named `zed`, not `zed-bin`, because `omarchy-install-editor-zed` runs
+`omarchy-pkg-add zed omazed`, and `omarchy-pkg-add` gates on `pacman -Si`,
+which matches exact package names and never `provides`. Arch extra's `zed`
+is x86_64-only and ALARM has none. The in-tree recipe is AUR `zed-bin`
+reduced to aarch64: the vendor `zed-linux-aarch64.tar.gz`, system libraries
+instead of the bundled `zed.app/lib`, and a `/usr/bin/zed` wrapper that sets
+`ZED_UPDATE_EXPLANATION` so the editor never tries to update itself. It
+conflicts with `zed-bin`; anyone who installed that from the AUR as a
+workaround must `pacman -Rns zed-bin` first, because `pacman -S --noconfirm`
+does not remove a conflicting package on its own. `omazed`, the other half of
+that installer, is `arch=('any')` from the AUR and is published here only
+because `[omarchy]` is `Usage = Sync` (#24).
+
 Signed source tarballs (`1password`, `1password-cli`, `vi`, `voxtype-bin`)
 import only the fingerprints listed in `validpgpkeys`, plus any matching key
 file the recipe already ships. Signature checks are not skipped.
@@ -235,7 +252,7 @@ file the recipe already ships. Signature checks are not skipped.
 [`packages.json`](packages.json) records which group each package belongs to and
 where its PKGBUILD comes from — the AUR for most, `omacom-io/omarchy-pkgs` for
 the ones that aren't in the AUR, and this repo's own `pkgbuilds/` for
-`obs-studio`, `pinta`, `cursor-bin`, and `grok-bot`. The source is per-package on purpose: for
+`obs-studio`, `pinta`, `cursor-bin`, `grok-bot`, and `zed`. The source is per-package on purpose: for
 `omarchy-emacs` the AUR leads Omarchy's own repo, so switching it would be a
 downgrade.
 
