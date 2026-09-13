@@ -390,6 +390,25 @@ grep -Fq 's|^Exec=/usr/share/cursor/cursor|Exec=/usr/bin/cursor|' pkgbuilds/curs
   && ok "cursor-bin rewrites the embedded Exec binary path" \
   || no "cursor-bin rewrites the embedded Exec binary path"
 
+echo "== zed stays installable by the name omarchy-pkg-add asks for"
+grep -qx 'pkgname=zed' pkgbuilds/zed/PKGBUILD \
+  && ok "zed is pkgname=zed, not zed-bin (pacman -Si ignores provides)" \
+  || no "zed is pkgname=zed, not zed-bin (pacman -Si ignores provides)"
+grep -qx "arch=('aarch64')" pkgbuilds/zed/PKGBUILD \
+  && ok "zed declares aarch64 only" \
+  || no "zed declares aarch64 only"
+grep -q 'share/applications/dev.zed.Zed.desktop' pkgbuilds/zed/PKGBUILD \
+  && ok "zed installs dev.zed.Zed.desktop for gtk-launch" \
+  || no "zed installs dev.zed.Zed.desktop for gtk-launch"
+grep -q "ZED_UPDATE_EXPLANATION=" pkgbuilds/zed/PKGBUILD \
+  && ok "zed wrapper disables in-app updates" \
+  || no "zed wrapper disables in-app updates"
+if grep -qE "install .*['\"]?lib/lib" pkgbuilds/zed/PKGBUILD; then
+  no "zed ships no bundled zed.app/lib libraries" "PKGBUILD installs from zed.app/lib"
+else
+  ok "zed ships no bundled zed.app/lib libraries"
+fi
+
 echo "== carried recipe patch"
 bash scripts/test-prepare-hermes-recipe.sh \
   && ok "Hermes patch stages both architectures, preserves versions, and rejects drift" \
