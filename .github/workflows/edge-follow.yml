@@ -1,0 +1,160 @@
+name: Follow ARM edge inputs
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        default: omacom/omarchy-mac
+      source_branch:
+        default: quattro
+      recipe_repo:
+        default: omacom/omarchy-pkgs
+      recipe_branch:
+        default: master
+permissions:
+  contents: read
+# Local preparation only until reviewed and merged. A precreated, qualified
+# channel-edge release is mandatory. This never bootstraps from legacy edge.
+env:
+  ARM_IMAGE: menci/archlinuxarm@sha256:9c13025ff7c0266691fd657bffc26a9d6dfe416496c5a7b5392c8e843b0ecacc
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    outputs:
+      action: ${{ steps.plan.outputs.action }}
+      source_sha: ${{ steps.plan.outputs.source_sha }}
+      recipe_sha: ${{ steps.plan.outputs.recipe_sha }}
+      source_repo: ${{ steps.plan.outputs.source_repo }}
+      recipe_repo: ${{ steps.plan.outputs.recipe_repo }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Capture immutable inputs and execute the bound plan
+        env:
+          GH_REPO: ${{ github.repository }}
+          SOURCE_REPO: ${{ inputs.source_repo || 'omacom/omarchy-mac' }}
+          SOURCE_BRANCH: ${{ inputs.source_branch || 'quattro' }}
+          RECIPE_REPO: ${{ inputs.recipe_repo || 'omacom/omarchy-pkgs' }}
+          RECIPE_BRANCH: ${{ inputs.recipe_branch || 'master' }}
+        run: |
+          docker run --rm -v "$PWD:/w" -w /w \
+            -e GH_REPO -e SOURCE_REPO -e SOURCE_BRANCH -e RECIPE_REPO -e RECIPE_BRANCH \
+            "$ARM_IMAGE" bash scripts/edge-follow.sh
+          sudo chown -R "$(id -u):$(id -g)" edge-output
+      - id: plan
+        run: |
+          echo "action=$(jq -r .action edge-output/plan.json)" >> "$GITHUB_OUTPUT"
+          for key in source_sha recipe_sha; do
+            echo "$key=$(jq -r --arg key "$key" '.inputs[$key]' edge-output/plan.json)" >> "$GITHUB_OUTPUT"
+          done
+          for key in source_repo recipe_repo; do
+            echo "$key=$(jq -r --arg key "$key" '.[$key]' edge-output/remotes.json)" >> "$GITHUB_OUTPUT"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edge-candidate
+          path: edge-output/
+          if-no-files-found: error
+  source-tests:
+    needs: prepare
+    if: needs.prepare.outputs.action != 'skip'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.prepare.outputs.source_repo }}
+          ref: ${{ needs.prepare.outputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.prepare.outputs.recipe_repo }}
+          ref: ${{ needs.prepare.outputs.recipe_sha }}
+          path: omarchy-pkgs
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          path: channel-publisher
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Apply the identical pinned publisher recipe adjustment
+        run: bash channel-publisher/scripts/prepare-omarchy-recipes.sh "$GITHUB_WORKSPACE/omarchy-pkgs"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Test pinned desktop and package contracts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-yaml jq lua5.4 imagemagick libxkbcommon-tools ripgrep desktop-file-utils libarchive-tools shellcheck
+          sudo ln -sf /usr/bin/lua5.4 /usr/local/bin/lua
+          if ! command -v magick >/dev/null; then sudo ln -sf "$(command -v convert)" /usr/local/bin/magick; fi
+          export OMARCHY_PATH="$GITHUB_WORKSPACE" OMARCHY_PKGS_PATH="$GITHUB_WORKSPACE/omarchy-pkgs"
+          export PATH="$OMARCHY_PATH/bin:$PATH"
+          ./test/all
+          ./tests/all
+          bin/omarchy commands --check
+  qualify:
+    needs: prepare
+    if: needs.prepare.outputs.action != 'skip'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: edge-candidate
+          path: edge-output
+      - name: Install exact archives in a fresh native ARM container
+        run: |
+          mkdir evidence
+          docker run --rm -v "$PWD:/w:ro" -v "$PWD/evidence:/evidence" -w /w \
+            -e EDGE_CANDIDATE=/w/edge-output -e EDGE_EVIDENCE=/evidence \
+            "$ARM_IMAGE" bash scripts/qualify-edge.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: edge-qualification
+          path: evidence/
+          if-no-files-found: error
+  publish:
+    needs: [prepare, source-tests, qualify]
+    if: needs.prepare.outputs.action != 'skip' && needs.qualify.result == 'success' && needs.source-tests.result == 'success'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    concurrency:
+      group: channel-publish
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: edge-candidate
+          path: edge-output
+      - uses: actions/download-artifact@v4
+        with:
+          name: edge-qualification
+          path: evidence
+      - name: Recheck qualification and baseline, then publish edge only
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          EXPECTED_PUBLISHER_SHA: ${{ github.sha }}
+        run: |
+          docker run --rm -v "$PWD:/w:ro" -w /w -e GH_TOKEN -e GH_REPO -e EXPECTED_PUBLISHER_SHA \
+            -e EDGE_CANDIDATE=/w/edge-output -e EDGE_EVIDENCE=/w/evidence \
+            "$ARM_IMAGE" bash -euo pipefail -c '
+              bash scripts/container-bootstrap.sh
+              pacman -S --needed --noconfirm python gnupg curl libarchive pacman-contrib
+              [[ -f signing/public-keyring.gpg && -f signing/approved-signers.json ]] || { echo "Approved committed publication signing policy is not configured"; exit 1; }
+              export SIGNATURE_KEYRING=/w/signing/public-keyring.gpg APPROVED_SIGNERS=/w/signing/approved-signers.json
+              bash scripts/publish-edge.sh
+            '
