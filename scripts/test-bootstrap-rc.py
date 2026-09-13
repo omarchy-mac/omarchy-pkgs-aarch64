@@ -50,7 +50,7 @@ class Remote:
         return __import__('hashlib').sha256(data).hexdigest()
     def tag_commit(self,tag):return self.tags.get(tag)
     def create(self,tag,commit,body):
-        self.events.append(('create',tag));assert tag=='rc' or tag.startswith('rc-baseline-');assert tag not in self.releases
+        self.events.append(('create',tag));assert tag=='rc' or tag.startswith(('rc-baseline-','rc4-old-trust-'));assert tag not in self.releases
         assert self.tags.get(tag) in (None,commit);self.tags[tag]=commit
         self.releases[tag]={'draft':True,'commit':commit,'assets':{}}
     def upload(self,tag,path,clobber=False):
@@ -69,6 +69,23 @@ class BootstrapTests(unittest.TestCase):
         Fixture.setUpClass();cls.bundle=Fixture.rc
         cls.sha=boot.bundle.digest(cls.bundle/'manifest.json');cls.source=Fixture.rc_commit
         cls.manifest=boot.validate(cls.bundle,cls.sha,cls.source,Fixture.keys.policy)
+        source4=Fixture.root/'source4'
+        boot.bundle.run('git','clone','--quiet','--no-hardlinks',Fixture.source,source4)
+        (source4/'version').write_text('4.0.3rc4\n')
+        boot.bundle.run('git','-C',source4,'add','version')
+        boot.bundle.run('git','-C',source4,'-c','user.name=Fixture','-c','user.email=fixture@example.invalid','-c','commit.gpgsign=false','commit','-qm','Fixture RC4')
+        cls.source4=boot.bundle.run('git','-C',source4,'rev-parse','HEAD').decode().strip()
+        candidates4=Fixture.root/'candidates4';shutil.copytree(Fixture.candidates,candidates4)
+        for name in ('omarchy','omarchy-settings'):
+            next(candidates4.glob(name+'-4.0.3rc1-*')).unlink()
+            Fixture.make_package(candidates4,name,'4.0.3rc4-1')
+        Fixture.write_build_inputs(candidates4,cls.source4,'4.0.3rc4')
+        cls.bundle4=Fixture.root/'rc4-unsigned'
+        boot.bundle.stage(argparse.Namespace(base_db=Fixture.base_db,base_packages=Fixture.base,candidates=candidates4,source=source4,source_git=None,source_commit=cls.source4,release='4.0.3rc4',output=cls.bundle4))
+        cls.sha4=boot.bundle.digest(cls.bundle4/'manifest.json')
+        spec=importlib.util.spec_from_file_location('transition',Path(__file__).with_name('publish-rc4-transition.py'))
+        cls.transition=importlib.util.module_from_spec(spec);spec.loader.exec_module(cls.transition)
+
     @classmethod
     def tearDownClass(cls):Fixture.tearDownClass()
     def args(self,execute=True):
@@ -102,7 +119,7 @@ class BootstrapTests(unittest.TestCase):
     def test_04_interruption_retry_exact_signed_bytes(self):
         remote=Remote();remote.fail_upload=('rc','omarchy-aarch64.db.sig');args=self.args()
         self.assertRaises(ValueError,self.publish,args,remote)
-        self.assertNotIn('omarchy-aarch64.db',remote.releases['rc']['assets'])
+        self.assertNotIn('omarchy-aarch64.db',set(remote.releases['rc']['assets']))
         remote.fail_upload=None;result=self.publish(args,remote);self.assertIn('PASS',result['result'])
         before=len([e for e in remote.events if e[0]=='upload']);self.publish(args,remote)
         self.assertEqual(before,len([e for e in remote.events if e[0]=='upload']))
@@ -130,7 +147,7 @@ class BootstrapTests(unittest.TestCase):
         args=self.args();args.expected_rc_db=boot.bundle.digest(Fixture.base_db)
         remote.fail_after_delete=('rc','omarchy-aarch64.db')
         self.assertRaises(ValueError,self.publish,args,remote)
-        self.assertNotIn('omarchy-aarch64.db',remote.releases['rc']['assets'])
+        self.assertNotIn('omarchy-aarch64.db',set(remote.releases['rc']['assets']))
         remote.fail_after_delete=None
         saved=remote.releases['rc']['assets'].pop('omarchy-aarch64.db.sig')
         before=len(remote.events);self.assertRaises(ValueError,self.publish,args,remote)
@@ -166,10 +183,139 @@ class BootstrapTests(unittest.TestCase):
         try:boot.capture(argparse.Namespace(database_sha256=boot.bundle.digest(Fixture.base_db),output=capture))
         finally:boot.GitHub=original
         output=Fixture.root/'producer-bundle'
-        boot.stage_input(argparse.Namespace(capture=capture,built=Fixture.candidates,candidates=Fixture.root/'producer-inputs',source=Fixture.source,source_commit=self.source,output=output))
+        boot.stage_input(argparse.Namespace(capture=capture,built=Fixture.candidates,candidates=Fixture.root/'producer-inputs',source=Fixture.source,source_commit=self.source,output=output),Fixture.keys.policy)
         manifest=boot.validate(output,boot.bundle.digest(output/'manifest.json'),self.source,Fixture.keys.policy,signed=False)
         self.assertEqual(len(manifest['packages']),52)
         self.assertFalse(any(e[0] in ('upload','expose','delete') for e in remote.events))
+
+    def transition_args(self,execute=True):
+        args=self.args(execute);args.bundle=self.bundle4;args.manifest_sha256=self.sha4;args.source_commit=self.source4
+        args.accept_final_old_trust_publication=True
+        return args
+    def transition_publish(self,args,remote):
+        manifest=self.transition.validate(args,Fixture.keys.policy)
+        return boot.publish_checked(args,manifest,remote,old_trust_transition=True)
+    def test_12_old_trust_dry_run_explicit_acceptance_and_version_guards(self):
+        args=self.transition_args(False);remote=Remote()
+        self.assertEqual(self.transition_publish(args,remote)['mode'],'dry-run')
+        self.assertFalse(any(e[0] in ('create','upload','expose','delete') for e in remote.events))
+        args.accept_final_old_trust_publication=False
+        self.assertRaises(ValueError,self.transition_publish,args,remote)
+        args=self.args();args.accept_final_old_trust_publication=True
+        self.assertRaises(ValueError,self.transition_publish,args,Remote()) # strict signed input
+        manifest=json.loads((self.bundle4/'manifest.json').read_text())
+        for version in ('4.0.3rc5-1','4.0.3-1','4.0.3rc40-1'):
+            changed=copy.deepcopy(manifest);changed['version']=version
+            self.assertRaises(ValueError,boot.publish_checked,self.transition_args(),changed,Remote(),old_trust_transition=True)
+        args=self.transition_args();args.lane='edge'
+        self.assertRaises(ValueError,self.transition_publish,args,Remote())
+        args=self.transition_args();args.accept_mutable_alias_window=False
+        self.assertRaises(ValueError,self.transition_publish,args,Remote())
+    def test_13_old_trust_existing_assets_readback_and_deleted_db_retry(self):
+        remote=Remote();remote.create('rc','b'*40,'');remote.releases['rc']['draft']=False
+        remote.releases['rc']['assets']['omarchy-aarch64.db']=Fixture.base_db.read_bytes()
+        for path in Fixture.base.iterdir():remote.releases['rc']['assets'][path.name]=path.read_bytes()
+        args=self.transition_args();args.expected_rc_db=boot.bundle.digest(Fixture.base_db)
+        remote.fail_after_delete=('rc','omarchy-aarch64.db')
+        self.assertRaises(ValueError,self.transition_publish,args,remote)
+        self.assertNotIn('omarchy-aarch64.db',set(remote.releases['rc']['assets']))
+        remote.fail_after_delete=None
+        proof=remote.releases['rc']['assets'].pop('omarchy-aarch64.db.tar.zst')
+        before=len(remote.events);self.assertRaises(ValueError,self.transition_publish,args,remote)
+        self.assertFalse(any(e[0] in ('create','upload','delete','expose') for e in remote.events[before:]))
+        remote.releases['rc']['assets']['omarchy-aarch64.db.tar.zst']=proof
+        result=self.transition_publish(args,remote);self.assertIn('PASS',result['result'])
+        self.assertTrue(result['snapshot_tag'].startswith('rc4-old-trust-'))
+        self.assertFalse(any(name.endswith('.sig') for name in remote.releases['rc']['assets']))
+        self.assertTrue(any(e[0]=='delete' for e in remote.events))
+        self.transition_publish(args,remote)
+    def test_13b_old_trust_rejects_newer_actual_database(self):
+        newer=Fixture.root/'newer-rc';newer.mkdir()
+        for name in ('omarchy','omarchy-settings'):Fixture.make_package(newer,name,'4.0.3rc5-1')
+        boot.bundle.build_db(newer)
+        remote=Remote();remote.create('rc','b'*40,'')
+        remote.releases['rc']['assets']['omarchy-aarch64.db']=(newer/'omarchy-aarch64.db').read_bytes()
+        args=self.transition_args();args.expected_rc_db=boot.bundle.digest(newer/'omarchy-aarch64.db')
+        before=len(remote.events);self.assertRaises(ValueError,self.transition_publish,args,remote)
+        self.assertFalse(any(e[0] in ('create','upload','delete','expose') for e in remote.events[before:]))
+
+    def test_14_old_trust_refuses_signed_lane_and_wrong_anchor(self):
+        remote=Remote();remote.create('rc','b'*40,'')
+        remote.releases['rc']['assets']['omarchy-aarch64.db.sig']=b'already-signed'
+        before=len(remote.events);self.assertRaises(ValueError,self.transition_publish,self.transition_args(),remote)
+        self.assertFalse(any(e[0] in ('upload','delete','expose') for e in remote.events[before:]))
+        policy=Fixture.root/'wrong-transition-policy.json'
+        wrong=json.loads(Fixture.keys.policy.read_text());wrong['public_key_sha256']='0'*64;policy.write_text(json.dumps(wrong))
+        self.assertRaises(ValueError,self.transition.validate,self.transition_args(),policy)
+
+    def test_15_old_trust_revocation_and_embedded_signatures_refused(self):
+        for kind,revoked in [('revoked',Fixture.keys.primary+'\n'),('missing-revoked',None)]:
+            candidates=Fixture.root/(kind+'-candidates');shutil.copytree(Fixture.root/'candidates4',candidates)
+            Fixture.make_package(candidates,'omarchy-mac-keyring','20260913-1',revoked=revoked)
+            output=Fixture.root/(kind+'-bundle')
+            boot.bundle.stage(argparse.Namespace(base_db=Fixture.base_db,base_packages=Fixture.base,candidates=candidates,source=Fixture.root/'source4',source_git=None,source_commit=self.source4,release='4.0.3rc4',output=output))
+            args=self.transition_args();args.bundle=output;args.manifest_sha256=boot.bundle.digest(output/'manifest.json')
+            self.assertRaises((ValueError,__import__('subprocess').CalledProcessError),self.transition_publish,args,Remote())
+        output=Fixture.root/'embedded-signature';shutil.copytree(self.bundle4,output)
+        extracted=Fixture.root/'embedded-db';extracted.mkdir()
+        boot.bundle.run('bsdtar','-xf',output/'assets/omarchy-aarch64.db','-C',extracted)
+        desc=next(extracted.glob('omarchy-*/desc'));desc.write_text(desc.read_text()+'%PGPSIG%\nRklYVFVSRQ==\n\n')
+        boot.bundle.run('bsdtar','--zstd','-cf',output/'assets/omarchy-aarch64.db.tar.zst','-C',extracted,*sorted(p.name for p in extracted.iterdir()))
+        shutil.copyfile(output/'assets/omarchy-aarch64.db.tar.zst',output/'assets/omarchy-aarch64.db')
+        manifest=json.loads((output/'manifest.json').read_text())
+        for name in ('omarchy-aarch64.db','omarchy-aarch64.db.tar.zst'):manifest['files']['assets/'+name]=boot.bundle.digest(output/'assets'/name)
+        boot.bundle.write_json(output/'manifest.json',manifest)
+        args=self.transition_args();args.bundle=output;args.manifest_sha256=boot.bundle.digest(output/'manifest.json')
+        boot.validate(output,args.manifest_sha256,args.source_commit,Fixture.keys.policy,signed=False)
+        self.assertRaisesRegex(ValueError,'Embedded package signatures',self.transition_publish,args,Remote())
+
+    def test_16_rc4_capture_to_rc5_reuses_exact_keyring_before_signing(self):
+        remote=Remote();remote.releases['rc']={'draft':False,'commit':'b'*40,'assets':{}}
+        for path in (self.bundle4/'assets').iterdir():remote.releases['rc']['assets'][path.name]=path.read_bytes()
+        original=boot.GitHub;boot.GitHub=lambda scratch:remote
+        capture=Fixture.root/'rc4-capture'
+        approved=boot.bundle.digest(self.bundle4/'assets/omarchy-aarch64.db.tar.zst')
+        selected=remote.releases['rc']['assets']['omarchy-aarch64.db']
+        try:
+            remote.releases['rc']['draft']=True
+            self.assertRaisesRegex(ValueError,'already be published',boot.capture,argparse.Namespace(lane='rc',database_sha256=approved,output=Fixture.root/'draft-capture'),Fixture.keys.policy)
+            remote.releases['rc']['draft']=False
+            del remote.releases['rc']['assets']['omarchy-aarch64.db']
+            self.assertRaisesRegex(ValueError,'selected RC database',boot.capture,argparse.Namespace(lane='rc',database_sha256=approved,output=Fixture.root/'absent-selected-capture'),Fixture.keys.policy)
+            remote.releases['rc']['assets']['omarchy-aarch64.db']=b'different selected DB'
+            self.assertRaisesRegex(ValueError,'selected RC database',boot.capture,argparse.Namespace(lane='rc',database_sha256=approved,output=Fixture.root/'different-selected-capture'),Fixture.keys.policy)
+            remote.releases['rc']['assets']['omarchy-aarch64.db']=selected
+            boot.capture(argparse.Namespace(lane='rc',database_sha256=approved,output=capture),Fixture.keys.policy)
+        finally:boot.GitHub=original
+        source=Fixture.root/'source5';boot.bundle.run('git','clone','--quiet','--no-hardlinks',Fixture.root/'source4',source)
+        (source/'version').write_text('4.0.3rc5\n');boot.bundle.run('git','-C',source,'add','version')
+        boot.bundle.run('git','-C',source,'-c','user.name=Fixture','-c','user.email=fixture@example.invalid','-c','commit.gpgsign=false','commit','-qm','Fixture RC5')
+        commit=boot.bundle.run('git','-C',source,'rev-parse','HEAD').decode().strip()
+        built=Fixture.root/'built5';shutil.copytree(Fixture.root/'candidates4',built)
+        for name in ('omarchy','omarchy-settings'):
+            next(built.glob(name+'-4.0.3rc4-*')).unlink();Fixture.make_package(built,name,'4.0.3rc5-1')
+        rebuilt=Fixture.make_package(built,'omarchy-mac-keyring','20260913-1',builddate=2)
+        previous=capture/'packages'/rebuilt.name
+        self.assertNotEqual(boot.bundle.digest(rebuilt),boot.bundle.digest(previous))
+        Fixture.write_build_inputs(built,commit,'4.0.3rc5')
+        args=argparse.Namespace(capture=capture,built=built,candidates=Fixture.root/'inputs5',source=source,source_commit=commit,output=Fixture.root/'unsigned5')
+        wrong=copy.copy(args);wrong.candidates=Fixture.root/'inputs5-wrong'
+        receipt=(capture/'capture.json').read_text();changed=json.loads(receipt);changed['lane']='edge'
+        (capture/'capture.json').write_text(json.dumps(changed))
+        try:self.assertRaisesRegex(ValueError,'RC5 requires',boot.stage_input,wrong,Fixture.keys.policy)
+        finally:(capture/'capture.json').write_text(receipt)
+        correct=rebuilt.read_bytes();Fixture.make_package(built,'omarchy-mac-keyring','20260913-1',content='changed payload',builddate=2)
+        wrong.candidates=Fixture.root/'inputs5-payload'
+        try:self.assertRaisesRegex(ValueError,'Fork keyring payload differs',boot.stage_input,wrong,Fixture.keys.policy)
+        finally:rebuilt.write_bytes(correct)
+        boot.stage_input(args,Fixture.keys.policy)
+        self.assertEqual(boot.bundle.digest(args.output/'assets'/rebuilt.name),boot.bundle.digest(previous))
+        signed=Fixture.root/'signed5'
+        boot.bundle.seal(argparse.Namespace(bundle=args.output,output=signed,public_key=Fixture.keys.public,trust_policy=Fixture.keys.policy))
+        self.assertEqual(boot.bundle.digest(signed/'assets'/rebuilt.name),boot.bundle.digest(previous))
+        self.assertTrue((signed/'assets'/(rebuilt.name+'.sig')).is_file())
+        self.assertEqual(boot.bundle.check(signed,Fixture.keys.policy)['signature_policy'],boot.bundle.STRICT_POLICY)
+        self.assertFalse(any(e[0] in ('create','upload','delete','expose') for e in remote.events))
 
     def test_10_api_errors_are_not_release_absence(self):
         transport=boot.GitHub(Fixture.root)
@@ -180,7 +326,7 @@ class BootstrapTests(unittest.TestCase):
         finally:boot.bundle.run=original
     def test_11_workflows_are_manual_and_protected(self):
         import yaml
-        for name in ['bootstrap-signed-rc.yml','prepare-rc-baseline.yml']:
+        for name in ['bootstrap-signed-rc.yml','prepare-rc-baseline.yml','publish-rc4-old-trust.yml']:
             data=yaml.safe_load((boot.ROOT/'.github/workflows'/name).read_text())
             triggers=data.get('on',data.get(True));self.assertEqual(set(triggers),{'workflow_dispatch'})
             for job in data['jobs'].values():self.assertEqual(job['environment'],'package-signing')
@@ -190,5 +336,8 @@ class BootstrapTests(unittest.TestCase):
         producer=(boot.ROOT/'.github/workflows/prepare-rc-baseline.yml').read_text()
         self.assertNotIn('PACMAN_SIGNING_SUBKEY_B64',producer)
         self.assertNotIn('contents: write',producer)
+        transition=(boot.ROOT/'.github/workflows/publish-rc4-old-trust.yml').read_text()
+        self.assertNotIn('PACMAN_SIGNING_SUBKEY_B64',transition)
+        self.assertIn('accept_final_old_trust_publication',transition)
 
 if __name__=='__main__':unittest.main()

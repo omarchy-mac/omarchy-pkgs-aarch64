@@ -7,8 +7,14 @@ on:
         description: 'Reviewed exact desktop source commit, with fork keyring bootstrap support'
         type: string
         required: true
-      edge_database_sha256:
-        description: 'Approved captured edge omarchy-aarch64.db.tar.zst SHA256'
+      baseline_lane:
+        description: 'Use edge for initial RC4; use the published rc baseline for RC5'
+        type: choice
+        options: [rc, edge]
+        default: rc
+        required: true
+      baseline_database_sha256:
+        description: 'Approved selected baseline omarchy-aarch64.db.tar.zst SHA256'
         type: string
         required: true
 
@@ -27,7 +33,7 @@ jobs:
       - name: Validate immutable inputs
         env:
           SOURCE_COMMIT: ${{ inputs.source_commit }}
-          BASE_HASH: ${{ inputs.edge_database_sha256 }}
+          BASE_HASH: ${{ inputs.baseline_database_sha256 }}
         run: |
           set -euo pipefail
           [[ "$SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ && "$BASE_HASH" =~ ^[a-f0-9]{64}$ ]]
@@ -57,16 +63,17 @@ jobs:
           persist-credentials: false
       - name: Prepare tools without signing credentials
         run: docker build --build-arg BASE_IMAGE=menci/archlinuxarm:base-devel -f .github/publisher.Dockerfile -t omarchy-producer .
-      - name: Capture approved complete edge baseline read-only
+      - name: Capture approved complete selected baseline read-only
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BASE_HASH: ${{ inputs.edge_database_sha256 }}
+          BASE_LANE: ${{ inputs.baseline_lane }}
+          BASE_HASH: ${{ inputs.baseline_database_sha256 }}
         run: |
           set -euo pipefail
           docker run --rm -v "$PWD:/w:ro" -w /w -v "$RUNNER_TEMP/rc-producer:/task" \
-            -e GH_TOKEN -e BASE_HASH -e TMPDIR=/task/tmp -e TMP=/task/tmp -e TEMP=/task/tmp \
+            -e GH_TOKEN -e BASE_HASH -e BASE_LANE -e TMPDIR=/task/tmp -e TMP=/task/tmp -e TEMP=/task/tmp \
             -e PYTHONDONTWRITEBYTECODE=1 omarchy-producer bash -euo pipefail -c \
-            'python3 scripts/bootstrap-rc.py capture --database-sha256 "$BASE_HASH" --output /task/capture' \
+            'python3 scripts/bootstrap-rc.py capture --lane "$BASE_LANE" --database-sha256 "$BASE_HASH" --output /task/capture' \
             2>&1 | tee "$RUNNER_TEMP/rc-producer/logs/capture.log"
       - name: Build the canonical exact-source package inputs on ARM
         run: |

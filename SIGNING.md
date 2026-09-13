@@ -78,26 +78,46 @@ establish production secret custody or GitHub environment configuration.
 
 ## Manual initial RC bootstrap
 
-There are now two manual workflows; neither runs on push, PR or schedule.
+The manual producer and both publication workflows do not run on push, PR or schedule.
 GitHub requires their workflow files to be present on the default branch before
 manual dispatch is available ([GitHub documentation](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)).
 A PR branch push alone does not activate them; default-branch deployment remains
-a separately authorized step. Both use the protected `package-signing` Environment. The producer has read-only
+a separately authorized step. All use the protected `package-signing` Environment. The producer has read-only
 repository permission and receives no signing secret:
 
 1. Run **Prepare complete RC baseline artifact** with an approved exact desktop
-   source commit and the SHA256 of the reviewed edge database. It captures every
+   source commit, selected baseline lane and its reviewed database SHA256. Select
+   `edge` for initial RC4 preparation; select the published `rc` RC4 baseline for
+   RC5. RC5 staging rejects an edge capture. It captures every
    baseline archive against that database, builds the five inputs canonically on
    ARM from the source's recipe pin, and compares reused upstream keyring/font
-   payloads (excluding build-date/comments, `.BUILDINFO`, `.MTREE` and timestamps
-   only). File contents, types, links, modes and ownership must agree. It stages
+   payloads. An unchanged fork-keyring filename is reused byte-for-byte from the
+   captured RC4 baseline after matching its public key, trust fingerprint, empty
+   revocation file and functional payload; any changed payload requires an explicit
+   version/pkgrel bump. This preserves archive identity when the signed stage adds its detached
+   signature. Comparison excludes build-date/comments, `.BUILDINFO`, `.MTREE` and timestamps
+   only. File contents, types, links, modes and ownership must agree. It stages
    the complete 52-name `packages.json` inventory and uploads
    `unsigned-rc-baseline-RUN-ATTEMPT` plus logs containing the manifest digest.
    A changed baseline, missing package or functional reuse mismatch stops it.
    This proves build/capture/integrity, not runtime qualification; review and test
    the actual resulting package artifacts before approving their manifest.
-2. Run **Bootstrap signed RC baseline** with that same-repository artifact run ID,
-   artifact name, approved manifest/source hashes and expected current RC DB hash
+2. For the final old-trust bridge only, use **Final old-trust RC4 publication**
+   (`scripts/publish-rc4-transition.py`) with the prepared unsigned RC4 artifact.
+   Its exact 52-package inventory must include the unsigned fork keyring, with
+   the approved public key/fingerprint and present empty revocation file, so
+   existing 4.0.2 clients can acquire the new trust anchor. Both dry-run and execute
+   require explicit final-old-trust acceptance; execute also requires alias-window
+   acceptance. RC5, strict manifests, detached or embedded candidate signatures, signed current DBs
+   and newer current pair versions are rejected. This workflow receives no signing
+   secrets, never targets edge/stable, and uses a distinct `rc4-old-trust-*`
+   immutable snapshot with complete readback before RC selection. Existing-client
+   installation and trust verification is a separate required gate: this tool
+   does not assert or perform client migration. Never use this path after strict
+   signing activation; it is not an unsigned rollback or fallback facility.
+3. After the existing-client trust gate passes, prepare and qualify RC5 using the
+   captured RC4 baseline, then run **Bootstrap signed RC baseline** with that
+   RC5 artifact run ID/name, approved manifest/source hashes and current RC DB hash
    (or `absent`). Start with the default dry-run. It seals and checks the entire
    candidate and rollback inventory, retaining `signed-rc-baseline-RUN-ATTEMPT`
    before any network mutation. A subsequent execute requires the protected

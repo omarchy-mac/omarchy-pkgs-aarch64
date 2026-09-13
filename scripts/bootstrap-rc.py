@@ -237,26 +237,40 @@ def selection_guard(current, previous, target, transport, expected_rc, db_assets
     require(transport.tag_commit(snapshot) == publisher, 'Snapshot tag commit differs')
     readback(snapshot, expected_snapshot, transport)
     require(set(expected_rc) - db_assets <= set(current['asset_map']), 'Partial selection lacks complete packages/signatures')
-    for name in set(expected_rc) - db_assets | {f'{DB}.db.sig'}:
+    selection_evidence = ({f'{DB}.db.sig'} if f'{DB}.db.sig' in expected_rc
+                          else set(DATABASES) - {f'{DB}.db'})
+    for name in set(expected_rc) - db_assets | selection_evidence:
         require(name in current['asset_map'] and transport.read(current, name) == expected_rc[name].sha256,
                 f'Unrecognized interrupted selection: {name}')
 
 
-def publish_checked(args, manifest, transport):
-    """The caller has completed canonical cryptographic validation before this operation."""
+def publish_checked(args, manifest, transport, *, old_trust_transition=False):
+    """The caller has completed canonical package/bundle validation before this operation."""
     require(args.lane == 'rc', 'RC is the only permitted destination')
     require(re.fullmatch('[a-f0-9]{40}', args.publisher_commit), 'Exact publisher commit required')
     require(args.expected_rc_db == 'absent' or re.fullmatch('[a-f0-9]{64}', args.expected_rc_db), 'Explicit previous RC database hash or absent required')
     require(not args.execute or args.accept_mutable_alias_window, 'Execution requires explicit mutable DB/signature window acceptance')
+    if old_trust_transition:
+        require(getattr(args, 'accept_final_old_trust_publication', False), 'Explicit final old-trust publication acceptance required')
+        require(re.fullmatch(r'4\.0\.3rc4-[1-9][0-9]*', manifest['version']), 'Old-trust transition is restricted to 4.0.3rc4')
+        require(manifest['signature_policy'] == 'optional-existing-signatures; no signer authority asserted', 'Strict manifests cannot use the old-trust transition')
+        require(not any(name.endswith('.sig') for name in manifest['files'] if name.startswith('assets/')),
+                'Old-trust transition candidate must be entirely unsigned')
+    else:
+        require(manifest['signature_policy'] == bundle.STRICT_POLICY, 'Signed bootstrap requires strict manifest')
     digest = args.manifest_sha256
     require(bundle.digest(args.bundle / 'manifest.json') == digest, 'Manifest changed after validation')
     target = manifest['files'][f'assets/{DB}.db']
-    snapshot = f'rc-baseline-{manifest["version"]}-{digest[:16]}'
+    prefix = 'rc4-old-trust' if old_trust_transition else 'rc-baseline'
+    snapshot = f'{prefix}-{manifest["version"]}-{digest[:16]}'
     expected_snapshot = assets_for(args.bundle, manifest, digest)
     expected_rc = {p.name: expected_snapshot[p.name] for p in (args.bundle / 'assets').iterdir()}
     db_assets = {name for name in expected_rc if name in DATABASES or name.removesuffix('.sig') in DATABASES}
     current = transport.release('rc')
     prior_snapshot = transport.release(snapshot)
+    if old_trust_transition and current is not None:
+        require(not any(name in current['asset_map'] for name in (f'{DB}.db.sig', f'{DB}.db.tar.zst.sig')),
+                'Refusing old-trust publication over a signed database')
     require(transport.tag_commit(snapshot) in (None, args.publisher_commit), 'Snapshot tag commit differs')
     require(prior_snapshot is None or transport.tag_commit(snapshot) == args.publisher_commit, 'Snapshot tag missing or differs')
     if current is None:
@@ -272,6 +286,11 @@ def publish_checked(args, manifest, transport):
             transport.read(prior_snapshot, 'previous-rc.db', destination=previous)
         require(bundle.digest(previous) == args.expected_rc_db, 'Retained previous database differs from approval')
         rows = bundle.database(previous)
+        if old_trust_transition:
+            for name in ('omarchy', 'omarchy-settings'):
+                require(name in rows and int(bundle.run('vercmp', bundle.field(rows[name], 'VERSION'), manifest['version']).strip()) <= 0,
+                        'Old-trust transition cannot downgrade a newer RC/stable selection')
+                require(not rows[name].get('PGPSIG'), 'Refusing old-trust publication over signed packages')
         allowed_names = {p['name'] for p in manifest['packages']}
         require(set(rows) <= allowed_names, 'Previous database contains unapproved package names')
         for record in rows.values():
@@ -290,11 +309,15 @@ def publish_checked(args, manifest, transport):
     plan = {'mode': 'execute' if args.execute else 'dry-run', 'repo': REPO, 'lane': 'rc',
             'snapshot_tag': snapshot, 'manifest_sha256': digest, 'packages': 52,
             'previous_rc_db': args.expected_rc_db, 'target_rc_db': target,
-            'mutable_alias_risk': 'DB and signature are separate assets; clients can fail closed during replacement',
-            'retry': 'Reuse the exact retained signed artifact and expected prior DB; never reseal an interrupted upload'}
+            'mutable_alias_risk': ('DB aliases are separate assets; interruption can temporarily remove the selected DB' if old_trust_transition
+                                   else 'DB and signature are separate assets; clients can fail closed during replacement'),
+            'retry': 'Reuse the exact retained artifact and expected prior DB; never rebuild or reseal an interrupted upload',
+            'signature_policy': manifest['signature_policy'],
+            'final_old_trust_transition': old_trust_transition}
     if not args.execute:
         return plan
-    body = f'Signed RC baseline {manifest["version"]}.\n\nManifest SHA256: {digest}\nSource: {manifest["source"]["commit"]}\nPublisher: {args.publisher_commit}\n\nPackage integrity verified; this does not assert full installer or physical-hardware qualification.\n'
+    label = 'FINAL unsigned old-trust RC4 transition' if old_trust_transition else 'Signed RC baseline'
+    body = f'{label} {manifest["version"]}.\n\nManifest SHA256: {digest}\nSource: {manifest["source"]["commit"]}\nPublisher: {args.publisher_commit}\n\nPackage integrity verified; this does not assert full installer or physical-hardware qualification.\n'
     guard(args.scratch, sum(artifact.size for artifact in expected_snapshot.values()))
     with tempfile.TemporaryDirectory(prefix='bootstrap-uploads-', dir=args.scratch) as temporary:
         upload = Path(temporary)
@@ -336,7 +359,7 @@ def publish_checked(args, manifest, transport):
                         snapshot, expected_snapshot, args.publisher_commit)
         print(json.dumps({'phase': 'rc_packages_and_signatures_verified'}), flush=True)
         for name in DATABASES:
-            for asset in (name + '.sig', name):
+            for asset in ([name + '.sig'] if name + '.sig' in expected_rc else []) + [name]:
                 artifact = expected_rc[asset]
                 path = upload / asset
                 require(bundle.digest(path) == artifact.sha256, 'Database staging changed')
@@ -357,25 +380,33 @@ def publish_checked(args, manifest, transport):
                     require(transport.read(current, name) == obsolete[name], 'Obsolete archive changed; preserving it')
                 transport.delete('rc', name)
         readback('rc', expected_rc, transport, public=True)
-    plan['result'] = 'PASS complete signed snapshot and RC public readback'
+    plan['result'] = 'PASS complete snapshot and RC public readback'
+    if old_trust_transition:
+        plan['next_gate'] = 'Existing clients must install/verify the fork trust anchor before separately approved strict signed bootstrap; no automatic transition'
     return plan
 
 
 
-def capture(args):
-    require(re.fullmatch('[a-f0-9]{64}', args.database_sha256), 'Approved edge database SHA256 required')
+def capture(args, trust_policy=bundle.SIGNING_POLICY):
+    lane = getattr(args, 'lane', 'edge')
+    require(lane in ('edge', 'rc'), 'Capture lane must be edge or rc')
+    require(re.fullmatch('[a-f0-9]{64}', args.database_sha256), 'Approved baseline database SHA256 required')
     require(not args.output.exists(), 'Capture output must be new')
     guard(args.output.parent)
     args.output.mkdir()
     transport = GitHub(args.output)
-    release = transport.release('edge', require_prerelease=False)
-    require(release is not None, 'Existing edge baseline is missing')
+    release = transport.release(lane, require_prerelease=lane == 'rc')
+    require(release is not None, 'Existing approved baseline is missing')
+    if lane == 'rc':
+        require(not release['draft'], 'RC baseline must already be published')
+        require(f'{DB}.db' in release['asset_map'] and transport.read(release, f'{DB}.db', public=True) == args.database_sha256,
+                'Published selected RC database differs from approved baseline')
     path = args.output / f'{DB}.db.tar.zst'
     transport.read(release, path.name, destination=path)
-    require(bundle.digest(path) == args.database_sha256, 'Edge database changed from approved capture')
+    require(bundle.digest(path) == args.database_sha256, 'Baseline database changed from approved capture')
     records = bundle.database(path)
     inventory = {p['name'] for p in json.loads((ROOT / 'packages.json').read_text())['packages']}
-    require(set(records) in (inventory, inventory - {'omarchy-mac-keyring'}), 'Captured edge inventory is not the complete baseline')
+    require(set(records) in (inventory, inventory - {'omarchy-mac-keyring'}), 'Captured inventory is not the complete baseline')
     reserve = sum(int(bundle.field(row, 'CSIZE')) for row in records.values())
     guard(args.output, reserve)
     packages = args.output / 'packages'; packages.mkdir()
@@ -387,7 +418,12 @@ def capture(args):
         require(target.stat().st_size == int(bundle.field(row, 'CSIZE')) and bundle.digest(target) == bundle.field(row, 'SHA256SUM'),
                 'Captured archive differs from approved database')
     bundle.validate_inventory(records, bundle.archives(packages))
-    print(json.dumps({'database_sha256': args.database_sha256, 'archives': len(records), 'source': 'edge read-only capture'}))
+    if lane == 'rc':
+        require('omarchy-mac-keyring' in records, 'RC capture must include the installed trust anchor')
+        verify_initial_keyring(packages / bundle.field(records['omarchy-mac-keyring'], 'FILENAME'), trust_policy)
+    evidence = {'database_sha256': args.database_sha256, 'archives': len(records), 'lane': lane}
+    bundle.write_json(args.output / 'capture.json', evidence)
+    print(json.dumps(evidence))
 
 
 def functional_payload(path):
@@ -407,14 +443,40 @@ def functional_payload(path):
     return result
 
 
-def stage_input(args):
+
+def verify_initial_keyring(path, trust_policy=bundle.SIGNING_POLICY):
+    policy = bundle.signing.policy(trust_policy)
+    prefix = 'usr/share/pacman/keyrings/'
+    public = bundle.run('bsdtar', '-xOf', path, prefix + 'omarchy-mac.gpg')
+    require(hashlib.sha256(public).hexdigest() == policy['public_key_sha256'], 'Bootstrap keyring differs from approved production trust anchor')
+    trusted = bundle.run('bsdtar', '-xOf', path, prefix + 'omarchy-mac-trusted').decode().strip()
+    require(trusted == policy['primary_fingerprint'] + ':4:', 'Bootstrap keyring trust fingerprint differs')
+    revoked = bundle.run('bsdtar', '-xOf', path, prefix + 'omarchy-mac-revoked')
+    require(revoked == b'', 'Initial bootstrap revocation file must be present and empty')
+
+
+def stage_input(args, trust_policy=bundle.SIGNING_POLICY):
     require(not args.candidates.exists(), 'Candidate directory must be new')
     guard(args.candidates.parent)
     built = bundle.archives(args.built)
     require(set(built) == bundle.CANDIDATES, 'Canonical build must produce exactly five release inputs')
     baseline = bundle.archives(args.capture / 'packages')
+    release = (args.source / 'version').read_text().strip()
+    capture_evidence = json.loads((args.capture / 'capture.json').read_text())
+    require(capture_evidence['database_sha256'] == bundle.digest(args.capture / f'{DB}.db.tar.zst'), 'Capture provenance database differs')
+    if release == '4.0.3rc5':
+        require(capture_evidence['lane'] == 'rc' and 'omarchy-mac-keyring' in baseline, 'RC5 requires the approved published RC4 baseline and trust anchor')
+        require(all(re.fullmatch(r'4\.0\.3rc4-[1-9][0-9]*', baseline[name][1]['version']) for name in ('omarchy', 'omarchy-settings')),
+                'RC5 initial signing baseline must be RC4')
     args.candidates.mkdir()
     for name, (path, record) in built.items():
+        if name == 'omarchy-mac-keyring':
+            verify_initial_keyring(path, trust_policy)
+            if name in baseline and path.name == baseline[name][0].name:
+                previous = baseline[name][0]
+                verify_initial_keyring(previous, trust_policy)
+                require(functional_payload(path) == functional_payload(previous), 'Fork keyring payload differs under unchanged filename; bump pkgrel explicitly')
+                path = previous
         if name in {'omarchy-keyring', 'ttf-jetbrains-mono-nerd-basic'} and name in baseline:
             previous = baseline[name][0]
             require(functional_payload(path) == functional_payload(previous),
@@ -437,6 +499,7 @@ def main():
     commands = parser.add_subparsers(dest='command', required=True)
     capture_parser = commands.add_parser('capture')
     capture_parser.add_argument('--database-sha256', required=True)
+    capture_parser.add_argument('--lane', choices=['edge', 'rc'], default='edge')
     capture_parser.add_argument('--output', type=Path, required=True)
     stage_parser = commands.add_parser('stage-input')
     for option in ['capture', 'built', 'candidates', 'source', 'output']:

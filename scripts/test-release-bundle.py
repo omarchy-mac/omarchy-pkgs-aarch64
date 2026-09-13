@@ -90,10 +90,10 @@ print(open(os.environ['GH_FIXTURE']).read())
                                                    '\ncustom_recipes=0\nsource_commit=' + commit + '\nsource_version=' + version + '\nsource_dirty=0\n')
 
     @classmethod
-    def make_package(cls, destination, name, version, content='payload'):
+    def make_package(cls, destination, name, version, content='payload', revoked='', builddate=1):
         root = Path(tempfile.mkdtemp(dir=cls.root))
         arch = 'any' if name in {'omarchy-keyring', 'omarchy-mac-keyring', 'ttf-jetbrains-mono-nerd-basic'} else 'aarch64'
-        info = f'pkgname = {name}\npkgbase = {name}\npkgver = {version}\npkgdesc = fixture\narch = {arch}\nsize = 10\nbuilddate = 1\n'
+        info = f'pkgname = {name}\npkgbase = {name}\npkgver = {version}\npkgdesc = fixture\narch = {arch}\nsize = 10\nbuilddate = {builddate}\n'
         if name == 'omarchy':
             for dep in ['omarchy-settings=' + version.rsplit('-', 1)[0], 'snapper', 'iwd', 'networkmanager',
                         'omarchy-keyring', 'omarchy-mac-keyring', 'ttf-jetbrains-mono-nerd-basic']:
@@ -106,6 +106,7 @@ print(open(os.environ['GH_FIXTURE']).read())
             keys=root/'usr/share/pacman/keyrings';keys.mkdir(parents=True)
             (keys/'omarchy-mac.gpg').write_bytes(cls.keys.public.read_bytes())
             (keys/'omarchy-mac-trusted').write_text(cls.keys.primary+':4:\n')
+            if revoked is not None:(keys/'omarchy-mac-revoked').write_text(revoked)
             members.append('usr')
         bundle.run('bsdtar', '-czf', output, '-C', root, *members)
         shutil.rmtree(root)
