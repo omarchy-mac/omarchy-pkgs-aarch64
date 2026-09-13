@@ -51,10 +51,14 @@ import yaml
 with open(".github/workflows/update-omarchy-mac.yml") as source:
     steps = yaml.safe_load(source)["jobs"]["build"]["steps"]
 prepare = next(i for i, step in enumerate(steps)
-               if step.get("run") == "bash scripts/prepare-omarchy-recipes.sh vendor/omarchy-pkgs")
+               if "bash scripts/prepare-omarchy-recipes.sh vendor/omarchy-pkgs" in step.get("run", ""))
 checkout = next(i for i, step in enumerate(steps)
                 if step.get("with", {}).get("path") == "vendor/omarchy-pkgs")
 build = next(i for i, step in enumerate(steps)
              if "bash /w/vendor/omarchy-mac/build-packages.sh" in step.get("run", ""))
-assert checkout < prepare < build
+pin = next(i for i, step in enumerate(steps) if step.get("id") == "recipes")
+assert pin < checkout < prepare < build
+assert steps[checkout]["with"]["ref"] == "${{ steps.recipes.outputs.revision }}"
+assert "vendor/omarchy-mac/build-inputs/omarchy-pkgs-revision" in steps[pin]["run"]
+assert "if [[ ! -f vendor/omarchy-mac/build-inputs/prepare-recipes.sh ]]" in steps[prepare]["run"]
 PY
