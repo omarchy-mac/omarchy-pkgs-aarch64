@@ -76,15 +76,34 @@ jobs:
           path: vendor/omarchy-mac
           persist-credentials: false
 
+      - name: Read the release's package recipe pin
+        id: recipes
+        run: |
+          pin=vendor/omarchy-mac/build-inputs/omarchy-pkgs-revision
+          if [[ -f $pin ]]; then
+            revision=$(cat "$pin")
+          else
+            # Existing releases predate the canonical desktop recipe contract.
+            revision=19ef4b560ffd6f26df67665400394278065cf437
+          fi
+          [[ $revision =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+
       - name: Check out the package definitions
         uses: actions/checkout@v4
         with:
           repository: omacom/omarchy-pkgs
+          ref: ${{ steps.recipes.outputs.revision }}
           path: vendor/omarchy-pkgs
           persist-credentials: false
 
-      - name: Apply ARM first-run recipe fixes
-        run: bash scripts/prepare-omarchy-recipes.sh vendor/omarchy-pkgs
+      - name: Apply first-run recipe fixes for older releases
+        run: |
+          # Current releases prepare their own pinned recipes and overlay in
+          # build-packages.sh, exactly as local installation and desktop CI do.
+          if [[ ! -f vendor/omarchy-mac/build-inputs/prepare-recipes.sh ]]; then
+            bash scripts/prepare-omarchy-recipes.sh vendor/omarchy-pkgs
+          fi
 
       - name: Build from the release checkout
         env:
