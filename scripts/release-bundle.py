@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 """Offline release inventories and explicit RC/final publication; edge updater stays separate."""
 import argparse
+import importlib.util
 import hashlib
 import json
 import os
@@ -13,6 +14,13 @@ import tempfile
 
 DB = 'omarchy-aarch64'
 CANDIDATES = {'omarchy', 'omarchy-settings', 'omarchy-keyring', 'ttf-jetbrains-mono-nerd-basic'}
+LEGACY_CANDIDATES = set(CANDIDATES)
+CANDIDATES = CANDIDATES | {'omarchy-mac-keyring'}
+SIGNING_POLICY = Path(__file__).resolve().parent.parent / 'pkgbuilds/omarchy-mac-keyring/signing-policy.json'
+STRICT_POLICY = 'PackageRequired DatabaseRequired TrustedOnly'
+_sign_spec = importlib.util.spec_from_file_location('package_signing', Path(__file__).with_name('package-signing.py'))
+signing = importlib.util.module_from_spec(_sign_spec)
+_sign_spec.loader.exec_module(signing)
 CHECKS = {'source_payload', 'package_contract', 'fresh_install', 'released_upgrade', 'review'}
 
 
@@ -165,7 +173,7 @@ def release_version(tag):
 
 def build_db(directory):
     names = sorted(p.name for p in directory.iterdir() if '.pkg.tar.' in p.name and not p.name.endswith('.sig'))
-    run('repo-add', '--quiet', DB + '.db.tar.zst', *names, cwd=directory)
+    run('repo-add', '--quiet', '--include-sigs', DB + '.db.tar.zst', *names, cwd=directory)
     for suffix in ['db', 'files']:
         plain = directory / f'{DB}.{suffix}'
         plain.unlink()
@@ -207,7 +215,7 @@ def stage(args):
                        'source_version': pkgver, 'source_dirty': '0'}
     require(all(build_inputs.get(key) == value for key, value in expected_inputs.items()),
             'Candidate build provenance differs from exact source/pinned release recipes')
-    require(set(candidate) == CANDIDATES, 'Candidate must contain exactly the atomic pair, keyring and font')
+    require(set(candidate) in (LEGACY_CANDIDATES, CANDIDATES), 'Candidate must contain the atomic pair, upstream keyring/font and optional bootstrap fork keyring')
     for name in ['omarchy', 'omarchy-settings']:
         record = candidate[name][1]
         require(record['version'] == version and record['arch'] == 'aarch64', f'Candidate pair mismatch: {name}')
@@ -244,8 +252,8 @@ def stage(args):
         files = {p.relative_to(staging).as_posix(): digest(p) for p in sorted(staging.rglob('*')) if p.is_file()}
         manifest = {'schema': 1, 'version': version, 'channel': channel, 'source': source,
                     'baseline_db_sha256': digest(args.base_db), 'publisher_sha256': digest(Path(__file__)),
-                    'candidates': sorted(CANDIDATES),
-                    'reused_candidates': sorted(name for name in CANDIDATES if name in baseline and candidate[name][1]['sha256'] == baseline[name][1]['sha256']),
+                    'candidates': sorted(candidate),
+                    'reused_candidates': sorted(name for name in candidate if name in baseline and candidate[name][1]['sha256'] == baseline[name][1]['sha256']),
                     'candidate_build_inputs_sha256': digest(build_input_path), 'build_inputs': expected_inputs,
                     'packages': [v[1] for k, v in sorted(combined.items())],
                     'files': files, 'signature_policy': 'optional-existing-signatures; no signer authority asserted'}
@@ -258,12 +266,15 @@ def stage(args):
     print(f'BUNDLE {args.output} {digest(args.output / "manifest.json")}')
 
 
-def check(bundle):
+def check(bundle, trust_policy=SIGNING_POLICY):
     manifest = json.loads((bundle / 'manifest.json').read_text())
     require(manifest.get('schema') == 1, 'Unsupported bundle schema')
     version, pkgver, channel = release_version(manifest['version'])
     require(version == manifest['version'] and channel == manifest['channel'], 'Malformed bundle version/channel')
-    require(manifest['candidates'] == sorted(CANDIDATES), 'Malformed candidate inventory')
+    require(manifest['candidates'] in (sorted(LEGACY_CANDIDATES), sorted(CANDIDATES)), 'Malformed candidate inventory')
+    candidates = set(manifest['candidates'])
+    strict = manifest['signature_policy'] == STRICT_POLICY
+    require(strict or manifest['signature_policy'] == 'optional-existing-signatures; no signer authority asserted', 'Unknown signature policy')
     require(re.fullmatch('[0-9a-f]{64}', manifest['publisher_sha256']), 'Malformed publisher identity')
     source = manifest['source']
     require(re.fullmatch('[0-9a-f]{40}', source['commit']) and re.fullmatch('[0-9a-f]{40}', source['recipe_commit']), 'Malformed source or recipe identity')
@@ -319,12 +330,69 @@ def check(bundle):
     require(not any(re.match(r'limine(?:$|[-<>=])', item) for item in dependencies), 'Unexpected Limine dependency')
     rollback = database(bundle / 'rollback' / f'{DB}.db')
     current = {x['name']: x for x in records}
-    require(set(current) == set(rollback) | CANDIDATES, 'Bundle dropped or invented baseline packages')
-    for name in set(rollback) - CANDIDATES:
+    require(set(current) == set(rollback) | candidates, 'Bundle dropped or invented baseline packages')
+    for name in set(rollback) - candidates:
         require(current[name]['sha256'] == field(rollback[name], 'SHA256SUM'), 'Bundle changed an unrelated baseline package')
-    require(manifest['baseline_db_sha256'] == digest(bundle / 'rollback' / f'{DB}.db'), 'Rollback identity mismatch')
+    require(manifest['baseline_db_sha256'] == digest(bundle / ('provenance/captured-baseline.db' if strict else f'rollback/{DB}.db')), 'Rollback identity mismatch')
+    if strict:
+        require(candidates == CANDIDATES and 'omarchy-mac-keyring' in dependencies, 'Strict feed requires the fork keyring package and dependency')
+        require(manifest['signing_policy'] == signing.policy(trust_policy), 'Signer differs from independently trusted policy')
+        keyring_archive = bundle / 'assets' / next(item['filename'] for item in records if item['name'] == 'omarchy-mac-keyring')
+        key_prefix = 'usr/share/pacman/keyrings/'
+        require(run('bsdtar', '-xOf', keyring_archive, key_prefix + 'omarchy-mac.gpg') == (bundle / 'provenance/signing-public.gpg').read_bytes(), 'Fork keyring payload differs from trusted public key')
+        require(run('bsdtar', '-xOf', keyring_archive, key_prefix + 'omarchy-mac-trusted').decode().strip() == manifest['signing_policy']['primary_fingerprint'] + ':4:', 'Fork keyring trust fingerprint differs')
+        ring = signing.Keyring(bundle / 'provenance/signing-public.gpg', trust_policy)
+        try:
+            for directory in ['assets', 'rollback']:
+                for path in signing.packages(bundle / directory) + signing.databases(bundle / directory):
+                    ring.verify(path)
+                for metadata in database(bundle / directory / f'{DB}.db').values():
+                    require(field(metadata, 'PGPSIG'), 'Missing embedded package signature')
+        finally:
+            ring.close()
     return manifest
 
+
+
+def seal(args):
+    """Derive a signed bundle; keep the qualified unsigned input unchanged."""
+    original = check(args.bundle, args.trust_policy)
+    require(original['signature_policy'] != STRICT_POLICY, 'Already sealed; reuse its exact signatures')
+    require(set(original['candidates']) == CANDIDATES, 'Stage the fork keyring before sealing')
+    require(not args.output.exists(), 'Signed output already exists')
+    primary = signing.policy(args.trust_policy)
+    require(digest(args.public_key) == primary['public_key_sha256'], 'Public key differs from trust policy')
+    staging = Path(tempfile.mkdtemp(prefix='.signed-bundle-', dir=args.output.parent))
+    try:
+        for path in args.bundle.rglob('*'):
+            if path.is_file():
+                copy_file(path, staging / path.relative_to(args.bundle))
+        copy_file(args.bundle / 'rollback' / f'{DB}.db', staging / 'provenance/captured-baseline.db')
+        copy_file(args.public_key, staging / 'provenance/signing-public.gpg')
+        ring = signing.Keyring(args.public_key, args.trust_policy, secret=True)
+        try:
+            for directory in ['assets', 'rollback']:
+                base = staging / directory
+                for path in signing.packages(base):
+                    ring.sign(path)
+                build_db(base)
+                for path in signing.databases(base):
+                    ring.sign(path)
+        finally:
+            ring.close()
+        manifest = dict(original)
+        manifest.update(signature_policy=STRICT_POLICY, signing_policy=primary,
+                        unsigned_manifest_sha256=digest(args.bundle / 'manifest.json'),
+                        publisher_sha256=digest(Path(__file__)))
+        manifest['files'] = {p.relative_to(staging).as_posix(): digest(p) for p in sorted(staging.rglob('*'))
+                             if p.is_file() and p.name != 'manifest.json'}
+        write_json(staging / 'manifest.json', manifest)
+        check(staging, args.trust_policy)
+        staging.rename(args.output)
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
+    print('SIGNED', args.output, digest(args.output / 'manifest.json'))
 
 def receipt(bundle, path):
     data = json.loads(path.read_text())
@@ -358,7 +426,8 @@ def remote_digest(repo, tag, name, metadata, temporary):
 
 
 def publish(args, allow_final_edge=False):
-    manifest = check(args.bundle)
+    manifest = check(args.bundle, args.trust_policy)
+    require(manifest['signature_policy'] == STRICT_POLICY, 'Unsigned bundle publication is forbidden')
     receipt(args.bundle, args.validation)
     require(args.lane == manifest['channel'] or (allow_final_edge and args.lane == 'edge' and manifest['channel'] == 'stable'),
             'RC may only target rc; final stable/legacy-edge requires promotion')
@@ -419,11 +488,35 @@ def publish(args, allow_final_edge=False):
             'failure_rule': 'stop on first failure; do not select a database until every referenced archive and immutable snapshot has verified bytes',
             'retention_rule': 'never delete the prior snapshot or clobber a package filename with different bytes',
         }
+        if not args.mutable_alias:
+            plan['steps'] = [plan['steps'][0],
+                {'operation': 'upload_complete_signed_snapshot_without_clobber', 'tag': snapshot,
+                 'assets': [{'path': str(path.resolve()), 'sha256': digest(path)}
+                            for path in sorted((args.bundle / 'assets').iterdir())],
+                 'rule': 'read existing snapshot asset hashes first; reject every different-byte collision'},
+                {'operation': 'verify_public_snapshot_with_strict_pacman_trust', 'tag': snapshot},
+                {'operation': 'activate_authenticated_immutable_server',
+                 'server': f'https://github.com/{args.repo}/releases/download/{snapshot}',
+                 'requirement': 'client must support this exact reviewed Server URL; stop if unavailable'}]
+            plan['activation'] = 'immutable snapshot; no mutable lane database writes'
+        else:
+            plan['activation'] = 'explicit mutable alias window; clients may fail closed until matched DB/signature readback'
+            replacements = []
+            for step in plan['steps']:
+                if step['operation'] == 'replace_database_alias':
+                    path = Path(step['argv'][4])
+                    signature = Path(str(path) + '.sig')
+                    sigstep = dict(step, operation='replace_database_signature')
+                    sigstep['sha256'] = digest(signature)
+                    sigstep['argv'] = list(step['argv']); sigstep['argv'][4] = str(signature)
+                    replacements.append(sigstep)
+                replacements.append(step)
+            plan['steps'] = replacements
         return plan
 
 
 def promote(args):
-    final, rc, edge = check(args.bundle), check(args.rc_bundle), check(args.edge_bundle)
+    final, rc, edge = (check(path, args.trust_policy) for path in [args.bundle, args.rc_bundle, args.edge_bundle])
     receipt(args.bundle, args.validation)
     receipt(args.rc_bundle, args.rc_validation)
     receipt(args.edge_bundle, args.edge_validation)
@@ -459,11 +552,19 @@ def main():
     staging.add_argument('--release', required=True)
     checking = commands.add_parser('check')
     checking.add_argument('bundle', type=Path)
+    checking.add_argument('--trust-policy', type=Path, default=SIGNING_POLICY)
+    sealing = commands.add_parser('seal')
+    sealing.add_argument('--bundle', type=Path, required=True)
+    sealing.add_argument('--output', type=Path, required=True)
+    sealing.add_argument('--public-key', type=Path, default=signing.PUBLIC)
+    sealing.add_argument('--trust-policy', type=Path, default=SIGNING_POLICY)
     for command in ['publish', 'promote']:
         entry = commands.add_parser(command)
         entry.add_argument('--bundle', type=Path, required=True)
         entry.add_argument('--validation', type=Path, required=True)
         entry.add_argument('--repo', required=True)
+        entry.add_argument('--trust-policy', type=Path, default=SIGNING_POLICY)
+        entry.add_argument('--mutable-alias', action='store_true', help='Explicitly accept transient DB/signature mismatch; immutable activation is default')
         if command == 'publish':
             entry.add_argument('--lane', choices=['rc'], required=True)
         else:
@@ -473,8 +574,10 @@ def main():
     if args.command == 'stage':
         stage(args)
     elif args.command == 'check':
-        check(args.bundle)
+        check(args.bundle, args.trust_policy)
         print('PASS', args.bundle)
+    elif args.command == 'seal':
+        seal(args)
     else:
         plan = publish(args) if args.command == 'publish' else promote(args)
         print(json.dumps(plan, indent=2, sort_keys=True))

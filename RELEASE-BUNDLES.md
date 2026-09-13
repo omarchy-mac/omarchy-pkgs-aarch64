@@ -19,13 +19,13 @@ python3 scripts/release-bundle.py stage \
 python3 scripts/release-bundle.py check /disk/bundles/4.0.3rc1-1
 ```
 
-The candidate input directory must contain exactly one `omarchy`, `omarchy-settings`, `omarchy-keyring`, and `ttf-jetbrains-mono-nerd-basic` archive and the builder's `build-inputs.txt`, plus optional detached signatures. The recorded source/recipe revisions, source version, clean state and non-custom recipe selection must match the exact source being staged. Source files, symlinks and executable modes are compared to the complete Git tree. Untracked/ignored files and extra directories are rejected; a clean `git status` alone is insufficient. An exact exported tree can use `--source-git` to supply its authoritative Git objects.
+The signed-candidate input directory must contain exactly one `omarchy`, `omarchy-settings`, `omarchy-keyring`, `omarchy-mac-keyring`, and `ttf-jetbrains-mono-nerd-basic` archive and the builder's `build-inputs.txt`, plus optional detached signatures. Legacy unsigned bundle inspection can still read the prior four-package candidate set, but sealing requires all five. The recorded source/recipe revisions, source version, clean state and non-custom recipe selection must match the exact source being staged. Source files, symlinks and executable modes are compared to the complete Git tree. Untracked/ignored files and extra directories are rejected; a clean `git status` alone is insufficient. An exact exported tree can use `--source-git` to supply its authoritative Git objects.
 
 The captured database must match every baseline archive's filename, package identity, architecture, size and SHA256. The bundle retains all unrelated baseline packages, replaces the atomic candidate set, and runs real `repo-add` over the full inventory to produce complete `.db` and `.files` databases. `rollback/` retains every original archive, the exact captured selected database and a full files database. `manifest.json` binds those bytes to the source file map, recipe pin, desktop builder/overlay hashes and this publisher tool's hash. External/system dependencies remain a separate transaction-validation gate.
 
 Never rebuild an existing filename with different bytes. For unchanged font/keyring packages, compare the actual source payload to captured archives first, explicitly accounting for excluded build metadata; then supply the captured exact bytes as declared reused candidates. If their source payload changed, bump pkgrel and validate the replacement. The manifest lists reused candidates. Reuse is not established by matching package version alone.
 
-Existing detached package signatures are retained and are available to `repo-add`. The tooling does not invent a signing key, assert production signer authority or claim that an unsigned feed became authenticated. This matches the existing optional-signature distribution policy; independent signature validation can be included in the package-contract report.
+`stage` preserves an unsigned qualification bundle without asserting signer authority. `seal` imports only the protected signing subkey, verifies the pinned primary and subkey fingerprints, signs every package and both database aliases, rebuilds the databases with embedded signatures, and verifies the result using only the pinned public key. It also signs the rollback inventory; unsigned rollback cannot satisfy the strict client policy.
 
 ## Qualification receipt and read-only plans
 
@@ -75,3 +75,10 @@ python3 scripts/release-bundle.py promote \
 Both lane preflights must pass before the planner emits a promotion plan. Cross-lane publication is not atomic. The later executor must retain both prior snapshots and report/recover any partial promotion explicitly. RC publication accepts only `--lane rc`; final edge publication is represented only through the controlled final promotion plan.
 
 Run the offline native archive/database fixtures with `PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-release-bundle.py -v`. They use a `gh` recorder that rejects every remote mutation. These tests establish local repository mechanics and planning guards, not final release qualification or hosted publication reliability.
+
+## Signed release requirement
+
+Unsigned bundles remain readable as historical integrity evidence. Publication
+now requires the signed derivation from `seal`, the dedicated fork keyring and a
+fresh receipt bound to the signed manifest. See [SIGNING.md](SIGNING.md) for
+bootstrap, immutable activation, protected CI variables and rollback policy.

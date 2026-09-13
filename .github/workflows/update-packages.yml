@@ -53,7 +53,7 @@ jobs:
       has_updates: ${{ steps.detect.outputs.has_updates }}
       packages: ${{ steps.detect.outputs.packages }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Compare upstream against the published db
         id: detect
@@ -84,7 +84,7 @@ jobs:
       max-parallel: 3
       matrix: ${{ fromJSON(needs.detect.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Build
         env:
@@ -111,7 +111,7 @@ jobs:
           sudo chown -R "$(id -u):$(id -g)" staging
           ls -la staging
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: pkg-${{ matrix.pkgbase }}
           path: staging/*.pkg.tar.*
@@ -124,10 +124,11 @@ jobs:
     # always(): publish whatever did build, even if a sibling package failed.
     if: always() && needs.detect.outputs.has_updates == 'true'
     runs-on: ubuntu-24.04
+    environment: package-signing
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: pkg-*
           merge-multiple: true
@@ -137,7 +138,8 @@ jobs:
         id: staged
         run: |
           shopt -s nullglob
-          pkgs=(staging/*.pkg.tar.*)
+          pkgs=()
+          for path in staging/*.pkg.tar.*; do [[ $path == *.sig ]] || pkgs+=("$path"); done
           echo "count=${#pkgs[@]}" >> "$GITHUB_OUTPUT"
           if (( ${#pkgs[@]} == 0 )); then
             echo "::warning::No packages were built — every build job failed. Nothing to publish."
@@ -145,19 +147,27 @@ jobs:
             printf '%s\n' "${pkgs[@]}"
           fi
 
+      - name: Prepare signing tools without credentials
+        run: docker build --build-arg BASE_IMAGE="$ARCH_IMAGE_X86" -f .github/publisher.Dockerfile -t omarchy-publisher .
+
       - name: Publish packages and regenerate the db
         if: steps.staged.outputs.count != '0'
         env:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          PACMAN_SIGNING_SUBKEY_B64: ${{ secrets.PACMAN_SIGNING_SUBKEY_B64 }}
+          PACMAN_SIGNING_PASSPHRASE: ${{ secrets.PACMAN_SIGNING_PASSPHRASE }}
+          PACMAN_SIGNING_PRIMARY_FPR: ${{ vars.PACMAN_SIGNING_PRIMARY_FPR }}
+          PACMAN_SIGNING_SUBKEY_FPR: ${{ vars.PACMAN_SIGNING_SUBKEY_FPR }}
         run: |
           mkdir -p .newdb
           docker run --rm -v "$PWD:/w" -w /w \
             -e GH_REPO -e GH_TOKEN -e DRY_RUN \
+            -e PACMAN_SIGNING_SUBKEY_B64 -e PACMAN_SIGNING_PASSPHRASE \
+            -e PACMAN_SIGNING_PRIMARY_FPR -e PACMAN_SIGNING_SUBKEY_FPR \
             -e PKGDIR=/w/staging -e DB_OUT=/w/.newdb \
-            "$ARCH_IMAGE_X86" bash -c \
-            'bash scripts/container-bootstrap.sh >/dev/null && bash scripts/publish.sh'
+            omarchy-publisher bash scripts/publish.sh
           sudo chown -R "$(id -u):$(id -g)" .newdb
 
       - name: Smoke-test the published repo

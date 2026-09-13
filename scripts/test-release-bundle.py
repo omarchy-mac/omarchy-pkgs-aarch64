@@ -18,6 +18,10 @@ spec.loader.exec_module(bundle)
 class ReleaseBundleTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        key_spec = importlib.util.spec_from_file_location('fixture_signing', Path(__file__).with_name('test-package-signing.py'))
+        keys = importlib.util.module_from_spec(key_spec); key_spec.loader.exec_module(keys)
+        cls.keys = keys.SigningTests
+        cls.keys.setUpClass()
         cls.temp = tempfile.TemporaryDirectory(prefix='bundle-tests-')
         cls.root = Path(cls.temp.name)
         cls.source = cls.root / 'source'
@@ -50,6 +54,7 @@ class ReleaseBundleTests(unittest.TestCase):
             if path.name.startswith(('omarchy-keyring-', 'ttf-')):
                 shutil.copyfile(path, cls.candidates / path.name)
         cls.write_build_inputs(cls.candidates, cls.rc_commit, '4.0.3rc1')
+        cls.make_package(cls.candidates, 'omarchy-mac-keyring', '20260913-1')
         cls.rc = cls.root / 'rc-bundle'
         cls.stage(cls.rc)
         cls.bin = cls.root / 'bin'
@@ -72,6 +77,7 @@ print(open(os.environ['GH_FIXTURE']).read())
     @classmethod
     def tearDownClass(cls):
         cls.temp.cleanup()
+        cls.keys.tearDownClass()
 
     @classmethod
     def commit(cls, message):
@@ -86,16 +92,22 @@ print(open(os.environ['GH_FIXTURE']).read())
     @classmethod
     def make_package(cls, destination, name, version, content='payload'):
         root = Path(tempfile.mkdtemp(dir=cls.root))
-        arch = 'any' if name in {'omarchy-keyring', 'ttf-jetbrains-mono-nerd-basic'} else 'aarch64'
+        arch = 'any' if name in {'omarchy-keyring', 'omarchy-mac-keyring', 'ttf-jetbrains-mono-nerd-basic'} else 'aarch64'
         info = f'pkgname = {name}\npkgbase = {name}\npkgver = {version}\npkgdesc = fixture\narch = {arch}\nsize = 10\nbuilddate = 1\n'
         if name == 'omarchy':
             for dep in ['omarchy-settings=' + version.rsplit('-', 1)[0], 'snapper', 'iwd', 'networkmanager',
-                        'omarchy-keyring', 'ttf-jetbrains-mono-nerd-basic']:
+                        'omarchy-keyring', 'omarchy-mac-keyring', 'ttf-jetbrains-mono-nerd-basic']:
                 info += 'depend = ' + dep + '\n'
         (root / '.PKGINFO').write_text(info)
         (root / 'fixture').write_text(content)
         output = destination / f'{name}-{version}-{arch}.pkg.tar.gz'
-        bundle.run('bsdtar', '-czf', output, '-C', root, '.PKGINFO', 'fixture')
+        members=['.PKGINFO','fixture']
+        if name == 'omarchy-mac-keyring':
+            keys=root/'usr/share/pacman/keyrings';keys.mkdir(parents=True)
+            (keys/'omarchy-mac.gpg').write_bytes(cls.keys.public.read_bytes())
+            (keys/'omarchy-mac-trusted').write_text(cls.keys.primary+':4:\n')
+            members.append('usr')
+        bundle.run('bsdtar', '-czf', output, '-C', root, *members)
         shutil.rmtree(root)
         return output
 
@@ -103,11 +115,16 @@ print(open(os.environ['GH_FIXTURE']).read())
     def stage(cls, output, candidates=None, release='4.0.3rc1', commit=None):
         args = ['stage', '--base-db', str(cls.base_db), '--base-packages', str(cls.base),
                 '--candidates', str(candidates or cls.candidates), '--source', str(cls.source),
-                '--source-commit', commit or cls.rc_commit, '--release', release, '--output', str(output)]
+                '--source-commit', commit or cls.rc_commit, '--release', release, '--output', str(output)+'.unsigned']
         result = subprocess.run(['python3', str(MODULE), *args], capture_output=True, text=True)
         if result.returncode:
             print(result.stderr, file=__import__('sys').stderr)
             result.check_returncode()
+        result = subprocess.run(['python3', str(MODULE), 'seal', '--bundle', str(output)+'.unsigned',
+                                 '--output', str(output), '--public-key', str(cls.keys.public),
+                                 '--trust-policy', str(cls.keys.policy)], capture_output=True, text=True)
+        if result.returncode: print(result.stderr, file=__import__('sys').stderr)
+        result.check_returncode()
         return result
 
     @classmethod
@@ -121,15 +138,15 @@ print(open(os.environ['GH_FIXTURE']).read())
         return receipt
 
     def command(self, *arguments):
-        return subprocess.run(['python3', str(MODULE), *map(str, arguments)], env=self.env,
+        return subprocess.run(['python3', str(MODULE), *map(str, arguments), '--trust-policy', str(self.keys.policy)], env=self.env,
                               capture_output=True, text=True)
 
     def test_01_complete_inventory_and_rollback(self):
-        manifest = bundle.check(self.rc)
-        self.assertEqual(len(manifest['packages']), 5)
+        manifest = bundle.check(self.rc, self.keys.policy)
+        self.assertEqual(len(manifest['packages']), 6)
         self.assertEqual(set(manifest['reused_candidates']), {'omarchy-keyring', 'ttf-jetbrains-mono-nerd-basic'})
-        self.assertEqual(bundle.digest(self.rc / 'rollback/omarchy-aarch64.db'), bundle.digest(self.base_db))
-        self.assertEqual(set(bundle.database(self.rc / 'assets/omarchy-aarch64.files')), set(bundle.database(self.base_db)))
+        self.assertEqual(bundle.digest(self.rc / 'provenance/captured-baseline.db'), bundle.digest(self.base_db))
+        self.assertEqual(set(bundle.database(self.rc / 'assets/omarchy-aarch64.files')), set(bundle.database(self.base_db)) | {'omarchy-mac-keyring'})
 
     def test_02_untracked_source_contamination_rejected(self):
         extra = self.source / 'ignored-runtime'
@@ -166,7 +183,7 @@ print(open(os.environ['GH_FIXTURE']).read())
             else:
                 (target / 'assets/unexpected').write_text('extra')
             with self.assertRaises(ValueError):
-                bundle.check(target)
+                bundle.check(target, self.keys.policy)
 
     def test_05_publish_plan_reads_only_and_database_last(self):
         self.remote.write_text(json.dumps({'assets': []}))
@@ -175,10 +192,10 @@ print(open(os.environ['GH_FIXTURE']).read())
         self.assertEqual(result.returncode, 0, result.stderr)
         plan = json.loads(result.stdout)
         self.assertEqual(plan['mode'], 'plan-only')
-        self.assertEqual(plan['steps'][-2]['argv'][-4].split('/')[-1], 'omarchy-aarch64.db')
+        self.assertEqual(plan['steps'][-1]['operation'], 'activate_authenticated_immutable_server')
         steps = [item['operation'] for item in plan['steps']]
-        self.assertLess(max(i for i, item in enumerate(steps) if item == 'upload_package_without_clobber'),
-                        min(i for i, item in enumerate(steps) if item == 'replace_database_alias'))
+        self.assertIn('upload_complete_signed_snapshot_without_clobber', steps)
+        self.assertNotIn('replace_database_alias', steps)
         calls = [json.loads(line) for line in self.recorder.read_text().splitlines()]
         self.assertTrue(all(call[:2] == ['release', 'view'] for call in calls))
         for lane in ['stable', 'edge']:
@@ -233,7 +250,7 @@ print(open(os.environ['GH_FIXTURE']).read())
         manifest['source']['files']['version']['sha256'] = 'invalid'
         (target / 'manifest.json').write_text(json.dumps(manifest))
         with self.assertRaises(ValueError):
-            bundle.check(target)
+            bundle.check(target, self.keys.policy)
         receipt = self.root / 'stale.validation.json'
         value = json.loads(self.validation.read_text())
         value['manifest_sha256'] = '0' * 64

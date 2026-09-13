@@ -16,15 +16,23 @@ SERVER="https://github.com/$GH_REPO/releases/download/$REPO_TAG"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-mkdir -p "$work/db" "$work/root"
+mkdir -p "$work/db" "$work/root" "$work/cache" "$work/keyring"
+chmod 700 "$work/keyring"
+# Only the reviewed public key enters this isolated test trust database.
+pacman-key --gpgdir "$work/keyring" --init
+pacman-key --gpgdir "$work/keyring" --add pkgbuilds/omarchy-mac-keyring/omarchy-mac.gpg
+primary=$(python3 -c 'import json;print(json.load(open("pkgbuilds/omarchy-mac-keyring/signing-policy.json"))["primary_fingerprint"])')
+pacman-key --gpgdir "$work/keyring" --lsign-key "$primary"
 
 cat > "$work/pacman.conf" <<CONF
 [options]
 HoldPkg = pacman glibc
 Architecture = aarch64
-SigLevel = Never
+SigLevel = PackageRequired DatabaseRequired TrustedOnly
+GPGDir = $work/keyring
+CacheDir = $work/cache
 [$DB_NAME]
-SigLevel = Optional TrustAll
+SigLevel = PackageRequired DatabaseRequired TrustedOnly
 Server = $SERVER
 CONF
 
@@ -66,3 +74,8 @@ for f in "$DB_NAME.db" "$DB_NAME.db.tar.zst" "$DB_NAME.files" "$DB_NAME.files.ta
   [[ "$code" == "200" ]] || die "$f is not served ($code) — pacman fetches these directly"
 done
 log "All four db assets are served as real files"
+# Real package downloads exercise libalpm signature verification, not just HEAD.
+pacman --config "$work/pacman.conf" --dbpath "$work/db" --root "$work/root" \
+  -Sddw --noconfirm "${pkgs[@]/#/$DB_NAME/}" || die "strict package verification failed"
+python3 scripts/package-signing.py verify-packages "$work/cache"
+gpgconf --homedir "$work/keyring" --kill gpg-agent 2>/dev/null || true

@@ -23,7 +23,10 @@ DRY_RUN="${DRY_RUN:-0}"
 
 [[ -d "$PKGDIR" ]] || die "PKGDIR '$PKGDIR' does not exist"
 shopt -s nullglob
-incoming=("$PKGDIR"/*.pkg.tar.*)
+incoming=()
+for candidate in "$PKGDIR"/*.pkg.tar.*; do
+  [[ $candidate == *.sig ]] || incoming+=("$candidate")
+done
 ((${#incoming[@]})) || die "no packages in '$PKGDIR'"
 
 work="$(mktemp -d)"
@@ -46,11 +49,40 @@ for pkg in "${incoming[@]}"; do
   if [[ "$safe" != "$base" ]]; then
     log "  $base -> $safe (':' is not allowed in a release asset name)"
   fi
+  [[ -f $pkg && ! -L $pkg ]] || die "unsafe incoming archive"
   cp "$pkg" "$work/$safe"
   staged+=("$safe")
+  if [[ -e $pkg.sig ]]; then cp "$pkg.sig" "$work/$safe.sig"; fi
 done
 
+# A signed baseline is a prerequisite; bootstrap is a separately reviewed full
+# inventory operation. Never silently downgrade to an unsigned existing feed.
 fetch_current_dbs "$work"
+gh release download "$REPO_TAG" --repo "$GH_REPO" --dir "$work" --clobber \
+  --pattern "$DB_NAME.db.tar.zst.sig" --pattern "$DB_NAME.files.tar.zst.sig" \
+  || die "signed baseline required; complete the reviewed bootstrap first"
+for ext in db files; do
+  cp "$work/$DB_NAME.$ext.tar.zst" "$work/$DB_NAME.$ext"
+  cp "$work/$DB_NAME.$ext.tar.zst.sig" "$work/$DB_NAME.$ext.sig"
+done
+python3 scripts/package-signing.py verify-databases "$work"
+# Reuse an already published valid signature when retrying identical bytes.
+# Fresh GPG signatures have different timestamps and must not replace it.
+gh release view "$REPO_TAG" --repo "$GH_REPO" --json assets --jq '.assets[].name' > "$work/remote-assets" || die "cannot read current assets"
+mkdir -p "$work/existing"
+for name in "${staged[@]}"; do
+  if grep -Fxq "$name" "$work/remote-assets"; then
+    gh release download "$REPO_TAG" --repo "$GH_REPO" --dir "$work/existing" --pattern "$name" --pattern "$name.sig" --clobber || die "published archive/signature missing"
+    cmp "$work/$name" "$work/existing/$name" || die "remote filename collision: $name"
+  fi
+done
+if find "$work/existing" -maxdepth 1 -name '*.pkg.tar.*' -print -quit | grep -q .; then
+  python3 scripts/package-signing.py verify-packages "$work/existing"
+  for signature in "$work/existing"/*.sig; do cp "$signature" "$work/${signature##*/}"; done
+fi
+python3 scripts/package-signing.py sign-packages "$work"
+# Old DB signatures cannot describe the regenerated DB. Keep no stale aliases.
+rm -- "$work/$DB_NAME.db.sig" "$work/$DB_NAME.db.tar.zst.sig" "$work/$DB_NAME.files.sig" "$work/$DB_NAME.files.tar.zst.sig"
 db_filenames "$work/$DB_NAME.db.tar.zst" | sort > "$work/filenames.before"
 before_count="$(wc -l < "$work/filenames.before" | tr -d ' ')"
 log "Current db holds $before_count package(s)"
@@ -62,7 +94,7 @@ log "Running repo-add for: ${staged[*]}"
 # --prevent-downgrade is a second line of defence behind detect-updates.sh:
 # even if a stale version reached the staging dir, the db refuses to move
 # backwards, which is what makes pacman -Syu offer downgrades.
-( cd "$work" && repo-add --quiet --prevent-downgrade "$DB_NAME.db.tar.zst" "${staged[@]}" ) \
+( cd "$work" && repo-add --quiet --include-sigs --prevent-downgrade "$DB_NAME.db.tar.zst" "${staged[@]}" ) \
   || die "repo-add failed"
 
 # repo-add leaves .db and .files as symlinks to the tarballs. Release assets
@@ -75,6 +107,9 @@ for pair in "db:db.tar.zst" "files:files.tar.zst"; do
   cp "$work/$tarball" "$work/$plain"
 done
 log "Materialised .db and .files as real copies"
+python3 scripts/package-signing.py sign-databases "$work"
+python3 scripts/package-signing.py verify-packages "$work"
+python3 scripts/package-signing.py verify-databases "$work"
 
 # --- verify before touching the release -------------------------------------
 db_filenames "$work/$DB_NAME.db.tar.zst" | sort > "$work/filenames.after"
@@ -98,12 +133,23 @@ done < "$work/filenames.after"
 # --- upload: packages first, then the db ------------------------------------
 log "Uploading ${#staged[@]} package asset(s)"
 for name in "${staged[@]}"; do
-  run gh release upload "$REPO_TAG" "$work/$name" --repo "$GH_REPO" --clobber \
-    || die "failed to upload $name"
+  # Exact filename reuse must be byte-identical; never overwrite archive/signature.
+  for asset in "$name" "$name.sig"; do
+    if grep -Fxq "$asset" "$work/remote-assets"; then
+      mkdir -p "$work/existing"
+      gh release download "$REPO_TAG" --repo "$GH_REPO" --pattern "$asset" --dir "$work/existing" --clobber
+      cmp "$work/$asset" "$work/existing/$asset" || die "remote filename collision: $asset"
+    else
+      run gh release upload "$REPO_TAG" "$work/$asset" --repo "$GH_REPO" || die "failed to upload $asset"
+    fi
+  done
 done
 
 log "Uploading db assets (.db last)"
-for f in "$DB_NAME.files.tar.zst" "$DB_NAME.files" "$DB_NAME.db.tar.zst" "$DB_NAME.db"; do
+# Mutable edge compatibility only: separate GitHub assets cannot be switched
+# atomically. Clients fail closed during a DB/signature mismatch; retain the
+# prior signed snapshot and retry the exact pair. RC/stable use immutable plans.
+for f in "$DB_NAME.files.tar.zst.sig" "$DB_NAME.files.tar.zst" "$DB_NAME.files.sig" "$DB_NAME.files" "$DB_NAME.db.tar.zst.sig" "$DB_NAME.db.tar.zst" "$DB_NAME.db.sig" "$DB_NAME.db"; do
   run gh release upload "$REPO_TAG" "$work/$f" --repo "$GH_REPO" --clobber \
     || die "failed to upload $f"
 done
@@ -118,7 +164,7 @@ gh release view "$REPO_TAG" --repo "$GH_REPO" --json assets \
 stale=()
 while read -r asset; do
   [[ -n "$asset" ]] || continue
-  command grep -Fxq "$asset" "$work/filenames.after" || stale+=("$asset")
+  command grep -Fxq "${asset%.sig}" "$work/filenames.after" || stale+=("$asset")
 done < "$work/assets.now"
 
 if ((${#stale[@]})); then

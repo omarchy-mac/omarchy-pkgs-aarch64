@@ -1,0 +1,77 @@
+# Package signing and bootstrap
+
+The fork has a separate `omarchy-mac-keyring`; it does not replace upstream
+`omarchy-keyring`, Arch Linux ARM or Asahi trust. The reviewed public certificate
+and primary/subkey fingerprints are in `pkgbuilds/omarchy-mac-keyring/`.
+Only public material belongs in Git. The primary remains offline.
+
+Both publishing jobs use the `package-signing` GitHub Environment. Restrict this
+environment to reviewed publishing branches and required approval. Configure:
+
+- Secrets: `PACMAN_SIGNING_SUBKEY_B64`, `PACMAN_SIGNING_PASSPHRASE`.
+- Variables: `PACMAN_SIGNING_PRIMARY_FPR`, `PACMAN_SIGNING_SUBKEY_FPR`.
+
+The base64 secret must contain only the protected signing subkey with a dummy
+primary. The helper refuses a usable primary, additional usable secret subkeys,
+missing credentials, mismatched public-key hashes/fingerprints, and expired,
+revoked or wrong-signer signatures. Its private GnuPG directory is ephemeral,
+mode 700, disk-backed and isolated from the user's keyring. Credentials are not
+passed as command arguments. Signing tools are installed in a separate image
+build before credentials become available; package builds never receive them.
+Actions references are pinned. Environment restrictions remain an external
+configuration requirement; repository YAML alone cannot enforce approval.
+
+## Two-stage trust transition
+
+First deliver the public bootstrap material through the separately reviewed
+exact source/key fingerprint. The unsigned 4.0.3rc4 candidate is the explicitly
+disclosed final use of the existing `Optional TrustAll` fork policy. It installs
+and populates `omarchy-mac-keyring` without fetching a key from a keyserver.
+A package signed only by its own unknown key cannot bootstrap trust itself.
+The no-email UID is supported through the checked-in public certificate,
+without relying on keyserver UID publication.
+
+Then build the source with the fork keyring dependency and stage all five
+candidate inputs: matching omarchy/settings, upstream keyring/font and the new
+fork keyring. The initial inventory contains 52 packages: the previous 51 plus
+`omarchy-mac-keyring`. Every retained archive must come from the reviewed captured
+hash inventory. Reuse package bytes; signing adds detached artifacts.
+
+`release-bundle.py stage` retains the unsigned qualification artifact.
+`release-bundle.py seal --bundle UNSIGNED --output NEW_SIGNED` derives a new
+signed bundle, signs every selected and rollback archive, rebuilds the databases
+with embedded package signatures, signs all four database aliases, and performs
+independent public-only verification. The default public certificate and policy
+are in-tree; `--public-key` and `--trust-policy` exist for explicit fixture or
+reviewed rotation inputs. The original captured rollback DB remains hash-bound
+under provenance; the operational rollback DB is rebuilt and signed. No unsigned
+rollback or unsigned publication fallback is allowed. Obtain a new validation
+receipt bound to the signed manifest; the unsigned receipt cannot be reused.
+
+The strict policy is `PackageRequired DatabaseRequired TrustedOnly`.
+`check` retains legacy unsigned-bundle integrity inspection, but `publish`
+refuses an unsigned bundle. Published package/signature filenames are immutable;
+identical retries reuse verified existing signature bytes.
+
+## Activation and automated edge updates
+
+The default bundle publication command is still a read-only plan. It prepares
+an immutable snapshot URL and requires full public readback before authenticated
+client Server activation. It does not execute GitHub writes or invent a mutable
+selector implementation. If a client cannot activate that exact reviewed URL,
+stop; desktop integration is a separate requirement.
+
+`--mutable-alias` explicitly opts into a compatibility plan. GitHub cannot replace
+`.db` and `.db.sig` in one transaction, so a short fail-closed mismatch is possible.
+Retain the matched prior signed snapshot and use exact retries/readback. Do not
+claim atomic database/signature replacement. Automated legacy edge publishing
+retains this compatibility behavior and the shared `edge-publish` writer lock.
+It now requires a signed existing baseline: bootstrap that baseline explicitly
+before enabling scheduled jobs. Archives and signatures upload before DB assets;
+GC keeps signatures for every retained current archive.
+
+Rotation/revocation requires reviewed keyring/public-policy updates and a newly
+verified signed inventory. Current verification intentionally authorizes one
+exact active primary/subkey pair, so do not rotate environment fingerprints
+alone. Tests use disposable fixture keys and isolated pacman trust; they never
+establish production secret custody or GitHub environment configuration.
