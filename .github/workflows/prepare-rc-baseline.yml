@@ -1,0 +1,110 @@
+name: Prepare complete RC baseline artifact
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: 'Reviewed exact desktop source commit, with fork keyring bootstrap support'
+        type: string
+        required: true
+      edge_database_sha256:
+        description: 'Approved captured edge omarchy-aarch64.db.tar.zst SHA256'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    environment: package-signing
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Validate immutable inputs
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          BASE_HASH: ${{ inputs.edge_database_sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ && "$BASE_HASH" =~ ^[a-f0-9]{64}$ ]]
+          case $(findmnt -n -o FSTYPE -T "$RUNNER_TEMP") in ''|tmpfs|ramfs) exit 1;; esac
+          mkdir -p "$RUNNER_TEMP/rc-producer"/{tmp,cache,built,logs}
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: omarchy-mac/omarchy-mac
+          ref: ${{ inputs.source_commit }}
+          path: vendor/desktop
+          persist-credentials: false
+      - name: Read exact recipe pin
+        id: recipe
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          [[ $(git -C vendor/desktop rev-parse HEAD) == "$SOURCE_COMMIT" ]]
+          pin=$(cat vendor/desktop/build-inputs/omarchy-pkgs-revision)
+          [[ "$pin" =~ ^[a-f0-9]{40}$ ]]
+          echo "revision=$pin" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: omacom/omarchy-pkgs
+          ref: ${{ steps.recipe.outputs.revision }}
+          path: vendor/recipes
+          persist-credentials: false
+      - name: Prepare tools without signing credentials
+        run: docker build --build-arg BASE_IMAGE=menci/archlinuxarm:base-devel -f .github/publisher.Dockerfile -t omarchy-producer .
+      - name: Capture approved complete edge baseline read-only
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_HASH: ${{ inputs.edge_database_sha256 }}
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD:/w:ro" -w /w -v "$RUNNER_TEMP/rc-producer:/task" \
+            -e GH_TOKEN -e BASE_HASH -e TMPDIR=/task/tmp -e TMP=/task/tmp -e TEMP=/task/tmp \
+            -e PYTHONDONTWRITEBYTECODE=1 omarchy-producer bash -euo pipefail -c \
+            'python3 scripts/bootstrap-rc.py capture --database-sha256 "$BASE_HASH" --output /task/capture' \
+            2>&1 | tee "$RUNNER_TEMP/rc-producer/logs/capture.log"
+      - name: Build the canonical exact-source package inputs on ARM
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD/vendor:/vendor" -v "$RUNNER_TEMP/rc-producer:/task" \
+            -e TMPDIR=/task/tmp -e TMP=/task/tmp -e TEMP=/task/tmp omarchy-producer bash -euo pipefail -c '
+              pacman -S --needed --noconfirm sudo
+              useradd -m builder
+              printf "builder ALL=(ALL) NOPASSWD: ALL\n" >/etc/sudoers.d/builder
+              chmod 0440 /etc/sudoers.d/builder
+              chown -R builder:builder /vendor /task/built /task/cache /task/tmp
+              runuser -u builder -- env TMPDIR=/task/tmp TMP=/task/tmp TEMP=/task/tmp \
+                OMARCHY_PKGS_PATH=/vendor/recipes OMARCHY_PACKAGE_OUTPUT=/task/built \
+                OMARCHY_PACKAGE_SRCDEST=/task/cache bash /vendor/desktop/build-packages.sh
+            ' 2>&1 | tee "$RUNNER_TEMP/rc-producer/logs/build.log"
+          sudo chown -R "$(id -u):$(id -g)" vendor "$RUNNER_TEMP/rc-producer/built"
+      - name: Stage and verify the complete unsigned 52-package artifact
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          docker run --rm --network none -v "$PWD:/w:ro" -w /w -v "$RUNNER_TEMP/rc-producer:/task" \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/w/vendor/desktop \
+            -e SOURCE_COMMIT -e TMPDIR=/task/tmp -e TMP=/task/tmp -e TEMP=/task/tmp -e PYTHONDONTWRITEBYTECODE=1 \
+            omarchy-producer bash -euo pipefail -c \
+            'python3 scripts/bootstrap-rc.py stage-input --capture /task/capture --built /task/built --candidates /task/candidates --source /w/vendor/desktop --source-commit "$SOURCE_COMMIT" --output /task/bundle' \
+            2>&1 | tee "$RUNNER_TEMP/rc-producer/logs/stage.log"
+          sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/rc-producer/bundle"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unsigned-rc-baseline-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rc-producer/bundle/
+          if-no-files-found: error
+          retention-days: 90
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: rc-baseline-preparation-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rc-producer/logs/
+          if-no-files-found: warn
+          retention-days: 90

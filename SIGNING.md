@@ -75,3 +75,67 @@ verified signed inventory. Current verification intentionally authorizes one
 exact active primary/subkey pair, so do not rotate environment fingerprints
 alone. Tests use disposable fixture keys and isolated pacman trust; they never
 establish production secret custody or GitHub environment configuration.
+
+## Manual initial RC bootstrap
+
+There are now two manual workflows; neither runs on push, PR or schedule.
+GitHub requires their workflow files to be present on the default branch before
+manual dispatch is available ([GitHub documentation](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)).
+A PR branch push alone does not activate them; default-branch deployment remains
+a separately authorized step. Both use the protected `package-signing` Environment. The producer has read-only
+repository permission and receives no signing secret:
+
+1. Run **Prepare complete RC baseline artifact** with an approved exact desktop
+   source commit and the SHA256 of the reviewed edge database. It captures every
+   baseline archive against that database, builds the five inputs canonically on
+   ARM from the source's recipe pin, and compares reused upstream keyring/font
+   payloads (excluding build-date/comments, `.BUILDINFO`, `.MTREE` and timestamps
+   only). File contents, types, links, modes and ownership must agree. It stages
+   the complete 52-name `packages.json` inventory and uploads
+   `unsigned-rc-baseline-RUN-ATTEMPT` plus logs containing the manifest digest.
+   A changed baseline, missing package or functional reuse mismatch stops it.
+   This proves build/capture/integrity, not runtime qualification; review and test
+   the actual resulting package artifacts before approving their manifest.
+2. Run **Bootstrap signed RC baseline** with that same-repository artifact run ID,
+   artifact name, approved manifest/source hashes and expected current RC DB hash
+   (or `absent`). Start with the default dry-run. It seals and checks the entire
+   candidate and rollback inventory, retaining `signed-rc-baseline-RUN-ATTEMPT`
+   before any network mutation. A subsequent execute requires the protected
+   Environment approval and explicit mutable-alias-window acceptance.
+
+The executable tool is `scripts/bootstrap-rc.py`; the workflow calls its
+`capture`, `stage-input`, `prepare` and `publish` subcommands. `publish` is read-only
+unless `--execute --accept-mutable-alias-window` are both present, and its only
+allowed destination is `rc` in this repository. It cannot publish edge/stable.
+
+Execution first creates/verifies a complete immutable prerelease snapshot,
+including the signed bundle's rollback/provenance and the approved previous RC
+DB when present. It resolves actual Git tag commits, refuses mismatched orphan
+tags, and creates an exact non-force publisher tag before creating a draft. It verifies public snapshot bytes before touching RC. It then
+uploads and reads back all package/signature assets before replacing DB/signature
+aliases. A new RC release remains a draft until complete readback. Both releases
+are prereleases and never become `latest`. Existing archives/signatures are never
+clobbered. Superseded names are allowed only when referenced by the exact approved
+previous DB; they remain until complete new public readback, then are removed.
+Unexpected administrator assets, changed archives, API failures and mismatched
+readbacks stop the operation. The previous DB retained in the immutable snapshot
+allows cleanup authorization to be reconstructed after interruption.
+
+For an interrupted execution, reuse the exact **signed** artifact, its manifest
+hash, the same publisher commit and original expected RC DB value. Do not reseal:
+new signature timestamps/DB bytes would collide with already uploaded assets.
+The tool accepts either the approved old selection or the exact target selection
+while resuming. If clobbering the final `.db` was interrupted after deletion,
+it resumes only with the complete verified public snapshot, approved previous DB,
+all exact candidate package/signature assets and the exact target `.db.sig`. Any
+other missing-selection state requires operator review. It does not guess that
+an API error means an absent release.
+If failure occurs after RC became public, leave the signed snapshot/artifact and
+logs intact and retry those exact bytes. A changed external selection requires
+operator review rather than an automatic rollback. The canonical signed bundle
+contains a verified rollback dataset; activating rollback remains a separate
+reviewed operation. The mutable `.db`/`.sig` mismatch window is explicitly accepted,
+not described as atomic. All other writers must honor the shared `edge-publish`
+concurrency group or be excluded for this operation.
+
+No real workflow execution or release publication is performed by the test suite.

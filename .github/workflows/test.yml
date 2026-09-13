@@ -28,4 +28,5 @@ jobs:
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-package-signing.py -v
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-signature-trust.py
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-release-bundle.py -v
+            PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-bootstrap-rc.py -v
           '
