@@ -17,6 +17,59 @@ is()   { [[ "$2" == "$3" ]] && ok "$1" || no "$1" "expected '$3', got '$2'"; }
 
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
 
+echo "== temporary storage scope"
+# Model the container's private /root without changing the real home or using
+# default temporary storage on this host. The build probe stops at its first
+# allocation, before user creation, downloads, pacman, or makepkg.
+mkdir -m750 "$work/private-home"
+env -u TMPDIR -u TMP -u TEMP -u XDG_CACHE_HOME HOME="$work/private-home" \
+  bash -euc 'source scripts/common.sh; [[ ! -v TMPDIR && ! -v TMP && ! -v TEMP ]]' \
+  && ok "sourcing common leaves unset temporary variables unset" \
+  || no "sourcing common leaves unset temporary variables unset"
+env TMPDIR="$work" TMP="$work/caller-tmp" TEMP="$work/caller-temp" \
+  bash -euc 'source scripts/common.sh; [[ $TMPDIR == "$1" && $TMP == "$1/caller-tmp" && $TEMP == "$1/caller-temp" ]]' bash "$work" \
+  && ok "sourcing common preserves caller temporary variables" \
+  || no "sourcing common preserves caller temporary variables"
+
+env -u TMPDIR -u TMP -u TEMP -u XDG_CACHE_HOME HOME="$work/private-home" \
+  PKGBASE=avd-fw SOURCE=local CATEGORY=any PKGNAMES=avd-fw OUTDIR="$work/build-probe" \
+  PROBE="$work/build-tmp-ok" bash -c '
+    mktemp() {
+      [[ ! -v TMPDIR && ! -v TMP && ! -v TEMP ]] && : > "$PROBE"
+      return 73
+    }
+    export -f mktemp
+    bash scripts/build-package.sh
+  ' > "$work/build-probe.log" 2>&1
+build_probe_status=$?
+[[ $build_probe_status == 73 && -f "$work/build-tmp-ok" ]] \
+  && ok "build path reaches mktemp without selecting a private home" \
+  || no "build path reaches mktemp without selecting a private home" "$(cat "$work/build-probe.log")"
+
+env -u TMPDIR -u TMP -u TEMP -u XDG_CACHE_HOME HOME="$work/private-home" \
+  bash -euc '
+    source scripts/common.sh
+    ensure_disk_tmp
+    [[ $TMPDIR == "$HOME/.cache/omarchy-publisher/tmp" && $TMP == "$TMPDIR" && $TEMP == "$TMPDIR" ]]
+  ' && ok "explicit temp enforcement selects and exports disk storage" \
+    || no "explicit temp enforcement selects and exports disk storage"
+
+# Model rejected filesystem types while keeping all actual fixture files on
+# the caller's disk. Run the entrypoints to catch a missing opt-in call too.
+for entrypoint in publish smoke-test; do
+  for filesystem in tmpfs ramfs; do
+    env TMPDIR="$work" TEST_FILESYSTEM="$filesystem" bash -c '
+      findmnt() { printf "%s\n" "$TEST_FILESYSTEM"; }
+      export -f findmnt
+      bash "scripts/$1.sh"
+    ' bash "$entrypoint" > "$work/temp-rejection.log" 2>&1
+    rejection_status=$?
+    [[ $rejection_status != 0 ]] && grep -q 'temporary storage must be disk-backed' "$work/temp-rejection.log" \
+      && ok "$entrypoint rejects $filesystem before doing work" \
+      || no "$entrypoint rejects $filesystem before doing work" "$(cat "$work/temp-rejection.log")"
+  done
+done
+
 # --- crafted ELF objects: e_machine at offset 18 ----------------------------
 mkelf() { # machine path [class]
   python3 - "$1" "$2" "${3:-2}" <<'PY'

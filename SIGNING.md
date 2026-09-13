@@ -220,11 +220,17 @@ No real workflow execution or release publication is performed by the test suite
 
 ## Temporary storage and producer exclusion
 
-Shell entrypoints validate `TMPDIR` with `findmnt`, export `TMP`/`TEMP` to the
-same disk-backed location, and reject tmpfs/ramfs. If unset, the default is
+`publish.sh` and `smoke-test.sh` explicitly validate `TMPDIR` with `findmnt`,
+export `TMP`/`TEMP` to the same disk-backed location, and reject tmpfs/ramfs.
+If unset, the default is
 `$XDG_CACHE_HOME/omarchy-publisher/tmp` (or `$HOME/.cache/...`). Workflows verify
 runner storage; tests bind a verified disk directory to short paths for GnuPG
 sockets. Remove only task-owned scratch after evidence is retained.
+
+Sourcing `common.sh` does not select temporary storage. Build, detection, and
+self-test scripts retain normal `mktemp` behavior; set a verified disk-backed
+`TMPDIR` (and matching `TMP`/`TEMP`) when running them locally. For root-run
+builds, that path must also be traversable by the unprivileged `builder` user.
 
 The artifact producer has its own non-cancelling `rc-baseline-producer` lock.
 It does not hold the live writer lock while awaiting approval or compiling;

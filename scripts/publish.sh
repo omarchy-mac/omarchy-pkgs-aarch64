@@ -16,6 +16,7 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 source scripts/common.sh
+ensure_disk_tmp
 
 : "${GH_REPO:?GH_REPO must be set (owner/name)}"
 : "${PKGDIR:?PKGDIR must be set}"
