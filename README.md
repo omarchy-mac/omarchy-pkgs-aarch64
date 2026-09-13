@@ -72,7 +72,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `hyprland-preview-share-picker` | 0.2.1-1 | Share picker with window/monitor previews |
 | `libva-v4l2_request-avd` | 1.3-1 | VA-API driver so applications can reach the Apple Video Decoder |
 | `localsend` | 1.18.2-1 | Cross-platform AirDrop alternative |
-| `mise-bin` | 2026.9.5-1 | Dev tools, env vars, task runner |
+| `mise-bin` | 2026.9.6-1 | Dev tools, env vars, task runner |
 | `obs-studio` | 32.2.2-1 | Video recording and live streaming (no browser source) |
 | `obsidian-appimage` | 1.13.7-2 | Markdown knowledge base (AppImage) |
 | `omacalc` | 0.2.2-1 | Calculator — bound to `SUPER + CTRL + Q` |
