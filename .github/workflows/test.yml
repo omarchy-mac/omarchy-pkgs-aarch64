@@ -23,4 +23,5 @@ jobs:
             set -euo pipefail
             pacman -Syu --noconfirm --needed jq zstd python python-yaml git >/dev/null
             bash scripts/self-test.sh
+            PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-release-bundle.py -v
           '
