@@ -7,16 +7,15 @@ Only public material belongs in Git. Keep the primary offline before production
 use; the generated candidate still requires custody transfer from its restricted
 owner-host staging location.
 
-The client keyring preserves the previous primary
-`F3C5AE3FCFFC738C301E30A8F0C548C0D27279F7` alongside the new active primary
-`FBD6874D423C418DDB6D143EECE19CDDE306DBD2`. The only active publisher signer is
-subkey `D791ED0C72439D9F8757421258043B2770A25762` under the new primary.
-`trusted_primary_fingerprints` lists the exact allowed client trust set; the
-public-key digest binds the complete combined keyring. Preserving old client
-trust does not authorize the publisher to accept old-signer signatures. No
-revocations are introduced. The old standalone certificate remains in
-`omarchy-mac-previous.gpg` for review and recovery. This is a pre-activation
-candidate; it does not implement conversion of an already old-signed feed.
+The client keyring contains only the new primary
+`FBD6874D423C418DDB6D143EECE19CDDE306DBD2`. The active publisher signer remains
+subkey `D791ED0C72439D9F8757421258043B2770A25762` under that primary.
+`trusted_primary_fingerprints` contains exactly this primary; the public-key
+digest binds the shipped keyring. The previous public certificate is no longer
+shipped and remains recoverable from Git history. No revocations are introduced.
+This is a pre-activation candidate; it does not implement conversion of an
+already old-signed feed. Both repositories must ship identical public keyring
+and trusted-list bytes before RC4 is tagged.
 
 The non-publishing credential validator checks the workflow commit itself
 (`${{ github.sha }}`), so merged helper changes cannot silently leave it testing

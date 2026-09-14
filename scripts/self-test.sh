@@ -394,6 +394,30 @@ mkpkgany omarchy-mac-keyring; mkpkgany omarchy-keyring; mkpkgany ttf-jetbrains-m
 is "omarchy's dependency packages are published too" \
   "$(find "$work/mac-xstage" -name '*.pkg.tar.*' | wc -l | tr -d ' ')" '5'
 
+# Versioned keyring requirements must still stage the keyring, and reject a
+# missing or stale package before changing the staging directory.
+for constraint in '>=1-1' '=1-1' '>0-1' '<=1-1' '<2-1'; do
+  sed -i "s/^depend = omarchy-mac-keyring.*/depend = omarchy-mac-keyring$constraint/" "$work/mac-build/omarchy/.PKGINFO"
+  ( cd "$work/mac-build/omarchy" && tar -cf - .PKGINFO ./usr/share/omarchy/install ./usr/share/omarchy/themes | xz > "$work/mac-extra/omarchy-4.0.2-1-aarch64.pkg.tar.xz" )
+  if RELEASE_TAG=v4.0.2-1 SOURCE_DIR="$work/mac-source" PKGDIR="$work/mac-extra" STAGING_DIR="$work/mac-xstage" bash scripts/omarchy-mac-release.sh verify >/dev/null 2>&1 &&
+    [[ -f $work/mac-xstage/omarchy-mac-keyring-1-1-any.pkg.tar.xz ]]; then
+    ok "versioned keyring $constraint is included"
+  else no "versioned keyring $constraint is included"; fi
+done
+sed -i 's/^depend = omarchy-mac-keyring.*/depend = omarchy-mac-keyring>=2-1/' "$work/mac-build/omarchy/.PKGINFO"
+( cd "$work/mac-build/omarchy" && tar -cf - .PKGINFO ./usr/share/omarchy/install ./usr/share/omarchy/themes | xz > "$work/mac-extra/omarchy-4.0.2-1-aarch64.pkg.tar.xz" )
+if RELEASE_TAG=v4.0.2-1 SOURCE_DIR="$work/mac-source" PKGDIR="$work/mac-extra" STAGING_DIR="$work/mac-xstage" bash scripts/omarchy-mac-release.sh verify >/dev/null 2>&1; then
+  no 'stale versioned keyring is rejected'
+else ok 'stale versioned keyring is rejected'; fi
+rm "$work/mac-extra/omarchy-mac-keyring-1-1-any.pkg.tar.xz"
+if RELEASE_TAG=v4.0.2-1 SOURCE_DIR="$work/mac-source" PKGDIR="$work/mac-extra" STAGING_DIR="$work/mac-xstage" bash scripts/omarchy-mac-release.sh verify >/dev/null 2>&1; then
+  no 'missing versioned keyring is rejected'
+else ok 'missing versioned keyring is rejected'; fi
+# Restore the successful fixture for the independent missing upstream test.
+mkpkgany omarchy-mac-keyring
+sed -i 's/^depend = omarchy-mac-keyring.*/depend = omarchy-mac-keyring/' "$work/mac-build/omarchy/.PKGINFO"
+( cd "$work/mac-build/omarchy" && tar -cf - .PKGINFO ./usr/share/omarchy/install ./usr/share/omarchy/themes | xz > "$work/mac-extra/omarchy-4.0.2-1-aarch64.pkg.tar.xz" )
+
 # declared but missing -> refuse, rather than publish an uninstallable omarchy
 rm -f "$work/mac-extra/omarchy-keyring-1-1-any.pkg.tar.xz"
 ( RELEASE_TAG=v4.0.2-1 SOURCE_DIR="$work/mac-source" PKGDIR="$work/mac-extra" STAGING_DIR="$work/mac-xstage" \
