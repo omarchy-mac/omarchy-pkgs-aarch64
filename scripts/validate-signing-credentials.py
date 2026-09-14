@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Validate a signing credential using a disposable, non-package challenge."""
+import binascii
 from contextlib import contextmanager
 import importlib.util
 import os
@@ -13,11 +14,43 @@ class ValidationFailure(Exception):
     """Contains only a constant stage label, never underlying diagnostics."""
 
 
+IMPORT_FAILURES = {
+    'Protected signing credentials missing': 'missing-credentials',
+    'Unsupported passphrase encoding': 'passphrase-encoding',
+    'Protected signing fingerprint differs from reviewed policy': 'fingerprint-mismatch',
+    # The helper uses this same signal for GPG import and key-list commands.
+    'Signing/verification command failed: gpg': 'gpg-command',
+    # This check also rejects missing secret records, not just a usable primary.
+    'CI must not contain usable primary secret material': 'primary-shape',
+    'Unsupported or non-signing CI secret subkey': 'wrong-or-extra-subkey',
+    'CI must contain exactly the approved usable signing subkey': 'wrong-or-extra-subkey',
+    'Malformed signing policy': 'public-or-policy',
+    'Missing or invalid signing fingerprint': 'public-or-policy',
+    'Primary cannot be the CI signer': 'public-or-policy',
+    'Missing public key digest': 'public-or-policy',
+    'Public key must be a regular file': 'public-or-policy',
+    'Public key differs from reviewed policy': 'public-or-policy',
+    'Public key must contain the exact single approved primary': 'public-or-policy',
+    'Approved signing subkey missing': 'public-or-policy',
+    'GnuPG temporary storage must be disk-backed': 'temp-storage',
+}
+
+
+def import_substage(error):
+    if isinstance(error, binascii.Error):
+        return 'bad-base64'
+    if type(error) is ValueError:
+        return IMPORT_FAILURES.get(str(error), 'other')
+    return 'other'
+
+
 @contextmanager
 def stage(label):
     try:
         yield
-    except Exception:
+    except Exception as error:
+        if label in ('import', 'wrong-password-import'):
+            label += ':' + import_substage(error)
         raise ValidationFailure(label) from None
 
 
