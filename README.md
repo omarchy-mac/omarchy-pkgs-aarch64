@@ -78,6 +78,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `omacalc` | 0.2.2-1 | Calculator — bound to `SUPER + CTRL + Q` |
 | `omacut` | 0.4.0-1 | Video length trimmer |
 | `omarchy` | 4.0.2-2 | Omarchy Mac scripts and desktop runtime |
+| `omarchy-mac-keyring` | Pending edge bootstrap | Omarchy Mac public signing certificate and trust policy |
 | `omarchy-emacs` | 1.10.1-1 | Emacs theme/font syncing for Omarchy |
 | `omarchy-nvim` | 2026.8.13-1 | Pre-built LazyVim configuration |
 | `omarchy-settings` | 4.0.2-2 | Apple Silicon system and user defaults |
@@ -98,33 +99,36 @@ small, checked packaging patch described below. Packages come from four places:
 
 ## Usage
 
-Add to `/etc/pacman.conf`:
+Use the repository configuration and keyring delivered by your Omarchy Mac
+release. The historical `edge` feed remains unsigned until its separately
+approved trust conversion; do not enable strict verification before installing
+and verifying the fork keyring. The signed configuration is:
 
 ```ini
 [omarchy-aarch64]
-SigLevel = Optional TrustAll
+SigLevel = PackageRequired DatabaseRequired TrustedOnly
 Server = https://github.com/omarchy-mac/omarchy-pkgs-aarch64/releases/download/edge
 ```
 
-Then:
+After the documented trust transition, install packages with a full upgrade:
 
 ```bash
-sudo pacman -Sy
-sudo pacman -S omacalc omawrite omacut   # or any package from the table
+sudo pacman -Syu omacalc omawrite omacut
 ```
 
-Assets live on a single rolling `edge` tag and are replaced in place, so the
-`Server` URL never changes.
+See [signing and bootstrap](SIGNING.md) for the two-stage trust transition and
+lane status requirements. Do not weaken a signed lane's policy to work around a
+failed signature. The rolling `edge` URL stays constant; its database and
+signature are separate mutable assets, so updates can briefly fail closed.
 
 ## Caveats
 
 - **Unofficial.** Not affiliated with or endorsed by Omarchy or 37signals.
   Upstream owes you nothing for these builds; report packaging bugs here, not
   to them.
-- **Unsigned.** Hence `SigLevel = Optional TrustAll`, which is what Omarchy's
-  own `pacman.conf` uses for its repo. If you'd rather not trust unsigned
-  packages, build them yourself: the Omarchy ones with the command below, the
-  AUR ones with `makepkg` from their PKGBUILD.
+- **Trust transition.** Legacy unsigned edge remains compatible until an
+  explicitly approved complete-inventory conversion. Signed RC/stable bundles
+  and a converted edge require the fork keyring and strict signature policy.
 - **Automated.** Scheduled workflows refresh the general package set and the
   fork-owned Omarchy Mac package pair independently. See [Automation](#automation).
 
@@ -138,13 +142,16 @@ which is what would make `pacman -Syu` offer you a downgrade.
 
 The packages differ only in where they can be built:
 
-| Group | Count | Automated |
-|-------|-------|-----------|
-| `any` — `arch=('any')`, architecture-independent | 8 | yes |
-| `repack` — ships a vendor-prebuilt ARM binary | 19 | yes |
-| `compile` — built from source | 20 | yes |
+| Group | Automated |
+|-------|-----------|
+| `any` — architecture-independent | yes |
+| `repack` — vendor-prebuilt ARM binary | yes |
+| `compile` — built from source | yes |
 
-Two packages stay deliberately excluded from that generic matrix. `omarchy`
+The exact inventory is maintained in [`packages.json`](packages.json).
+The desktop release owns `omarchy-keyring`, `omarchy-mac-keyring` and
+`ttf-jetbrains-mono-nerd-basic` extras when its package declares them; the generic
+matrix skips these names. `omarchy`
 and `omarchy-settings` are built as an atomic pair by
 [`update-omarchy-mac.yml`](.github/workflows/update-omarchy-mac.yml), which
 checks hourly for a new [Omarchy Mac](https://github.com/omarchy-mac/omarchy-mac)
@@ -152,7 +159,9 @@ release. It checks out the exact release tag, builds both packages on a native
 ARM runner, and refuses to publish unless their versions match and the aarch64
 dependency and payload contracts hold. Failures in unrelated AUR packages
 therefore cannot block an Omarchy Mac release, and one half of the pair can
-never publish by itself.
+never publish by itself. The fork keyring has one producer: the same verified
+desktop build, including declared extras. Its in-tree public key recipe is a
+verification input, not a second generic updater.
 
 Before building the pair, `scripts/prepare-omarchy-recipes.sh` applies the
 checked-in recipe changes from [upstream PR #341](https://github.com/omacom/omarchy-pkgs/pull/341):

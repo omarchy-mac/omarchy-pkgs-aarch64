@@ -19,7 +19,7 @@ on:
         default: false
 
 permissions:
-  contents: write
+  contents: read
 
 # Shared with update-packages.yml because both workflows replace the same
 # mutable database. Never cancel a job that may already be uploading assets.
@@ -42,7 +42,7 @@ jobs:
       version: ${{ steps.detect.outputs.version }}
       has_update: ${{ steps.detect.outputs.has_update }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Compare the latest release with edge
         id: detect
@@ -66,25 +66,44 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Check out the exact Omarchy Mac release
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: omarchy-mac/omarchy-mac
           ref: ${{ needs.detect.outputs.release_tag }}
           path: vendor/omarchy-mac
           persist-credentials: false
 
+      - name: Read the release's package recipe pin
+        id: recipes
+        run: |
+          pin=vendor/omarchy-mac/build-inputs/omarchy-pkgs-revision
+          if [[ -f $pin ]]; then
+            revision=$(cat "$pin")
+          else
+            # Existing releases predate the canonical desktop recipe contract.
+            revision=19ef4b560ffd6f26df67665400394278065cf437
+          fi
+          [[ $revision =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+
       - name: Check out the package definitions
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: omacom/omarchy-pkgs
+          ref: ${{ steps.recipes.outputs.revision }}
           path: vendor/omarchy-pkgs
           persist-credentials: false
 
-      - name: Apply ARM first-run recipe fixes
-        run: bash scripts/prepare-omarchy-recipes.sh vendor/omarchy-pkgs
+      - name: Apply first-run recipe fixes for older releases
+        run: |
+          # Current releases prepare their own pinned recipes and overlay in
+          # build-packages.sh, exactly as local installation and desktop CI do.
+          if [[ ! -f vendor/omarchy-mac/build-inputs/prepare-recipes.sh ]]; then
+            bash scripts/prepare-omarchy-recipes.sh vendor/omarchy-pkgs
+          fi
 
       - name: Build from the release checkout
         env:
@@ -127,7 +146,7 @@ jobs:
             'bash scripts/container-bootstrap.sh build >/dev/null && bash scripts/omarchy-mac-release.sh verify'
           sudo chown -R "$(id -u):$(id -g)" staging
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: omarchy-mac-${{ needs.detect.outputs.version }}
           path: staging/*.pkg.tar.*
@@ -137,37 +156,49 @@ jobs:
   publish:
     name: Publish package pair to edge
     needs: [detect, build]
-    if: needs.detect.outputs.has_update == 'true'
+    if: needs.detect.outputs.has_update == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
+    environment: package-signing-edge
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: omarchy-mac-${{ needs.detect.outputs.version }}
           path: staging
+
+      - name: Prepare signing tools without credentials
+        run: docker build --build-arg BASE_IMAGE="$ARCH_IMAGE_X86" -f .github/publisher.Dockerfile -t omarchy-publisher .
 
       - name: Publish both packages and replace the database
         env:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          PACMAN_SIGNING_SUBKEY_B64: ${{ secrets.PACMAN_SIGNING_SUBKEY_B64_20260914 }}
+          PACMAN_SIGNING_PASSPHRASE: ${{ secrets.PACMAN_SIGNING_PASSPHRASE_20260914 }}
+          PACMAN_SIGNING_PRIMARY_FPR: ${{ vars.PACMAN_SIGNING_PRIMARY_FPR_20260914 }}
+          PACMAN_SIGNING_SUBKEY_FPR: ${{ vars.PACMAN_SIGNING_SUBKEY_FPR_20260914 }}
         run: |
           mkdir -p .newdb
           docker run --rm -v "$PWD:/w" -w /w \
             -e GH_REPO -e GH_TOKEN -e DRY_RUN \
+            -e PACMAN_SIGNING_SUBKEY_B64 -e PACMAN_SIGNING_PASSPHRASE \
+            -e PACMAN_SIGNING_PRIMARY_FPR -e PACMAN_SIGNING_SUBKEY_FPR \
             -e PKGDIR=/w/staging -e DB_OUT=/w/.newdb \
-            "$ARCH_IMAGE_X86" bash -c \
-            'bash scripts/container-bootstrap.sh >/dev/null && bash scripts/publish.sh'
+            omarchy-publisher bash scripts/publish.sh
           sudo chown -R "$(id -u):$(id -g)" .newdb
 
       - name: Smoke-test edge
         if: ${{ !inputs.dry_run }}
         env:
           GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           docker run --rm -v "$PWD:/w" -w /w \
-            -e GH_REPO "$ARCH_IMAGE_X86" bash -c \
+            -e GH_REPO -e GH_TOKEN -e PKGDIR=/w/.newdb/smoke-packages "$ARCH_IMAGE_X86" bash -c \
             'bash scripts/container-bootstrap.sh >/dev/null && bash scripts/smoke-test.sh'
 
       - name: Sync the README version table

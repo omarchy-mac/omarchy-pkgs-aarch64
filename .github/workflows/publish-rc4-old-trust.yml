@@ -1,0 +1,118 @@
+name: Final old-trust RC4 publication
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_run_id:
+        description: 'Same-repository run containing the reviewed unsigned RC4 bundle'
+        type: string
+        required: true
+      artifact_name:
+        description: 'Complete unsigned 52-package bundle artifact, without an enclosing directory'
+        type: string
+        required: true
+      manifest_sha256:
+        description: 'Approved exact unsigned RC4 manifest SHA256'
+        type: string
+        required: true
+      source_commit:
+        description: 'Approved exact RC4 desktop source commit'
+        type: string
+        required: true
+      expected_rc_db:
+        description: 'Approved existing RC database SHA256, or absent'
+        type: string
+        required: true
+        default: absent
+      dry_run:
+        description: 'Validate and read back remote state only'
+        type: boolean
+        required: true
+        default: true
+      accept_final_old_trust_publication:
+        description: 'Accept this as the final unsigned old-trust RC4 publication before strict signing'
+        type: boolean
+        required: true
+        default: false
+      accept_mutable_alias_window:
+        description: 'Accept non-atomic RC database alias replacement'
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: edge-publish
+  cancel-in-progress: false
+
+jobs:
+  transition:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment: package-signing
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Validate explicit old-trust acceptance and inputs
+        env:
+          INPUT_RUN: ${{ inputs.artifact_run_id }}
+          INPUT_HASH: ${{ inputs.manifest_sha256 }}
+          INPUT_SOURCE: ${{ inputs.source_commit }}
+          INPUT_PREVIOUS: ${{ inputs.expected_rc_db }}
+          ACCEPT_OLD_TRUST: ${{ inputs.accept_final_old_trust_publication && '1' || '0' }}
+          EXECUTE: ${{ !inputs.dry_run && '1' || '0' }}
+          ACCEPT_WINDOW: ${{ inputs.accept_mutable_alias_window && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == omarchy-mac/omarchy-pkgs-aarch64 ]]
+          [[ "$ACCEPT_OLD_TRUST" == 1 ]]
+          [[ "$INPUT_RUN" =~ ^[1-9][0-9]*$ && "$INPUT_HASH" =~ ^[a-f0-9]{64}$ && "$INPUT_SOURCE" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$INPUT_PREVIOUS" == absent || "$INPUT_PREVIOUS" =~ ^[a-f0-9]{64}$ ]]
+          [[ "$EXECUTE" == 0 || "$ACCEPT_WINDOW" == 1 ]]
+          case $(findmnt -n -o FSTYPE -T "$RUNNER_TEMP") in ''|tmpfs|ramfs) exit 1;; esac
+          mkdir -p "$RUNNER_TEMP/rc4-old-trust"/{input,tmp,logs}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.artifact_run_id }}
+          name: ${{ inputs.artifact_name }}
+          path: ${{ runner.temp }}/rc4-old-trust/input
+      - name: Prepare tools without signing credentials
+        run: docker build --build-arg BASE_IMAGE=archlinux:base-devel -f .github/publisher.Dockerfile -t omarchy-transition .
+      - name: Validate and dry-run or publish final old-trust RC4 only
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_HASH: ${{ inputs.manifest_sha256 }}
+          INPUT_SOURCE: ${{ inputs.source_commit }}
+          INPUT_PREVIOUS: ${{ inputs.expected_rc_db }}
+          PUBLISHER_COMMIT: ${{ github.sha }}
+          EXECUTE: ${{ !inputs.dry_run && '1' || '0' }}
+          ACCEPT_WINDOW: ${{ inputs.accept_mutable_alias_window && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD:/w:ro" -w /w -v "$RUNNER_TEMP/rc4-old-trust:/task" \
+            -e GH_TOKEN -e INPUT_HASH -e INPUT_SOURCE -e INPUT_PREVIOUS -e PUBLISHER_COMMIT -e EXECUTE -e ACCEPT_WINDOW \
+            -e TMPDIR=/task/tmp -e TMP=/task/tmp -e TEMP=/task/tmp -e PYTHONDONTWRITEBYTECODE=1 \
+            omarchy-transition bash -euo pipefail -c '
+              args=(--accept-final-old-trust-publication)
+              [[ "$EXECUTE" == 0 ]] || args+=(--execute)
+              [[ "$ACCEPT_WINDOW" == 0 ]] || args+=(--accept-mutable-alias-window)
+              python3 scripts/publish-rc4-transition.py --bundle /task/input \
+                --manifest-sha256 "$INPUT_HASH" --source-commit "$INPUT_SOURCE" \
+                --publisher-commit "$PUBLISHER_COMMIT" --expected-rc-db "$INPUT_PREVIOUS" "${args[@]}"
+            ' 2>&1 | tee "$RUNNER_TEMP/rc4-old-trust/logs/publication.log"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: rc4-old-trust-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rc4-old-trust/logs/
+          if-no-files-found: warn
+          retention-days: 90

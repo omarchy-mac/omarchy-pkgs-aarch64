@@ -32,6 +32,9 @@ IMPORT_FAILURES = {
     'Public key differs from reviewed policy': 'public-or-policy',
     'Public key must contain the exact single approved primary': 'public-or-policy',
     'Approved signing subkey missing': 'public-or-policy',
+    'Public key must contain the exact approved primary set': 'public-or-policy',
+    'Approved signing subkey missing from active primary': 'public-or-policy',
+    'Malformed trusted primary fingerprints': 'public-or-policy',
     'GnuPG temporary storage must be disk-backed': 'temp-storage',
 }
 
