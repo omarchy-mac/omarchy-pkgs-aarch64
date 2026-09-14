@@ -194,13 +194,29 @@ verify() {
   # aarch64 nor the RELEASE_VERSION assertion above applies to them. What must
   # hold is that they are the depends omarchy names, so an omarchy that stops
   # requiring one stops publishing it.
-  local extras=() extra extra_pkg extra_arch
+  local extras=() extra extra_pkg extra_arch extra_version requirements requirement constraint comparison
   for extra in omarchy-keyring omarchy-mac-keyring ttf-jetbrains-mono-nerd-basic; do
-    grep -Fxq "$extra" <<<"$omarchy_depends" || continue
+    requirements=$(grep -E "^${extra}([<>=].+)?$" <<<"$omarchy_depends" || true)
+    [[ -n $requirements ]] || continue
     extra_pkg="$(find_package "$PKGDIR" "$extra")"
     extra_arch="$(pkginfo_field "$extra_pkg" arch)"
     [[ "$extra_arch" == "any" || "$extra_arch" == "aarch64" ]] \
       || die "$extra built for $extra_arch, expected any or aarch64"
+    extra_version="$(pkginfo_field "$extra_pkg" pkgver)"
+    while IFS= read -r requirement; do
+      constraint=${requirement#"$extra"}
+      [[ -n $constraint ]] || continue
+      [[ $constraint =~ ^(\>=|\<=|=|\>|\<)(.+)$ ]] || die "Invalid dependency: $requirement"
+      local operator=${BASH_REMATCH[1]} required_version=${BASH_REMATCH[2]}
+      comparison=$(vercmp "$extra_version" "$required_version")
+      case "$operator" in
+        '>=') (( comparison >= 0 )) || die "$extra $extra_version does not satisfy $requirement" ;;
+        '<=') (( comparison <= 0 )) || die "$extra $extra_version does not satisfy $requirement" ;;
+        '=') (( comparison == 0 )) || die "$extra $extra_version does not satisfy $requirement" ;;
+        '>') (( comparison > 0 )) || die "$extra $extra_version does not satisfy $requirement" ;;
+        '<') (( comparison < 0 )) || die "$extra $extra_version does not satisfy $requirement" ;;
+      esac
+    done <<<"$requirements"
     extras+=("$extra_pkg")
   done
 
