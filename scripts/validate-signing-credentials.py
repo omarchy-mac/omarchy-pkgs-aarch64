@@ -48,10 +48,46 @@ def import_substage(error):
 def stage(label):
     try:
         yield
+    except ValidationFailure:
+        raise
     except Exception as error:
-        if label in ('import', 'wrong-password-import'):
+        if label in ('import', 'import:public', 'import:secret', 'wrong-password-import'):
             label += ':' + import_substage(error)
         raise ValidationFailure(label) from None
+
+
+def import_keyring(signing, public, policy, secret):
+    prefix = 'import:secret' if secret else 'import:public'
+    original_run = signing.run
+    imports = 0
+
+    def traced_run(*args, **kwargs):
+        nonlocal imports
+        phase = None
+        if args and args[0] == 'gpg':
+            # Pinned Keyring imports its public certificate first, then the secret
+            # export. Inspect only operation flags, never data or diagnostics.
+            if '--import' in args:
+                imports += 1
+                phase = 'public-import' if imports == 1 else 'secret-import'
+            elif '--list-keys' in args:
+                phase = 'public-list'
+            elif '--list-secret-keys' in args:
+                phase = 'secret-list'
+        try:
+            return original_run(*args, **kwargs)
+        except Exception as error:
+            if phase is None:
+                raise
+            raise ValidationFailure(prefix + ':' + phase + ':' + import_substage(error)) from None
+
+    # This validator is single-threaded; restore the helper after construction.
+    signing.run = traced_run
+    try:
+        with stage(prefix):
+            return signing.Keyring(public, policy, secret=secret)
+    finally:
+        signing.run = original_run
 
 
 def validate(signing, public, policy):
@@ -59,8 +95,10 @@ def validate(signing, public, policy):
         challenge = Path(temporary) / 'credential-check.txt'
         original = b'Omarchy Mac credential validation only\n' + secrets.token_bytes(32)
         challenge.write_bytes(original)
-        with stage('import'):
-            ring = signing.Keyring(public, policy, secret=True)
+        ring = import_keyring(signing, public, policy, secret=False)
+        ring.close()
+        print('PASS: credential validation [stage=import:public]')
+        ring = import_keyring(signing, public, policy, secret=True)
         try:
             with stage('sign'):
                 ring.sign(challenge)
