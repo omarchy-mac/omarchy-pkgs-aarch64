@@ -30,9 +30,14 @@ Configure two separate GitHub Environments (YAML does not configure these):
 - `package-signing`: reviewed publishing branches and required approval for
   manual RC publication, artifact production and rare full edge conversion.
 
-Both signing environments use secrets `PACMAN_SIGNING_SUBKEY_B64` and
-`PACMAN_SIGNING_PASSPHRASE`, and variables `PACMAN_SIGNING_PRIMARY_FPR` and
-`PACMAN_SIGNING_SUBKEY_FPR`. The read-only producer receives neither secret.
+Both signing environments stage the replacement in new secrets
+`PACMAN_SIGNING_SUBKEY_B64_20260914` and `PACMAN_SIGNING_PASSPHRASE_20260914`,
+and new variables `PACMAN_SIGNING_PRIMARY_FPR_20260914` and
+`PACMAN_SIGNING_SUBKEY_FPR_20260914`. Workflows map these to the unchanged
+`PACMAN_SIGNING_*` process interface. Preserve the previous unsuffixed entries;
+no overwrite or deletion is required. Populate all four replacement entries in
+both environments before enabling the new workflow revision. The read-only
+producer receives neither secret.
 
 ASCII whitespace and line wrapping are removed from the base64 input before
 strict decoding. One trailing LF or CRLF is removed from the passphrase; internal

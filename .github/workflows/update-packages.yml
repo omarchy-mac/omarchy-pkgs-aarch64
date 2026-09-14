@@ -158,10 +158,10 @@ jobs:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
-          PACMAN_SIGNING_SUBKEY_B64: ${{ secrets.PACMAN_SIGNING_SUBKEY_B64 }}
-          PACMAN_SIGNING_PASSPHRASE: ${{ secrets.PACMAN_SIGNING_PASSPHRASE }}
-          PACMAN_SIGNING_PRIMARY_FPR: ${{ vars.PACMAN_SIGNING_PRIMARY_FPR }}
-          PACMAN_SIGNING_SUBKEY_FPR: ${{ vars.PACMAN_SIGNING_SUBKEY_FPR }}
+          PACMAN_SIGNING_SUBKEY_B64: ${{ secrets.PACMAN_SIGNING_SUBKEY_B64_20260914 }}
+          PACMAN_SIGNING_PASSPHRASE: ${{ secrets.PACMAN_SIGNING_PASSPHRASE_20260914 }}
+          PACMAN_SIGNING_PRIMARY_FPR: ${{ vars.PACMAN_SIGNING_PRIMARY_FPR_20260914 }}
+          PACMAN_SIGNING_SUBKEY_FPR: ${{ vars.PACMAN_SIGNING_SUBKEY_FPR_20260914 }}
         run: |
           mkdir -p .newdb
           docker run --rm -v "$PWD:/w" -w /w \
