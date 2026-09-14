@@ -28,12 +28,22 @@ def digest(path):
 
 def policy(path=POLICY):
     p = json.loads(Path(path).read_text())
-    require(set(p) == {'primary_fingerprint', 'signing_subkey_fingerprint', 'public_key_sha256'}, 'Malformed signing policy')
+    required = {'primary_fingerprint', 'signing_subkey_fingerprint', 'public_key_sha256'}
+    require(required <= set(p) <= required | {'trusted_primary_fingerprints'}, 'Malformed signing policy')
     for key in ('primary_fingerprint', 'signing_subkey_fingerprint'):
         require(re.fullmatch('[A-F0-9]{40}', p[key]), 'Missing or invalid signing fingerprint')
     require(p['primary_fingerprint'] != p['signing_subkey_fingerprint'], 'Primary cannot be the CI signer')
     require(re.fullmatch('[a-f0-9]{64}', p['public_key_sha256']), 'Missing public key digest')
+    trusted = p.get('trusted_primary_fingerprints', [p['primary_fingerprint']])
+    require(isinstance(trusted, list) and trusted and all(isinstance(x, str) and re.fullmatch('[A-F0-9]{40}', x) for x in trusted), 'Malformed trusted primary fingerprints')
+    require(len(trusted) == len(set(trusted)) and p['primary_fingerprint'] in trusted, 'Malformed trusted primary fingerprints')
     return p
+
+def trusted_primaries(p):
+    return p.get('trusted_primary_fingerprints', [p['primary_fingerprint']])
+
+def trusted_file(p):
+    return '\n'.join(f'{fingerprint}:4:' for fingerprint in trusted_primaries(p))
 
 def normalize_credentials(encoded, password):
     require(isinstance(encoded, str) and isinstance(password, str), 'Protected signing credentials missing')
@@ -63,10 +73,24 @@ class Keyring:
         try:
             run(*self.gpg, '--import', data=self.public.read_bytes())
             records = run(*self.gpg, '--with-colons', '--list-keys').stdout.decode().splitlines()
-            fingerprints = [line.split(':')[9] for line in records if line.startswith('fpr:')]
-            require(fingerprints[0] == self.policy['primary_fingerprint'] and sum(x.startswith('pub:') for x in records) == 1,
-                    'Public key must contain the exact single approved primary')
-            require(self.policy['signing_subkey_fingerprint'] in fingerprints[1:], 'Approved signing subkey missing')
+            primaries = []
+            active_subkeys = []
+            current_primary = None
+            pending = None
+            for line in records:
+                fields = line.split(':')
+                if fields[0] in ('pub', 'sub'):
+                    pending = fields[0]
+                elif fields[0] == 'fpr' and pending:
+                    if pending == 'pub':
+                        current_primary = fields[9]
+                        primaries.append(current_primary)
+                    elif current_primary == self.policy['primary_fingerprint']:
+                        active_subkeys.append(fields[9])
+                    pending = None
+            require(len(primaries) == len(set(primaries)) and set(primaries) == set(trusted_primaries(self.policy)),
+                    'Public key must contain the exact approved primary set')
+            require(self.policy['signing_subkey_fingerprint'] in active_subkeys, 'Approved signing subkey missing from active primary')
             self.password = None
             if secret:
                 for env, field in [('PACMAN_SIGNING_PRIMARY_FPR', 'primary_fingerprint'),

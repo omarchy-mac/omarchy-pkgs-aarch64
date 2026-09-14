@@ -124,6 +124,41 @@ class SigningTests(unittest.TestCase):
             try:self.assertRaises(ValueError,ring.verify,path)
             finally:ring.close()
         finally:subprocess.run(['gpgconf','--homedir',str(home),'--kill','gpg-agent'],check=True)
+    def test_08b_combined_public_trust_keeps_active_signer_exact(self):
+        # A preserved historical primary must not become an accepted publisher signer.
+        self.run_gpg('--quick-generate-key', 'Preserved historical fixture', 'ed25519', 'cert', '1d')
+        old_primary=self.fingerprints()[-1]
+        self.run_gpg('--quick-add-key',old_primary,'ed25519','sign','1d')
+        old_subkey=self.fingerprints()[-1]
+        public=self.root/'combined.gpg';public.write_bytes(self.run_gpg('--export',old_primary,self.primary))
+        data=json.loads(self.policy.read_text());data.update(public_key_sha256=hashlib.sha256(public.read_bytes()).hexdigest(),trusted_primary_fingerprints=[old_primary,self.primary])
+        policy=self.root/'combined.json';policy.write_text(json.dumps(data))
+        path=self.root/'combined-challenge';path.write_bytes(b'new signer challenge')
+        ring=s.Keyring(public,policy,True)
+        try:ring.sign(path)
+        finally:ring.close()
+        ring=s.Keyring(public,policy)
+        try:ring.verify(path)
+        finally:ring.close()
+        historical=self.root/'historical-challenge';historical.write_bytes(b'old signer challenge')
+        self.run_gpg('--local-user',old_subkey+'!','--output',str(historical)+'.sig','--detach-sign',str(historical))
+        ring=s.Keyring(public,policy)
+        try:self.assertRaises(ValueError,ring.verify,historical)
+        finally:ring.close()
+        # Listing the old primary must not allow its subkey to masquerade as active.
+        wrong=dict(data,signing_subkey_fingerprint=old_subkey);policy.write_text(json.dumps(wrong))
+        with self.assertRaisesRegex(ValueError,'missing from active primary'):s.Keyring(public,policy)
+        wrong=dict(data,trusted_primary_fingerprints=[self.primary]);policy.write_text(json.dumps(wrong))
+        with self.assertRaisesRegex(ValueError,'exact approved primary set'):s.Keyring(public,policy)
+        wrong=dict(data,trusted_primary_fingerprints=[self.primary,'0'*40]);policy.write_text(json.dumps(wrong))
+        with self.assertRaisesRegex(ValueError,'exact approved primary set'):s.Keyring(public,policy)
+        policy.write_text(json.dumps(data))
+        self.assertEqual(s.trusted_file(s.policy(policy)),old_primary+':4:\n'+self.primary+':4:')
+        # Exercise the real non-publishing validator against the combined public ring.
+        spec=importlib.util.spec_from_file_location('validator',Path(__file__).with_name('validate-signing-credentials.py'))
+        validator=importlib.util.module_from_spec(spec);spec.loader.exec_module(validator)
+        validator.validate(s,public,policy)
+
     def test_09_revoked_primary_rejected(self):
         revocation=(self.home/'openpgp-revocs.d'/f'{self.primary}.rev').read_text().replace(':-----BEGIN PGP PUBLIC KEY BLOCK-----','-----BEGIN PGP PUBLIC KEY BLOCK-----')
         subprocess.run(['gpg','--homedir',str(self.home),'--batch','--import'],input=revocation.encode(),stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=True)

@@ -340,7 +340,7 @@ def check(bundle, trust_policy=SIGNING_POLICY):
         keyring_archive = bundle / 'assets' / next(item['filename'] for item in records if item['name'] == 'omarchy-mac-keyring')
         key_prefix = 'usr/share/pacman/keyrings/'
         require(run('bsdtar', '-xOf', keyring_archive, key_prefix + 'omarchy-mac.gpg') == (bundle / 'provenance/signing-public.gpg').read_bytes(), 'Fork keyring payload differs from trusted public key')
-        require(run('bsdtar', '-xOf', keyring_archive, key_prefix + 'omarchy-mac-trusted').decode().strip() == manifest['signing_policy']['primary_fingerprint'] + ':4:', 'Fork keyring trust fingerprint differs')
+        require(run('bsdtar', '-xOf', keyring_archive, key_prefix + 'omarchy-mac-trusted').decode().strip() == signing.trusted_file(manifest['signing_policy']), 'Fork keyring trust fingerprint differs')
         ring = signing.Keyring(bundle / 'provenance/signing-public.gpg', trust_policy)
         try:
             for directory in ['assets', 'rollback']:

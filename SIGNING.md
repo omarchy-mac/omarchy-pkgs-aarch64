@@ -3,7 +3,24 @@
 The fork has a separate `omarchy-mac-keyring`; it does not replace upstream
 `omarchy-keyring`, Arch Linux ARM or Asahi trust. The reviewed public certificate
 and primary/subkey fingerprints are in `pkgbuilds/omarchy-mac-keyring/`.
-Only public material belongs in Git. The primary remains offline.
+Only public material belongs in Git. Keep the primary offline before production
+use; the generated candidate still requires custody transfer from its restricted
+owner-host staging location.
+
+The client keyring preserves the previous primary
+`F3C5AE3FCFFC738C301E30A8F0C548C0D27279F7` alongside the new active primary
+`FBD6874D423C418DDB6D143EECE19CDDE306DBD2`. The only active publisher signer is
+subkey `D791ED0C72439D9F8757421258043B2770A25762` under the new primary.
+`trusted_primary_fingerprints` lists the exact allowed client trust set; the
+public-key digest binds the complete combined keyring. Preserving old client
+trust does not authorize the publisher to accept old-signer signatures. No
+revocations are introduced. The old standalone certificate remains in
+`omarchy-mac-previous.gpg` for review and recovery. This is a pre-activation
+candidate; it does not implement conversion of an already old-signed feed.
+
+The non-publishing credential validator checks the workflow commit itself
+(`${{ github.sha }}`), so merged helper changes cannot silently leave it testing
+an earlier publisher. It remains main-only and uses both signing environments.
 
 Configure two separate GitHub Environments (YAML does not configure these):
 
@@ -240,7 +257,7 @@ The two rolling publishers and every alias-changing manual workflow share
 
 ## Signing subkey rotation runbook
 
-The current signing subkey expires **2027-09-13T16:10:07Z**. Begin a reviewed
+The current signing subkey expires **2027-09-14T12:50:13Z**. Begin a reviewed
 rotation well before that instant:
 
 1. Verify expiry/fingerprints from the public certificate and retain the current

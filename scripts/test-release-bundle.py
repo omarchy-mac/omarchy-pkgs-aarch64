@@ -22,6 +22,13 @@ class ReleaseBundleTests(unittest.TestCase):
         keys = importlib.util.module_from_spec(key_spec); key_spec.loader.exec_module(keys)
         cls.keys = keys.SigningTests
         cls.keys.setUpClass()
+        # All bundle/bootstrap fixtures exercise additive historical client trust.
+        cls.keys.run_gpg('--quick-generate-key', 'Historical bundle trust', 'ed25519', 'cert', '1d')
+        historical=cls.keys.fingerprints()[-1]
+        cls.keys.public.write_bytes(cls.keys.run_gpg('--export',historical,cls.keys.primary))
+        policy=json.loads(cls.keys.policy.read_text())
+        policy.update(public_key_sha256=bundle.signing.digest(cls.keys.public),trusted_primary_fingerprints=[historical,cls.keys.primary])
+        cls.keys.policy.write_text(json.dumps(policy))
         cls.temp = tempfile.TemporaryDirectory(prefix='bundle-tests-')
         cls.root = Path(cls.temp.name)
         cls.source = cls.root / 'source'
@@ -105,7 +112,7 @@ print(open(os.environ['GH_FIXTURE']).read())
         if name == 'omarchy-mac-keyring':
             keys=root/'usr/share/pacman/keyrings';keys.mkdir(parents=True)
             (keys/'omarchy-mac.gpg').write_bytes(cls.keys.public.read_bytes())
-            (keys/'omarchy-mac-trusted').write_text(cls.keys.primary+':4:\n')
+            (keys/'omarchy-mac-trusted').write_text(bundle.signing.trusted_file(bundle.signing.policy(cls.keys.policy))+'\n')
             if revoked is not None:(keys/'omarchy-mac-revoked').write_text(revoked)
             members.append('usr')
         bundle.run('bsdtar', '-czf', output, '-C', root, *members)

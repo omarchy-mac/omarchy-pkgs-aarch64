@@ -494,7 +494,7 @@ def verify_initial_keyring(path, trust_policy=bundle.SIGNING_POLICY):
     public = bundle.run('bsdtar', '-xOf', path, prefix + 'omarchy-mac.gpg')
     require(hashlib.sha256(public).hexdigest() == policy['public_key_sha256'], 'Bootstrap keyring differs from approved production trust anchor')
     trusted = bundle.run('bsdtar', '-xOf', path, prefix + 'omarchy-mac-trusted').decode().strip()
-    require(trusted == policy['primary_fingerprint'] + ':4:', 'Bootstrap keyring trust fingerprint differs')
+    require(trusted == bundle.signing.trusted_file(policy), 'Bootstrap keyring trust fingerprint differs')
     revoked = bundle.run('bsdtar', '-xOf', path, prefix + 'omarchy-mac-revoked')
     require(revoked == b'', 'Initial bootstrap revocation file must be present and empty')
 
