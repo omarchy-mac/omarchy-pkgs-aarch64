@@ -479,6 +479,10 @@ bash scripts/test-prepare-omarchy-recipes.sh \
   && ok "recipe patch applies, is idempotent, and rejects drift" \
   || no "recipe patch applies, is idempotent, and rejects drift"
 
+python3 scripts/test-omarchy-steam-fex.py \
+  && ok "Steam FEX launcher preserves prepare, patching, arguments and fallback behavior" \
+  || no "Steam FEX launcher preserves prepare, patching, arguments and fallback behavior"
+
 echo
 if (( fail )); then
   printf '\033[1;31m%d passed, %d FAILED\033[0m\n' "$pass" "$fail"; exit 1
