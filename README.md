@@ -83,7 +83,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `omarchy-nvim` | 2026.8.13-1 | Pre-built LazyVim configuration |
 | `omarchy-settings` | 4.0.2-2 | Apple Silicon system and user defaults |
 | `omarchy-steam-fex` | 1.0.0-1 (unpublished) | Steam launcher for the Asahi muvm/FEX stack |
-| `omarchy-webapp-theme` | 0.3.6-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
+| `omarchy-webapp-theme` | 0.3.7-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
 | `omawrite` | 0.5.0-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
 | `openai-codex-desktop` | 26.908.70816-1 | ChatGPT desktop app with Codex |
 | `pinta` | 3.1.2-1 | Simple image editor |
