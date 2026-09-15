@@ -72,7 +72,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `hyprland-preview-share-picker` | 0.2.1-1 | Share picker with window/monitor previews |
 | `libva-v4l2_request-avd` | 1.3-1 | VA-API driver so applications can reach the Apple Video Decoder |
 | `localsend` | 1.18.2-1 | Cross-platform AirDrop alternative |
-| `mise-bin` | 2026.9.7-1 | Dev tools, env vars, task runner |
+| `mise-bin` | 2026.9.8-1 | Dev tools, env vars, task runner |
 | `obs-studio` | 32.2.2-1 | Video recording and live streaming (no browser source) |
 | `obsidian-appimage` | 1.13.7-2 | Markdown knowledge base (AppImage) |
 | `omacalc` | 0.2.2-1 | Calculator — bound to `SUPER + CTRL + Q` |
@@ -84,7 +84,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `omarchy-settings` | 4.0.2-2 | Apple Silicon system and user defaults |
 | `omarchy-webapp-theme` | 0.3.6-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
 | `omawrite` | 0.5.0-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
-| `openai-codex-desktop` | 26.908.40834-1 | ChatGPT desktop app with Codex |
+| `openai-codex-desktop` | 26.908.70816-1 | ChatGPT desktop app with Codex |
 | `pinta` | 3.1.2-1 | Simple image editor |
 | `tensaku` | 0.29.0-1 | Screenshot annotation for Wayland |
 | `ttf-ia-writer` | 20181225-1 | iA Writer font subset |
