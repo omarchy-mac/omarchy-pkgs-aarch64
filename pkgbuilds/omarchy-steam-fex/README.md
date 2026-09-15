@@ -32,6 +32,8 @@ an Omarchy package update that drops both copies. Upgrade Omarchy and install
 `omarchy-steam-fex` together, or upgrade Omarchy first. An existing development
 checkout's `bin/` directory can also take precedence over `/usr/bin` in PATH;
 remove its old launcher as part of that source change.
+This package-ownership migration applies to original Mac-fork upgrades;
+upstream Omarchy's package did not ship this launcher path.
 
 The manifest uses `repack` with `allow_empty_elf: true` for this script-only
 aarch64 package. `any` would require an `arch=('any')` artifact in this repo's

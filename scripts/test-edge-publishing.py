@@ -142,7 +142,9 @@ class EdgeTests(unittest.TestCase):
         inventory = {'packages':[{'name':p['name']} for p in extra['packages']]}
         with patch.object(boot.bundle,'check',return_value=extra), patch.object(Path,'read_text',return_value=json.dumps(inventory)):
             result=boot.validate(self.bundle,self.sha,self.source,Fixture.keys.policy,channel='stable')
-            self.assertEqual(len(result['packages']),53)
+            self.assertEqual({p['name'] for p in result['packages']},
+                             {p['name'] for p in inventory['packages']})
+            self.assertEqual(len(result['packages']),len(self.manifest['packages'])+1)
         import yaml
         for name in ('update-packages.yml','update-omarchy-mac.yml'):
             data=yaml.safe_load((boot.ROOT/'.github/workflows'/name).read_text())
