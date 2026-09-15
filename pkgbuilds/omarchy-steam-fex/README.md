@@ -26,6 +26,13 @@ with `omarchy-pkg-available omarchy-steam-fex`. Once this package is available
 to users, remove the in-tree `bin/omarchy-launch-steam`; the command name and
 `gtk-launch steam` entry stay the same.
 
+The original omarchy-mac release's `omarchy` package also owns `/usr/bin/omarchy-launch-steam` and
+`/usr/share/omarchy/bin/omarchy-launch-steam`. Shipping this package requires
+an Omarchy package update that drops both copies. Upgrade Omarchy and install
+`omarchy-steam-fex` together, or upgrade Omarchy first. An existing development
+checkout's `bin/` directory can also take precedence over `/usr/bin` in PATH;
+remove its old launcher as part of that source change.
+
 The manifest uses `repack` with `allow_empty_elf: true` for this script-only
 aarch64 package. `any` would require an `arch=('any')` artifact in this repo's
 builder. The recipe and bundled sources can also be carried upstream later.
