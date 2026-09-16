@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import unittest
+from unittest.mock import patch
 
 spec=importlib.util.spec_from_file_location('bootstrap',Path(__file__).with_name('bootstrap-rc.py'))
 boot=importlib.util.module_from_spec(spec);spec.loader.exec_module(boot)
@@ -20,7 +21,7 @@ for name,value in fixtures.ReleaseBundleTests.__dict__.items():
     if isinstance(value,classmethod):setattr(Fixture,name,value)
 original_stage=Fixture.stage.__func__
 @classmethod
-def stage52(cls,*args,**kwargs):
+def stage_inventory(cls,*args,**kwargs):
     if not getattr(cls,'expanded',False):
         for path in cls.base.glob('fixture-app-*'):path.unlink()
         present=set(boot.bundle.archives(cls.base))
@@ -32,7 +33,7 @@ def stage52(cls,*args,**kwargs):
             if '.pkg.tar.' not in path.name:path.unlink()
         cls.expanded=True
     return original_stage(cls,*args,**kwargs)
-Fixture.stage=stage52
+Fixture.stage=stage_inventory
 
 class Remote:
     def __init__(self):self.releases={};self.events=[];self.fail_upload=None;self.bad_read=None;self.next_id=1;self.tags={};self.fail_after_delete=None
@@ -66,6 +67,18 @@ class Remote:
 class BootstrapTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        # RC4 was a one-shot 52-package transition. Exercise its historical
+        # catalog even as packages.json grows; EdgeTests reuses Fixture with
+        # the live catalog and does not install this scoped mock.
+        inventory = (Path(__file__).parent/'fixtures/rc4/packages.json').read_text()
+        read_text = Path.read_text
+        def historical_catalog(path, *args, **kwargs):
+            if path == boot.ROOT/'packages.json':
+                return inventory
+            return read_text(path, *args, **kwargs)
+        catalog_patch = patch.object(Path, 'read_text', historical_catalog)
+        catalog_patch.start()
+        cls.addClassCleanup(catalog_patch.stop)
         Fixture.setUpClass();cls.bundle=Fixture.rc
         cls.sha=boot.bundle.digest(cls.bundle/'manifest.json');cls.source=Fixture.rc_commit
         cls.manifest=boot.validate(cls.bundle,cls.sha,cls.source,Fixture.keys.policy)
@@ -96,6 +109,16 @@ class BootstrapTests(unittest.TestCase):
     def publish(self,args,remote):return boot.publish_checked(args,self.manifest,remote)
     def test_01_exact_signed_inventory(self):
         self.assertEqual(len(self.manifest['packages']),52)
+        for change in ('missing', 'extra', 'substituted', 'duplicate'):
+            with self.subTest(change=change):
+                changed=copy.deepcopy(self.manifest)
+                if change == 'missing':changed['packages'].pop()
+                elif change == 'extra':changed['packages'].append(dict(changed['packages'][0],name='future-package'))
+                elif change == 'substituted':changed['packages'][0]['name']='future-package'
+                else:changed['packages'][0]['name']=changed['packages'][1]['name']
+                with patch.object(boot.bundle,'check',return_value=changed):
+                    self.assertRaisesRegex(ValueError,'Complete exact configured package inventory',
+                                           boot.validate,self.bundle,self.sha,self.source,Fixture.keys.policy)
         for digest,source in [('0'*64,self.source),(self.sha,'0'*40)]:
             self.assertRaises(ValueError,boot.validate,self.bundle,digest,source,Fixture.keys.policy)
         unsigned=Path(str(self.bundle)+'.unsigned')

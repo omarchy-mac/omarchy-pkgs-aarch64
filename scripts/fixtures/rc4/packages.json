@@ -1,0 +1,160 @@
+{
+  "packages": [
+    {
+      "name": "1password"
+    },
+    {
+      "name": "1password-cli"
+    },
+    {
+      "name": "aether"
+    },
+    {
+      "name": "aspnet-runtime-bin"
+    },
+    {
+      "name": "aspnet-targeting-pack-bin"
+    },
+    {
+      "name": "avd-fw"
+    },
+    {
+      "name": "brave-origin-bin"
+    },
+    {
+      "name": "cliamp"
+    },
+    {
+      "name": "cursor-bin"
+    },
+    {
+      "name": "dotnet-host-bin"
+    },
+    {
+      "name": "dotnet-runtime-2.1"
+    },
+    {
+      "name": "dotnet-runtime-bin"
+    },
+    {
+      "name": "dotnet-sdk-2.1"
+    },
+    {
+      "name": "dotnet-sdk-bin"
+    },
+    {
+      "name": "dotnet-targeting-pack-bin"
+    },
+    {
+      "name": "ghostty"
+    },
+    {
+      "name": "ghostty-nautilus"
+    },
+    {
+      "name": "ghostty-shell-integration"
+    },
+    {
+      "name": "ghostty-terminfo"
+    },
+    {
+      "name": "grok-bot"
+    },
+    {
+      "name": "herdr"
+    },
+    {
+      "name": "hermes-desktop"
+    },
+    {
+      "name": "hypa-ttfx-bin"
+    },
+    {
+      "name": "hyprland-preview-share-picker"
+    },
+    {
+      "name": "libva-v4l2_request-avd"
+    },
+    {
+      "name": "localsend"
+    },
+    {
+      "name": "mise-bin"
+    },
+    {
+      "name": "obs-studio"
+    },
+    {
+      "name": "obsidian-appimage"
+    },
+    {
+      "name": "omacalc"
+    },
+    {
+      "name": "omacut"
+    },
+    {
+      "name": "omarchy"
+    },
+    {
+      "name": "omarchy-emacs"
+    },
+    {
+      "name": "omarchy-keyring"
+    },
+    {
+      "name": "omarchy-mac-keyring"
+    },
+    {
+      "name": "omarchy-nvim"
+    },
+    {
+      "name": "omarchy-settings"
+    },
+    {
+      "name": "omarchy-webapp-theme"
+    },
+    {
+      "name": "omawrite"
+    },
+    {
+      "name": "openai-codex-desktop"
+    },
+    {
+      "name": "pinta"
+    },
+    {
+      "name": "tensaku"
+    },
+    {
+      "name": "ttf-ia-writer"
+    },
+    {
+      "name": "ttf-jetbrains-mono-nerd-basic"
+    },
+    {
+      "name": "ttfx"
+    },
+    {
+      "name": "tzupdate"
+    },
+    {
+      "name": "ufw-docker"
+    },
+    {
+      "name": "vi"
+    },
+    {
+      "name": "voxtype-bin"
+    },
+    {
+      "name": "xdg-terminal-exec"
+    },
+    {
+      "name": "yaru-icon-theme"
+    },
+    {
+      "name": "yay"
+    }
+  ]
+}
