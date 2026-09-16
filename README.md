@@ -185,10 +185,9 @@ install its own unpublished output, including when just one split package is
 selected. The finished packages retain those runtime dependencies. Manpages
 are omitted because `pandoc-cli` is unavailable in Arch Linux ARM.
 
-`herdr` currently fails to build anywhere: its PKGBUILD pins `zig0.15`, which
-Arch dropped from `[extra]` on the move to `zig 0.16`. It is left to fail
-visibly rather than carrying a from-source Zig toolchain build, and
-`fail-fast: false` stops it blocking anything else.
+`herdr` uses the upstream omarchy-pkgs recipe, which downloads a checksum-pinned
+Zig 0.15.2 toolchain for the build architecture. This avoids the AUR recipe's
+dependency on the unavailable `zig0.15` repository package.
 
 `hermes-desktop` carries the ARM recipe fixes from
 [upstream PR #373](https://github.com/omacom/omarchy-pkgs/pull/373) locally.
@@ -292,7 +291,9 @@ A failed scheduled run opens an issue rather than only turning a run red.
 The scripts under [`scripts/`](scripts) are plain bash and run outside CI too.
 `scripts/smoke-test.sh` is the useful one on its own: it syncs the published repo
 the way pacman does and checks that every package the db advertises is actually
-fetchable.
+fetchable. After publication, both updater workflows pass the newly published
+database as `SMOKE_EXPECTED_DB`. The check retries forced refreshes until pacman
+has that exact database, then verifies packages against the same snapshot.
 
 ## Building these yourself
 

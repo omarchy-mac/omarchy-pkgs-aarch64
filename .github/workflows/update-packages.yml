@@ -180,6 +180,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/w" -w /w \
             -e GH_REPO -e GH_TOKEN -e PKGDIR=/w/.newdb/smoke-packages \
+            -e SMOKE_EXPECTED_DB=/w/.newdb/omarchy-aarch64.db.tar.zst \
             "$ARCH_IMAGE_X86" bash -c \
             'bash scripts/container-bootstrap.sh >/dev/null && bash scripts/smoke-test.sh'
 

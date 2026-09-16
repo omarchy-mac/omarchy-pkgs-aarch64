@@ -483,6 +483,10 @@ python3 scripts/test-omarchy-steam-fex.py \
   && ok "Steam FEX launcher preserves prepare, patching, arguments and fallback behavior" \
   || no "Steam FEX launcher preserves prepare, patching, arguments and fallback behavior"
 
+python3 scripts/test-smoke-test.py \
+  && ok "smoke verification waits for the published database and preserves integrity checks" \
+  || no "smoke verification waits for the published database and preserves integrity checks"
+
 echo
 if (( fail )); then
   printf '\033[1;31m%d passed, %d FAILED\033[0m\n' "$pass" "$fail"; exit 1
