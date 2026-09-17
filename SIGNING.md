@@ -113,6 +113,12 @@ compares functional payloads for all five rebuilt inputs and reuses the exact
 published archives; changed package identity/payload fails. This emits the
 complete input artifact consumed by conversion.
 
+For an RC rebuild, provide an explicit positive `pkgrel` workflow input. The
+producer passes it through as `OMARCHY_PKGREL`, verifies the rebuilt `omarchy`
+and `omarchy-settings` identities, and preflights the target lane before the
+large artifact build. Never overwrite an existing filename with different
+bytes; choose a new package release number instead.
+
 The manual **Convert approved edge inventory to signing** workflow uses
 `package-signing` and the shared `edge-publish` writer lock. It requires a retained
 complete **final stable** bundle matching every archive/version/hash in the

@@ -569,6 +569,9 @@ def stage_input(args, trust_policy=bundle.SIGNING_POLICY):
     require(set(built) == bundle.CANDIDATES, 'Canonical build must produce exactly five release inputs')
     baseline = bundle.archives(args.capture / 'packages')
     release = (args.source / 'version').read_text().strip()
+    pkgrel = str(getattr(args, 'pkgrel', ''))
+    require(re.fullmatch(r'[1-9][0-9]*', pkgrel), 'Explicit package release number required')
+    package_version = f'{release}-{pkgrel}'
     capture_evidence = json.loads((args.capture / 'capture.json').read_text())
     require(capture_evidence['database_sha256'] == bundle.digest(args.capture / f'{DB}.db.tar.zst'), 'Capture provenance database differs')
     conversion = getattr(args, 'edge_conversion', False)
@@ -580,6 +583,9 @@ def stage_input(args, trust_policy=bundle.SIGNING_POLICY):
                 'RC5 initial signing baseline must be RC4')
     args.candidates.mkdir()
     for name, (path, record) in built.items():
+        if name in {'omarchy', 'omarchy-settings'}:
+            require(record['version'] == package_version,
+                    f'{name} package identity must match explicit pkgrel {package_version}')
         if conversion:
             require(name in baseline and path.name == baseline[name][0].name, 'Conversion cannot change package identity')
             require(functional_payload(path) == functional_payload(baseline[name][0]), 'Conversion rebuilt payload differs from published package')
@@ -602,7 +608,7 @@ def stage_input(args, trust_policy=bundle.SIGNING_POLICY):
     bundle.stage(argparse.Namespace(base_db=args.capture / f'{DB}.db.tar.zst',
                                     base_packages=args.capture / 'packages', candidates=args.candidates,
                                     source=args.source, source_git=None, source_commit=args.source_commit,
-                                    release=release, output=args.output))
+                                    release=package_version, output=args.output))
     digest = bundle.digest(args.output / 'manifest.json')
     manifest = validate(args.output, digest, args.source_commit, trust_policy, signed=False, channel='stable' if conversion else 'rc')
     print(json.dumps({'manifest_sha256': digest, 'source_commit': args.source_commit,
@@ -624,6 +630,8 @@ def main():
         stage_parser.add_argument('--' + option, type=Path, required=True)
     stage_parser.add_argument('--source-commit', required=True)
     stage_parser.add_argument('--edge-conversion', action='store_true')
+    stage_parser.add_argument('--pkgrel', required=True,
+                              help='Explicit package release number for the rebuilt package pair')
     prepare_parser = commands.add_parser('prepare')
     prepare_parser.add_argument('--input', type=Path, required=True)
     prepare_parser.add_argument('--output', type=Path, required=True)

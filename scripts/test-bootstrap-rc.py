@@ -207,10 +207,24 @@ class BootstrapTests(unittest.TestCase):
         try:boot.capture(argparse.Namespace(database_sha256=boot.bundle.digest(Fixture.base_db),output=capture))
         finally:boot.GitHub=original
         output=Fixture.root/'producer-bundle'
-        boot.stage_input(argparse.Namespace(capture=capture,built=Fixture.candidates,candidates=Fixture.root/'producer-inputs',source=Fixture.source,source_commit=self.source,output=output),Fixture.keys.policy)
+        boot.stage_input(argparse.Namespace(capture=capture,built=Fixture.candidates,candidates=Fixture.root/'producer-inputs',source=Fixture.source,source_commit=self.source,output=output,pkgrel='1'),Fixture.keys.policy)
         manifest=boot.validate(output,boot.bundle.digest(output/'manifest.json'),self.source,Fixture.keys.policy,signed=False)
         self.assertEqual(len(manifest['packages']),52)
         self.assertFalse(any(e[0] in ('upload','expose','delete') for e in remote.events))
+
+    def test_10_stage_input_requires_explicit_pkgrel_and_matching_identity(self):
+        remote=Remote();remote.releases['edge']={'draft':False,'commit':'b'*40,'assets':{}}
+        remote.releases['edge']['assets']['omarchy-aarch64.db.tar.zst']=Fixture.base_db.read_bytes()
+        remote.releases['edge']['assets']['omarchy-aarch64.db']=Fixture.base_db.read_bytes()
+        for path in Fixture.base.iterdir():remote.releases['edge']['assets'][path.name]=path.read_bytes()
+        original=boot.GitHub;boot.GitHub=lambda scratch:remote
+        capture=Fixture.root/'pkgrel-capture'
+        try:boot.capture(argparse.Namespace(database_sha256=boot.bundle.digest(Fixture.base_db),output=capture))
+        finally:boot.GitHub=original
+        missing=argparse.Namespace(capture=capture,built=Fixture.candidates,candidates=Fixture.root/'pkgrel-missing',source=Fixture.source,source_commit=self.source,output=Fixture.root/'pkgrel-missing-bundle')
+        with self.assertRaisesRegex(ValueError,'Explicit package release number required'):boot.stage_input(missing,Fixture.keys.policy)
+        mismatch=copy.copy(missing); mismatch.pkgrel='2'; mismatch.candidates=Fixture.root/'pkgrel-mismatch'; mismatch.output=Fixture.root/'pkgrel-mismatch-bundle'
+        with self.assertRaisesRegex(ValueError,'identity must match explicit pkgrel'):boot.stage_input(mismatch,Fixture.keys.policy)
 
     def transition_args(self,execute=True):
         args=self.args(execute);args.bundle=self.bundle4;args.manifest_sha256=self.sha4;args.source_commit=self.source4
@@ -322,7 +336,7 @@ class BootstrapTests(unittest.TestCase):
         previous=capture/'packages'/rebuilt.name
         self.assertNotEqual(boot.bundle.digest(rebuilt),boot.bundle.digest(previous))
         Fixture.write_build_inputs(built,commit,'4.0.3rc5')
-        args=argparse.Namespace(capture=capture,built=built,candidates=Fixture.root/'inputs5',source=source,source_commit=commit,output=Fixture.root/'unsigned5')
+        args=argparse.Namespace(capture=capture,built=built,candidates=Fixture.root/'inputs5',source=source,source_commit=commit,output=Fixture.root/'unsigned5',pkgrel='1')
         wrong=copy.copy(args);wrong.candidates=Fixture.root/'inputs5-wrong'
         receipt=(capture/'capture.json').read_text();changed=json.loads(receipt);changed['lane']='edge'
         (capture/'capture.json').write_text(json.dumps(changed))

@@ -250,13 +250,16 @@ def stage(args):
         validate_inventory(database(staging / 'assets' / f'{DB}.db'), combined)
         copy_file(build_input_path, staging / 'provenance/build-inputs.txt')
         files = {p.relative_to(staging).as_posix(): digest(p) for p in sorted(staging.rglob('*')) if p.is_file()}
-        manifest = {'schema': 1, 'version': version, 'channel': channel, 'source': source,
+        manifest = {'schema': 1, 'version': version, 'package_release': version,
+                    'channel': channel, 'source': source,
                     'baseline_db_sha256': digest(args.base_db), 'publisher_sha256': digest(Path(__file__)),
                     'candidates': sorted(candidate),
                     'reused_candidates': sorted(name for name in candidate if name in baseline and candidate[name][1]['sha256'] == baseline[name][1]['sha256']),
                     'candidate_build_inputs_sha256': digest(build_input_path), 'build_inputs': expected_inputs,
                     'packages': [v[1] for k, v in sorted(combined.items())],
                     'files': files, 'signature_policy': 'optional-existing-signatures; no signer authority asserted'}
+        if re.fullmatch(r'.+-[1-9][0-9]*', version):
+            manifest['pkgrel'] = version.rsplit('-', 1)[1]
         write_json(staging / 'manifest.json', manifest)
         check(staging)
         staging.rename(args.output)
