@@ -295,6 +295,15 @@ def publish_checked(args, manifest, transport, *, old_trust_transition=False, ed
         expected_snapshot[marker.name] = marker_asset
         expected_rc = {marker.name: marker_asset, **expected_rc}
     current = lane_release(transport, args.lane)
+    # Older RC publications carried the builder provenance file at the lane
+    # root. Preserve that immutable asset during this one-shot transition;
+    # silently deleting it would discard the prior build-input evidence.
+    if old_trust_transition and current is not None and 'build-inputs.txt' in current['asset_map']:
+        provenance = args.scratch / 'previous-build-inputs.txt'
+        checksum = transport.read(current, 'build-inputs.txt', destination=provenance)
+        retained = Asset(provenance, checksum, provenance.stat().st_size)
+        expected_snapshot['build-inputs.txt'] = retained
+        expected_rc['build-inputs.txt'] = retained
     if edge_conversion:
         require(current is not None and not current['draft'], 'Published existing edge baseline required')
     prior_snapshot = transport.release(snapshot)
