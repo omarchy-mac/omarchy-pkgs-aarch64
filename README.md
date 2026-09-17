@@ -66,7 +66,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `ghostty-shell-integration` | 1.3.1-1 | Ghostty shell integration scripts |
 | `ghostty-terminfo` | 1.3.1-1 | `xterm-ghostty` terminal definition |
 | `grok-bot` | 0.47.0-1 | Grok Bot desktop agent (vendor linux-arm64 .deb) |
-| `herdr` | 0.9.0-1 | Terminal workspace manager for AI coding agents |
+| `herdr` | 0.9.1-1 | Terminal workspace manager for AI coding agents |
 | `hermes-desktop` | 2026.9.7-1 | Native desktop shell for Hermes Agent |
 | `hypa-ttfx-bin` | 0.3.1-1 | Hypa terminal text effects |
 | `hyprland-preview-share-picker` | 0.2.1-1 | Share picker with window/monitor previews |
