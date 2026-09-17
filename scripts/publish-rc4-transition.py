@@ -22,7 +22,9 @@ def validate(args, trust_policy=boot.bundle.SIGNING_POLICY):
     boot.require(not any(name.startswith('assets/') and name.endswith('.sig') for name in manifest['files']),
                  'The final old-trust candidate must be entirely unsigned')
     omarchy = next(package for package in manifest['packages'] if package['name'] == 'omarchy')
-    boot.require('omarchy-mac-keyring' in omarchy['depends'], 'RC4 must install the fork trust anchor as a hard dependency')
+    boot.require(any(boot.re.fullmatch(r'omarchy-mac-keyring(?:>=20260914-2)?', dependency)
+                     for dependency in omarchy['depends']),
+                 'RC4 must install the fork trust anchor as a hard dependency')
     records = boot.bundle.database(args.bundle / 'assets' / f'{boot.DB}.db')
     boot.require(all('PGPSIG' not in record for record in records.values()), 'Embedded package signatures are forbidden in the old-trust candidate')
     keyring_record = next(package for package in manifest['packages'] if package['name'] == 'omarchy-mac-keyring')
