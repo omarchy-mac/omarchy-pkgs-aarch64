@@ -463,9 +463,40 @@ def capture(args, trust_policy=bundle.SIGNING_POLICY):
     if lane == 'rc':
         require('omarchy-mac-keyring' in records, 'RC capture must include the installed trust anchor')
         verify_initial_keyring(packages / bundle.field(records['omarchy-mac-keyring'], 'FILENAME'), trust_policy)
-    evidence = {'database_sha256': args.database_sha256, 'archives': len(records), 'lane': lane}
+    # Approved lane DB may contain extras (ignored above). Stage requires
+    # database names == archive names, so rebuild a filtered capture DB from the
+    # downloaded inventory only. Preserve the approved lane DB hash as provenance.
+    lane_database_sha256 = args.database_sha256
+    extras = sorted(set(bundle.database(path)) - set(records))
+    path.unlink()
+    for suffix in ['db', 'files', 'db.tar.zst', 'files.tar.zst']:
+        (args.output / f'{DB}.{suffix}').unlink(missing_ok=True)
+        (packages / f'{DB}.{suffix}').unlink(missing_ok=True)
+    names = sorted(p.name for p in packages.glob('*.pkg.tar.*'))
+    require(names, 'Filtered capture produced no archives')
+    bundle.run('repo-add', '--quiet', f'{DB}.db.tar.zst', *names, cwd=packages)
+    for suffix in ['db', 'files']:
+        plain = packages / f'{DB}.{suffix}'
+        plain.unlink(missing_ok=True)
+        bundle.copy_file(packages / f'{DB}.{suffix}.tar.zst', plain)
+    for suffix in ['db', 'files', 'db.tar.zst', 'files.tar.zst']:
+        src = packages / f'{DB}.{suffix}'
+        if src.is_file():
+            bundle.copy_file(src, args.output / f'{DB}.{suffix}')
+    # Keep packages/ archive-only so stage/archives() does not see repo-add DB files.
+    for leftover in packages.glob(f'{DB}.*'):
+        leftover.unlink()
+    filtered = bundle.database(args.output / f'{DB}.db.tar.zst')
+    bundle.validate_inventory(filtered, bundle.archives(packages))
+    evidence = {
+        'database_sha256': bundle.digest(args.output / f'{DB}.db.tar.zst'),
+        'lane_database_sha256': lane_database_sha256,
+        'archives': len(records),
+        'lane': lane,
+        'filtered_extras': extras,
+    }
     bundle.write_json(args.output / 'capture.json', evidence)
-    print(json.dumps(evidence))
+    print(json.dumps({k: evidence[k] for k in ('database_sha256', 'lane_database_sha256', 'archives', 'lane', 'filtered_extras')}))
 
 
 def functional_payload(path):
