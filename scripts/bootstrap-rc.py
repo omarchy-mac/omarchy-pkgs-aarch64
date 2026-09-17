@@ -442,7 +442,13 @@ def capture(args, trust_policy=bundle.SIGNING_POLICY):
     require(bundle.digest(path) == args.database_sha256, 'Baseline database changed from approved capture')
     records = bundle.database(path)
     inventory = {p['name'] for p in json.loads((ROOT / 'packages.json').read_text())['packages']}
-    require(set(records) in (inventory, inventory - {'omarchy-mac-keyring'}), 'Captured inventory is not the complete baseline')
+    # Lane DBs may contain extras (e.g. omarchy-steam-fex on edge). Do not pull
+    # those into the RC/signing inventory. Edge may omit omarchy-mac-keyring;
+    # Prepare rebuilds that candidate. Missing configured names still fail.
+    core = inventory - {'omarchy-mac-keyring'}
+    require(core <= set(records), 'Captured inventory is missing required baseline packages')
+    records = {name: row for name, row in records.items() if name in inventory}
+    require(set(records) in (inventory, core), 'Captured inventory is not the complete baseline')
     reserve = sum(int(bundle.field(row, 'CSIZE')) for row in records.values())
     guard(args.output, reserve)
     packages = args.output / 'packages'; packages.mkdir()
