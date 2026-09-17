@@ -223,7 +223,7 @@ class EdgeTests(unittest.TestCase):
         (capture/'capture.json').write_text(json.dumps({'lane':'edge','database_sha256':boot.bundle.digest(capture/f'{boot.DB}.db.tar.zst')}))
         built=scratch/'built'; shutil.copytree(self.root/'edge-candidates',built)
         args=argparse.Namespace(capture=capture,built=built,candidates=scratch/'candidate',source=Fixture.source,
-                                source_commit=self.source,output=scratch/'output',edge_conversion=True)
+                                source_commit=self.source,output=scratch/'output',edge_conversion=True,pkgrel='1')
         boot.stage_input(args,Fixture.keys.policy)
         output=boot.bundle.check(args.output,Fixture.keys.policy)
         self.assertEqual([(p['name'],p['sha256']) for p in output['packages']],[(p['name'],p['sha256']) for p in self.manifest['packages']])
