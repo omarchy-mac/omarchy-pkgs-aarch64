@@ -22,6 +22,10 @@ on:
         description: 'Approved selected baseline omarchy-aarch64.db.tar.zst SHA256'
         type: string
         required: true
+      target_database_sha256:
+        description: 'Approved target-lane omarchy-aarch64.db.tar.zst SHA256 for partial-lane reconciliation'
+        type: string
+        required: true
       pkgrel:
         description: 'Explicit package release number for this rebuild; bump when package bytes or metadata change'
         type: string
@@ -48,10 +52,11 @@ jobs:
           SOURCE_COMMIT: ${{ inputs.source_commit }}
           EDGE_CONVERSION: ${{ inputs.edge_conversion && '1' || '0' }}
           BASE_HASH: ${{ inputs.baseline_database_sha256 }}
+          TARGET_HASH: ${{ inputs.target_database_sha256 }}
           PKGREL: ${{ inputs.pkgrel }}
         run: |
           set -euo pipefail
-          [[ "$SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ && "$BASE_HASH" =~ ^[a-f0-9]{64}$ && "$PKGREL" =~ ^[1-9][0-9]*$ ]]
+          [[ "$SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ && "$BASE_HASH" =~ ^[a-f0-9]{64}$ && "$TARGET_HASH" =~ ^[a-f0-9]{64}$ && "$PKGREL" =~ ^[1-9][0-9]*$ ]]
           case $(findmnt -n -o FSTYPE -T "$RUNNER_TEMP") in ''|tmpfs|ramfs) exit 1;; esac
           mkdir -p "$RUNNER_TEMP/rc-producer"/{tmp,cache,built,logs}
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -106,12 +111,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BASE_LANE: ${{ inputs.baseline_lane }}
           BASE_HASH: ${{ inputs.baseline_database_sha256 }}
+          TARGET_HASH: ${{ inputs.target_database_sha256 }}
+          EDGE_CONVERSION: ${{ inputs.edge_conversion && '1' || '0' }}
         run: |
           set -euo pipefail
           docker run --rm -v "$PWD:/w:ro" -w /w -v "$RUNNER_TEMP/rc-producer:/task" \
-            -e GH_TOKEN -e BASE_HASH -e BASE_LANE -e TMPDIR=/task/tmp -e TMP=/task/tmp -e TEMP=/task/tmp \
+            -e GH_TOKEN -e BASE_HASH -e BASE_LANE -e TARGET_HASH -e EDGE_CONVERSION -e TMPDIR=/task/tmp -e TMP=/task/tmp -e TEMP=/task/tmp \
             -e PYTHONDONTWRITEBYTECODE=1 omarchy-producer bash -euo pipefail -c \
-            'python3 scripts/bootstrap-rc.py capture --lane "$BASE_LANE" --database-sha256 "$BASE_HASH" --output /task/capture' \
+            'args=(--lane "$BASE_LANE" --database-sha256 "$BASE_HASH" --output /task/capture); [[ "$BASE_LANE" == edge && "$EDGE_CONVERSION" == 0 ]] && args+=(--overlay-lane rc --overlay-database-sha256 "$TARGET_HASH"); python3 scripts/bootstrap-rc.py capture "${args[@]}"' \
             2>&1 | tee "$RUNNER_TEMP/rc-producer/logs/capture.log"
       - name: Build the canonical exact-source package inputs on ARM
         env:

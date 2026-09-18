@@ -119,6 +119,12 @@ and `omarchy-settings` identities, and preflights the target lane before the
 large artifact build. Never overwrite an existing filename with different
 bytes; choose a new package release number instead.
 
+When the target RC release is only a partial inventory, prepare from the
+complete edge baseline with the approved RC database hash as an overlay. The
+producer preserves exact bytes for every package already present in RC and
+records both baseline hashes; a transition must never use edge bytes for an
+existing RC filename.
+
 The manual **Convert approved edge inventory to signing** workflow uses
 `package-signing` and the shared `edge-publish` writer lock. It requires a retained
 complete **final stable** bundle matching every archive/version/hash in the

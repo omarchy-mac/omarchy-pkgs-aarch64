@@ -458,6 +458,9 @@ def capture(args, trust_policy=bundle.SIGNING_POLICY):
     require(core <= set(records), 'Captured inventory is missing required baseline packages')
     records = {name: row for name, row in records.items() if name in inventory}
     require(set(records) in (inventory, core), 'Captured inventory is not the complete baseline')
+    overlay_lane = getattr(args, 'overlay_lane', None)
+    overlay_hash = getattr(args, 'overlay_database_sha256', None)
+    require((overlay_lane is None) == (overlay_hash is None), 'Overlay lane and database hash must be supplied together')
     reserve = sum(int(bundle.field(row, 'CSIZE')) for row in records.values())
     guard(args.output, reserve)
     packages = args.output / 'packages'; packages.mkdir()
@@ -468,6 +471,36 @@ def capture(args, trust_policy=bundle.SIGNING_POLICY):
         transport.read(release, name, destination=target)
         require(target.stat().st_size == int(bundle.field(row, 'CSIZE')) and bundle.digest(target) == bundle.field(row, 'SHA256SUM'),
                 'Captured archive differs from approved database')
+    overlay_extras = []
+    if overlay_lane is not None:
+        require(overlay_lane in ('edge', 'rc') and overlay_lane != lane, 'Overlay lane must differ from baseline lane')
+        require(re.fullmatch('[a-f0-9]{64}', overlay_hash), 'Approved overlay database SHA256 required')
+        overlay = transport.release(overlay_lane, require_prerelease=overlay_lane == 'rc')
+        require(overlay is not None and not overlay['draft'], 'Existing approved overlay is missing')
+        require(f'{DB}.db' in overlay['asset_map'] and transport.read(overlay, f'{DB}.db', public=True) == overlay_hash,
+                'Published overlay database differs from approved overlay')
+        overlay_db = args.output / '.overlay.db.tar.zst'
+        transport.read(overlay, overlay_db.name, destination=overlay_db)
+        require(bundle.digest(overlay_db) == overlay_hash, 'Overlay database changed from approved capture')
+        overlay_records_all = bundle.database(overlay_db)
+        overlay_records = {name: row for name, row in overlay_records_all.items() if name in inventory}
+        overlay_extras = sorted(set(overlay_records_all) - set(overlay_records))
+        overlay_dir = args.output / '.overlay-packages'; overlay_dir.mkdir()
+        for package_name, row in overlay_records.items():
+            name = bundle.safe_name(bundle.field(row, 'FILENAME'))
+            require(name in overlay['asset_map'], 'Overlay archive is absent')
+            target = overlay_dir / name
+            transport.read(overlay, name, destination=target)
+            require(target.stat().st_size == int(bundle.field(row, 'CSIZE')) and bundle.digest(target) == bundle.field(row, 'SHA256SUM'),
+                    'Captured overlay archive differs from approved database')
+            destination = packages / name
+            destination.unlink(missing_ok=True)
+            shutil.move(target, destination)
+            records[package_name] = row
+        overlay_db.unlink()
+        shutil.rmtree(overlay_dir)
+        require('omarchy-mac-keyring' in overlay_records, 'Overlay must include the installed trust anchor')
+        verify_initial_keyring(packages / bundle.field(overlay_records['omarchy-mac-keyring'], 'FILENAME'), trust_policy)
     bundle.validate_inventory(records, bundle.archives(packages))
     if lane == 'rc':
         require('omarchy-mac-keyring' in records, 'RC capture must include the installed trust anchor')
@@ -476,7 +509,7 @@ def capture(args, trust_policy=bundle.SIGNING_POLICY):
     # database names == archive names, so rebuild a filtered capture DB from the
     # downloaded inventory only. Preserve the approved lane DB hash as provenance.
     lane_database_sha256 = args.database_sha256
-    extras = sorted(set(bundle.database(path)) - set(records))
+    extras = sorted(set(bundle.database(path)) - set(records)) + overlay_extras
     path.unlink()
     for suffix in ['db', 'files', 'db.tar.zst', 'files.tar.zst']:
         (args.output / f'{DB}.{suffix}').unlink(missing_ok=True)
@@ -503,6 +536,8 @@ def capture(args, trust_policy=bundle.SIGNING_POLICY):
         'archives': len(records),
         'lane': lane,
         'filtered_extras': extras,
+        'overlay_lane': overlay_lane,
+        'overlay_database_sha256': overlay_hash,
     }
     bundle.write_json(args.output / 'capture.json', evidence)
     print(json.dumps({k: evidence[k] for k in ('database_sha256', 'lane_database_sha256', 'archives', 'lane', 'filtered_extras')}))
@@ -624,6 +659,8 @@ def main():
     capture_parser = commands.add_parser('capture')
     capture_parser.add_argument('--database-sha256', required=True)
     capture_parser.add_argument('--lane', choices=['edge', 'rc'], default='edge')
+    capture_parser.add_argument('--overlay-lane', choices=['edge', 'rc'])
+    capture_parser.add_argument('--overlay-database-sha256')
     capture_parser.add_argument('--output', type=Path, required=True)
     stage_parser = commands.add_parser('stage-input')
     for option in ['capture', 'built', 'candidates', 'source', 'output']:
