@@ -49,18 +49,18 @@ small, checked packaging patch described below. Packages come from four places:
 | `1password` | 8.12.36-2 | Password manager |
 | `1password-cli` | 2.39.0-1 | 1Password CLI |
 | `aether` | 4.29.9-1 | Wallpaper-driven desktop theming |
-| `aspnet-runtime-bin` | 10.0.11.sdk400-1 | ASP.NET Core runtime |
-| `aspnet-targeting-pack-bin` | 10.0.11.sdk400-1 | ASP.NET Core targeting pack |
+| `aspnet-runtime-bin` | 10.0.12.sdk401-1 | ASP.NET Core runtime |
+| `aspnet-targeting-pack-bin` | 10.0.12.sdk401-1 | ASP.NET Core targeting pack |
 | `avd-fw` | 0.1-1 | Apple Video Decoder firmware — H.264/HEVC/VP9 hardware decode |
-| `brave-origin-bin` | 1:1.95.102-1 | Minimalist browser from the Brave team |
+| `brave-origin-bin` | 1:1.95.104-1 | Minimalist browser from the Brave team |
 | `cliamp` | 2.2.0-1 | Retro terminal music player |
 | `cursor-bin` | 3.20.17-1 | Cursor editor (vendor linux-arm64 AppImage) |
-| `dotnet-host-bin` | 10.0.11.sdk400-1 | .NET CLI driver |
+| `dotnet-host-bin` | 10.0.12.sdk401-1 | .NET CLI driver |
 | `dotnet-runtime-2.1` | 2.1.30.sdk818-1 | .NET Core 2.1 runtime |
-| `dotnet-runtime-bin` | 10.0.11.sdk400-1 | .NET runtime |
+| `dotnet-runtime-bin` | 10.0.12.sdk401-1 | .NET runtime |
 | `dotnet-sdk-2.1` | 2.1.30.sdk818-1 | .NET Core 2.1 SDK |
-| `dotnet-sdk-bin` | 10.0.11.sdk400-1 | .NET SDK |
-| `dotnet-targeting-pack-bin` | 10.0.11.sdk400-1 | .NET targeting pack |
+| `dotnet-sdk-bin` | 10.0.12.sdk401-1 | .NET SDK |
+| `dotnet-targeting-pack-bin` | 10.0.12.sdk401-1 | .NET targeting pack |
 | `ghostty` | 1.3.1-1 | Stable terminal emulator |
 | `ghostty-nautilus` | 1.3.1-1 | Open in Ghostty extension for GNOME Files |
 | `ghostty-shell-integration` | 1.3.1-1 | Ghostty shell integration scripts |
@@ -71,7 +71,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `hypa-ttfx-bin` | 0.3.1-1 | Hypa terminal text effects |
 | `hyprland-preview-share-picker` | 0.2.1-1 | Share picker with window/monitor previews |
 | `libva-v4l2_request-avd` | 1.3-1 | VA-API driver so applications can reach the Apple Video Decoder |
-| `localsend` | 1.18.2-1 | Cross-platform AirDrop alternative |
+| `localsend` | 1.18.2-2 | Cross-platform AirDrop alternative |
 | `mise-bin` | 2026.9.11-1 | Dev tools, env vars, task runner |
 | `obs-studio` | 32.2.2-1 | Video recording and live streaming (no browser source) |
 | `obsidian-appimage` | 1.13.7-2 | Markdown knowledge base (AppImage) |
