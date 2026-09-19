@@ -49,7 +49,8 @@ def validate(path, expected_manifest, expected_source, trust_policy=bundle.SIGNI
     require(bundle.digest(path / 'manifest.json') == expected_manifest, 'Input manifest differs from approval')
     manifest = bundle.check(path, trust_policy)
     names = [p['name'] for p in manifest['packages']]
-    inventory = [p['name'] for p in json.loads((ROOT / 'packages.json').read_text())['packages']]
+    catalog = path / 'provenance/catalog.json' if 'capture_manifest_sha256' in manifest else ROOT / 'packages.json'
+    inventory = [p['name'] for p in json.loads(catalog.read_text())['packages']]
     require(len(names) == len(inventory) and len(names) == len(set(names)) and set(names) == set(inventory), 'Complete exact configured package inventory required')
     require(channel in ('rc', 'stable') and manifest['channel'] == channel, 'Baseline channel differs')
     require(('rc' in manifest['version']) == (channel == 'rc'), 'Baseline version/channel differs')
@@ -729,6 +730,7 @@ def reuse_published_extra(incoming, published, database, trust_policy=bundle.SIG
 
 
 def stage_input(args, trust_policy=bundle.SIGNING_POLICY):
+    capture_evidence = check_capture(args.capture, getattr(args, 'capture_manifest_sha256', None))
     require(not args.candidates.exists(), 'Candidate directory must be new')
     guard(args.candidates.parent)
     built = bundle.archives(args.built)
@@ -738,7 +740,6 @@ def stage_input(args, trust_policy=bundle.SIGNING_POLICY):
     pkgrel = str(getattr(args, 'pkgrel', ''))
     require(re.fullmatch(r'[1-9][0-9]*', pkgrel), 'Explicit package release number required')
     package_version = f'{release}-{pkgrel}'
-    capture_evidence = json.loads((args.capture / 'capture.json').read_text())
     require(capture_evidence['database_sha256'] == bundle.digest(args.capture / f'{DB}.db.tar.zst'), 'Capture provenance database differs')
     conversion = getattr(args, 'edge_conversion', False)
     if conversion:
@@ -774,7 +775,8 @@ def stage_input(args, trust_policy=bundle.SIGNING_POLICY):
     bundle.stage(argparse.Namespace(base_db=args.capture / f'{DB}.db.tar.zst',
                                     base_packages=args.capture / 'packages', candidates=args.candidates,
                                     source=args.source, source_git=None, source_commit=args.source_commit,
-                                    release=package_version, output=args.output))
+                                    release=package_version, output=args.output,
+                                    capture=args.capture, capture_manifest_sha256=args.capture_manifest_sha256))
     digest = bundle.digest(args.output / 'manifest.json')
     manifest = validate(args.output, digest, args.source_commit, trust_policy, signed=False, channel='stable' if conversion else 'rc')
     print(json.dumps({'manifest_sha256': digest, 'source_commit': args.source_commit,
@@ -799,6 +801,7 @@ def main():
     stage_parser = commands.add_parser('stage-input')
     for option in ['capture', 'built', 'candidates', 'source', 'output']:
         stage_parser.add_argument('--' + option, type=Path, required=True)
+    stage_parser.add_argument('--capture-manifest-sha256', required=True)
     stage_parser.add_argument('--source-commit', required=True)
     stage_parser.add_argument('--edge-conversion', action='store_true')
     stage_parser.add_argument('--pkgrel', required=True,

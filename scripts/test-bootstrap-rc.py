@@ -197,6 +197,34 @@ class BootstrapTests(unittest.TestCase):
         next((copied/'assets').glob('omarchy-*.pkg.tar.*')).write_bytes(b'drift')
         remote=Remote();self.assertRaises(ValueError,self.publish,args,remote);self.assertFalse(any(e[0]=='create' for e in remote.events))
 
+    def test_stage_requires_external_capture_approval_before_mutation(self):
+        remote,args,overlay=self.overlay_capture_fixture('stage-approval')
+        self.assert_overlay_capture(remote,args,overlay)
+        capture=args.output
+        approval=boot.bundle.digest(capture/'capture-manifest.json')
+        for index,value in enumerate([None, '', 'INVALID', '0'*64, approval]):
+            stage=argparse.Namespace(capture=capture,built=Fixture.candidates,
+                candidates=Fixture.root/f'approval-inputs-{index}',source=Fixture.source,
+                source_commit=self.source,output=Fixture.root/f'approval-output-{index}',pkgrel='1')
+            if value is not None:stage.capture_manifest_sha256=value
+            if value==approval:(capture/'catalog.json').write_text('{}')
+            with patch.object(boot,'GitHub',side_effect=AssertionError('offline only')):
+                with self.assertRaisesRegex(ValueError,'[Cc]apture|approval'):
+                    boot.stage_input(stage,Fixture.keys.policy)
+            self.assertFalse(stage.candidates.exists())
+            self.assertFalse(stage.output.exists())
+            command=['python3',boot.__file__,'stage-input','--capture',str(capture),
+                '--built',str(stage.built),'--candidates',str(stage.candidates),
+                '--source',str(stage.source),'--source-commit',stage.source_commit,
+                '--output',str(stage.output),'--pkgrel','1']
+            if value is not None:command+=['--capture-manifest-sha256',value]
+            result=__import__('subprocess').run(command,capture_output=True,text=True)
+            self.assertNotEqual(result.returncode,0)
+            self.assertIn('capture',result.stderr.lower())
+            self.assertNotIn('unrecognized arguments',result.stderr)
+            self.assertFalse(stage.candidates.exists())
+            self.assertFalse(stage.output.exists())
+
     def test_09_producer_capture_and_stage_complete_artifact(self):
         remote=Remote();remote.releases['edge']={'draft':False,'commit':'b'*40,'assets':{}}
         remote.releases['edge']['assets']['omarchy-aarch64.db.tar.zst']=Fixture.base_db.read_bytes()
@@ -207,8 +235,28 @@ class BootstrapTests(unittest.TestCase):
         try:boot.capture(argparse.Namespace(database_sha256=boot.bundle.digest(Fixture.base_db),output=capture))
         finally:boot.GitHub=original
         output=Fixture.root/'producer-bundle'
-        boot.stage_input(argparse.Namespace(capture=capture,built=Fixture.candidates,candidates=Fixture.root/'producer-inputs',source=Fixture.source,source_commit=self.source,output=output,pkgrel='1'),Fixture.keys.policy)
-        manifest=boot.validate(output,boot.bundle.digest(output/'manifest.json'),self.source,Fixture.keys.policy,signed=False)
+        approval=boot.bundle.digest(capture/'capture-manifest.json')
+        read_text=Path.read_text
+        def offline(path,*args,**kwargs):
+            if path==boot.ROOT/'packages.json':raise AssertionError('live catalog forbidden')
+            return read_text(path,*args,**kwargs)
+        with patch.object(Path,'read_text',offline), patch.object(boot,'GitHub',side_effect=AssertionError('transport forbidden')):
+            boot.stage_input(argparse.Namespace(capture=capture,capture_manifest_sha256=approval,built=Fixture.candidates,candidates=Fixture.root/'producer-inputs',source=Fixture.source,source_commit=self.source,output=output,pkgrel='1'),Fixture.keys.policy)
+            manifest=boot.validate(output,boot.bundle.digest(output/'manifest.json'),self.source,Fixture.keys.policy,signed=False)
+            self.assertEqual(manifest['capture_manifest_sha256'],approval)
+            self.assertEqual((output/'provenance/catalog.json').read_bytes(),(capture/'catalog.json').read_bytes())
+            signed=Fixture.root/'producer-signed'
+            boot.prepare(argparse.Namespace(input=output,output=signed,manifest_sha256=boot.bundle.digest(output/'manifest.json'),source_commit=self.source,trust_policy=Fixture.keys.policy,public_key=Fixture.keys.public))
+            self.assertEqual(boot.bundle.check(signed,Fixture.keys.policy)['capture_manifest_sha256'],approval)
+            for label,change in [('approval',lambda m:m.pop('capture_manifest_sha256')),
+                                 ('wrong',lambda m:m.update(capture_manifest_sha256='0'*64)),
+                                 ('baseline',lambda m:m.update(baseline_db_sha256='0'*64))]:
+                damaged=Fixture.root/('derived-'+label);shutil.copytree(signed,damaged)
+                metadata=json.loads((damaged/'manifest.json').read_text());change(metadata)
+                boot.bundle.write_json(damaged/'manifest.json',metadata)
+                self.assertRaises(ValueError,boot.bundle.check,damaged,Fixture.keys.policy)
+        with patch.object(Path,'read_text',lambda path,*a,**kw: '{"packages":[]}' if path==boot.ROOT/'packages.json' else read_text(path,*a,**kw)):
+            boot.validate(output,boot.bundle.digest(output/'manifest.json'),self.source,Fixture.keys.policy,signed=False)
         self.assertEqual(len(manifest['packages']),52)
         self.assertFalse(any(e[0] in ('upload','expose','delete') for e in remote.events))
 
@@ -454,7 +502,7 @@ class BootstrapTests(unittest.TestCase):
         capture=Fixture.root/'pkgrel-capture'
         try:boot.capture(argparse.Namespace(database_sha256=boot.bundle.digest(Fixture.base_db),output=capture))
         finally:boot.GitHub=original
-        missing=argparse.Namespace(capture=capture,built=Fixture.candidates,candidates=Fixture.root/'pkgrel-missing',source=Fixture.source,source_commit=self.source,output=Fixture.root/'pkgrel-missing-bundle')
+        missing=argparse.Namespace(capture=capture,capture_manifest_sha256=boot.bundle.digest(capture/'capture-manifest.json'),built=Fixture.candidates,candidates=Fixture.root/'pkgrel-missing',source=Fixture.source,source_commit=self.source,output=Fixture.root/'pkgrel-missing-bundle')
         with self.assertRaisesRegex(ValueError,'Explicit package release number required'):boot.stage_input(missing,Fixture.keys.policy)
         mismatch=copy.copy(missing); mismatch.pkgrel='2'; mismatch.candidates=Fixture.root/'pkgrel-mismatch'; mismatch.output=Fixture.root/'pkgrel-mismatch-bundle'
         with self.assertRaisesRegex(ValueError,'identity must match explicit pkgrel'):boot.stage_input(mismatch,Fixture.keys.policy)
@@ -569,11 +617,11 @@ class BootstrapTests(unittest.TestCase):
         previous=capture/'packages'/rebuilt.name
         self.assertNotEqual(boot.bundle.digest(rebuilt),boot.bundle.digest(previous))
         Fixture.write_build_inputs(built,commit,'4.0.3rc5')
-        args=argparse.Namespace(capture=capture,built=built,candidates=Fixture.root/'inputs5',source=source,source_commit=commit,output=Fixture.root/'unsigned5',pkgrel='1')
+        args=argparse.Namespace(capture=capture,capture_manifest_sha256=boot.bundle.digest(capture/'capture-manifest.json'),built=built,candidates=Fixture.root/'inputs5',source=source,source_commit=commit,output=Fixture.root/'unsigned5',pkgrel='1')
         wrong=copy.copy(args);wrong.candidates=Fixture.root/'inputs5-wrong'
         receipt=(capture/'capture.json').read_text();changed=json.loads(receipt);changed['lane']='edge'
         (capture/'capture.json').write_text(json.dumps(changed))
-        try:self.assertRaisesRegex(ValueError,'RC5 requires',boot.stage_input,wrong,Fixture.keys.policy)
+        try:self.assertRaisesRegex(ValueError,'Capture file changed',boot.stage_input,wrong,Fixture.keys.policy)
         finally:(capture/'capture.json').write_text(receipt)
         correct=rebuilt.read_bytes();Fixture.make_package(built,'omarchy-mac-keyring','20260913-1',content='changed payload',builddate=2)
         wrong.candidates=Fixture.root/'inputs5-payload'

@@ -215,14 +215,12 @@ class EdgeTests(unittest.TestCase):
                 self.assertIn(b'remote filename collision',result.stdout)
 
     def test_08_conversion_producer_reuses_exact_archive_inventory(self):
-        scratch=Path(tempfile.mkdtemp(dir=self.root)); capture=scratch/'capture'; capture.mkdir()
-        shutil.copyfile(self.unsigned/'assets'/f'{boot.DB}.db',capture/f'{boot.DB}.db.tar.zst')
-        (capture/'packages').mkdir()
-        for package in self.manifest['packages']:
-            filename=package['filename']; shutil.copyfile(self.unsigned/'assets'/filename,capture/'packages'/filename)
-        (capture/'capture.json').write_text(json.dumps({'lane':'edge','database_sha256':boot.bundle.digest(capture/f'{boot.DB}.db.tar.zst')}))
+        scratch=Path(tempfile.mkdtemp(dir=self.root)); capture=scratch/'capture'
+        with patch.object(boot,'GitHub',return_value=self.remote()):
+            boot.capture(argparse.Namespace(lane='edge',output=capture,
+                database_sha256=boot.bundle.digest(self.unsigned/'assets'/f'{boot.DB}.db')),Fixture.keys.policy)
         built=scratch/'built'; shutil.copytree(self.root/'edge-candidates',built)
-        args=argparse.Namespace(capture=capture,built=built,candidates=scratch/'candidate',source=Fixture.source,
+        args=argparse.Namespace(capture=capture,capture_manifest_sha256=boot.bundle.digest(capture/'capture-manifest.json'),built=built,candidates=scratch/'candidate',source=Fixture.source,
                                 source_commit=self.source,output=scratch/'output',edge_conversion=True,pkgrel='1')
         boot.stage_input(args,Fixture.keys.policy)
         output=boot.bundle.check(args.output,Fixture.keys.policy)
