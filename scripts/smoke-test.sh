@@ -10,30 +10,64 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 source scripts/common.sh
+ensure_disk_tmp
 
 : "${GH_REPO:?GH_REPO must be set (owner/name)}"
 SERVER="https://github.com/$GH_REPO/releases/download/$REPO_TAG"
 
 work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
-mkdir -p "$work/db" "$work/root"
+trap 'gpgconf --homedir "$work/keyring" --kill gpg-agent 2>/dev/null || true; rm -rf "$work"' EXIT
+mkdir -p "$work/db" "$work/root" "$work/cache" "$work/keyring"
+chmod 700 "$work/keyring"
+fetch_current_dbs "$work"
+expected_db=${SMOKE_EXPECTED_DB:-$work/$DB_NAME.db.tar.zst}
+[[ -f $expected_db ]] || die "expected smoke database is missing: $expected_db"
+gh release view "$REPO_TAG" --repo "$GH_REPO" --json assets --jq '.assets[].name' > "$work/remote-assets"
+mode=$(python3 scripts/edge-mode.py --database "$expected_db" --assets "$work/remote-assets")
+policy='PackageOptional DatabaseOptional TrustedOnly'
+[[ $mode != strict ]] || policy='PackageRequired DatabaseRequired TrustedOnly'
+log "Smoke verification mode: $mode"
+# Only the reviewed public key enters this isolated test trust database.
+pacman-key --gpgdir "$work/keyring" --init
+pacman-key --gpgdir "$work/keyring" --add pkgbuilds/omarchy-mac-keyring/omarchy-mac.gpg
+primary=$(python3 -c 'import json;print(json.load(open("pkgbuilds/omarchy-mac-keyring/signing-policy.json"))["primary_fingerprint"])')
+pacman-key --gpgdir "$work/keyring" --lsign-key "$primary"
 
 cat > "$work/pacman.conf" <<CONF
 [options]
 HoldPkg = pacman glibc
 Architecture = aarch64
-SigLevel = Never
+SigLevel = $policy
+GPGDir = $work/keyring
+CacheDir = $work/cache
 [$DB_NAME]
-SigLevel = Optional TrustAll
+SigLevel = $policy
 Server = $SERVER
 CONF
 
 log "Syncing $DB_NAME from $SERVER"
-pacman --config "$work/pacman.conf" --dbpath "$work/db" --root "$work/root" \
-  -Sy --noconfirm >/dev/null 2>&1 \
-  || pacman --config "$work/pacman.conf" --dbpath "$work/db" --root "$work/root" \
-       -Sy --noconfirm --disable-sandbox >/dev/null \
-  || die "pacman could not sync the repo"
+# GitHub's public .db URL can briefly lag the uploaded .db.tar.zst asset.
+# Force refreshes until pacman verifies the exact expected database; a stale
+# but valid repository must not count as a successful publication check.
+synced_db="$work/db/sync/$DB_NAME.db"
+synced=0
+for attempt in {1..12}; do
+  if pacman --config "$work/pacman.conf" --dbpath "$work/db" --root "$work/root" \
+       -Syy --noconfirm >"$work/sync.log" 2>&1 \
+    || pacman --config "$work/pacman.conf" --dbpath "$work/db" --root "$work/root" \
+         -Syy --noconfirm --disable-sandbox >>"$work/sync.log" 2>&1; then
+    if cmp -s "$expected_db" "$synced_db"; then
+      synced=1
+      break
+    fi
+  fi
+  warn "Expected database not yet synced and verified (attempt $attempt/12)"
+  if (( attempt < 12 )); then sleep 5; fi
+done
+if (( ! synced )); then
+  cat "$work/sync.log" >&2
+  die "pacman did not obtain the expected published database after 12 attempts"
+fi
 
 mapfile -t pkgs < <(pacman --config "$work/pacman.conf" --dbpath "$work/db" \
   --root "$work/root" -Sl "$DB_NAME" | awk '{print $2}')
@@ -51,7 +85,7 @@ mapfile -t urls < <(pacman --config "$work/pacman.conf" --dbpath "$work/db" \
 log "Checking that all ${#urls[@]} package URLs are reachable"
 failed=0
 for url in "${urls[@]}"; do
-  code="$(curl -sSL -o /dev/null -w '%{http_code}' --retry 2 --max-time 60 -r 0-0 "$url" || echo 000)"
+  code="$(curl -IsSL -o /dev/null -w '%{http_code}' --retry 2 --max-time 60 "$url" || echo 000)"
   if [[ "$code" != "200" && "$code" != "206" ]]; then
     warn "  $code  $url"
     failed=$((failed + 1))
@@ -62,7 +96,21 @@ done
 log "All ${#urls[@]} package URLs resolve and are fetchable"
 
 for f in "$DB_NAME.db" "$DB_NAME.db.tar.zst" "$DB_NAME.files" "$DB_NAME.files.tar.zst"; do
-  code="$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 60 "$SERVER/$f" || echo 000)"
+  code="$(curl -IsSL -o /dev/null -w '%{http_code}' --max-time 60 "$SERVER/$f" || echo 000)"
   [[ "$code" == "200" ]] || die "$f is not served ($code) — pacman fetches these directly"
 done
 log "All four db assets are served as real files"
+# Reuse hash-matched build artifacts when called by the publisher. Standalone
+# smoke checks download the smallest package; full-feed downloads require opt-in.
+python3 scripts/smoke-select.py "$synced_db" "$work/cache" > "$work/targets"
+mapfile -t targets < <(cut -f1 "$work/targets")
+pacman --config "$work/pacman.conf" --dbpath "$work/db" --root "$work/root" \
+  -Sddw --noconfirm "${targets[@]/#/$DB_NAME/}" || die "package verification failed"
+if [[ $mode == strict ]]; then
+  while IFS=$'\t' read -r name filename; do
+    curl --fail --silent --show-error --location --retry 2 --max-time 60 \
+      "$SERVER/$filename.sig" -o "$work/cache/$filename.sig" || die "package signature missing: $name"
+  done < "$work/targets"
+  python3 scripts/package-signing.py verify-packages "$work/cache"
+fi
+log "Verified ${#targets[@]} package payload(s); set SMOKE_FULL=1 for the entire feed"

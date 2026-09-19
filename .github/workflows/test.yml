@@ -11,7 +11,7 @@ jobs:
     name: Self-tests
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # An Arch container for vercmp: whether one version supersedes another has
       # to be decided by the same comparator pacman will use on users' machines.
@@ -21,6 +21,13 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/w" -w /w archlinux:base-devel bash -c '
             set -euo pipefail
-            pacman -Syu --noconfirm --needed jq zstd python python-yaml git >/dev/null
+            mkdir -p /w/.test-tmp
+            export TMPDIR=/w/.test-tmp TMP=/w/.test-tmp TEMP=/w/.test-tmp
+            pacman -Syu --noconfirm --needed jq zstd python python-yaml git gnupg >/dev/null
             bash scripts/self-test.sh
+            PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-package-signing.py -v
+            PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-signature-trust.py
+            PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-release-bundle.py -v
+            PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-bootstrap-rc.py -v
+            PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-edge-publishing.py -v
           '

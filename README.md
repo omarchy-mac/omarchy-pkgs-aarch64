@@ -50,43 +50,45 @@ small, checked packaging patch described below. Packages come from four places:
 |---------|---------|----------|
 | `1password` | 8.12.36-2 | Password manager |
 | `1password-cli` | 2.39.0-1 | 1Password CLI |
-| `aether` | 4.29.8-1 | Wallpaper-driven desktop theming |
-| `aspnet-runtime-bin` | 10.0.11.sdk400-1 | ASP.NET Core runtime |
-| `aspnet-targeting-pack-bin` | 10.0.11.sdk400-1 | ASP.NET Core targeting pack |
+| `aether` | 4.29.9-1 | Wallpaper-driven desktop theming |
+| `aspnet-runtime-bin` | 10.0.12.sdk401-1 | ASP.NET Core runtime |
+| `aspnet-targeting-pack-bin` | 10.0.12.sdk401-1 | ASP.NET Core targeting pack |
 | `avd-fw` | 0.1-1 | Apple Video Decoder firmware — H.264/HEVC/VP9 hardware decode |
-| `brave-origin-bin` | 1:1.95.101-1 | Minimalist browser from the Brave team |
+| `brave-origin-bin` | 1:1.95.104-1 | Minimalist browser from the Brave team |
 | `cliamp` | 2.2.0-1 | Retro terminal music player |
 | `cursor-bin` | 3.20.17-1 | Cursor editor (vendor linux-arm64 AppImage) |
-| `dotnet-host-bin` | 10.0.11.sdk400-1 | .NET CLI driver |
+| `dotnet-host-bin` | 10.0.12.sdk401-1 | .NET CLI driver |
 | `dotnet-runtime-2.1` | 2.1.30.sdk818-1 | .NET Core 2.1 runtime |
-| `dotnet-runtime-bin` | 10.0.11.sdk400-1 | .NET runtime |
+| `dotnet-runtime-bin` | 10.0.12.sdk401-1 | .NET runtime |
 | `dotnet-sdk-2.1` | 2.1.30.sdk818-1 | .NET Core 2.1 SDK |
-| `dotnet-sdk-bin` | 10.0.11.sdk400-1 | .NET SDK |
-| `dotnet-targeting-pack-bin` | 10.0.11.sdk400-1 | .NET targeting pack |
+| `dotnet-sdk-bin` | 10.0.12.sdk401-1 | .NET SDK |
+| `dotnet-targeting-pack-bin` | 10.0.12.sdk401-1 | .NET targeting pack |
 | `ghostty` | 1.3.1-1 | Stable terminal emulator |
 | `ghostty-nautilus` | 1.3.1-1 | Open in Ghostty extension for GNOME Files |
 | `ghostty-shell-integration` | 1.3.1-1 | Ghostty shell integration scripts |
 | `ghostty-terminfo` | 1.3.1-1 | `xterm-ghostty` terminal definition |
 | `grok-bot` | 0.47.0-1 | Grok Bot desktop agent (vendor linux-arm64 .deb) |
-| `herdr` | 0.8.2-1 | Terminal workspace manager for AI coding agents |
+| `herdr` | 0.9.1-1 | Terminal workspace manager for AI coding agents |
 | `hermes-desktop` | 2026.9.7-1 | Native desktop shell for Hermes Agent |
 | `hypa-ttfx-bin` | 0.3.1-1 | Hypa terminal text effects |
 | `hyprland-preview-share-picker` | 0.2.1-1 | Share picker with window/monitor previews |
 | `libva-v4l2_request-avd` | 1.3-1 | VA-API driver so applications can reach the Apple Video Decoder |
-| `localsend` | 1.18.2-1 | Cross-platform AirDrop alternative |
-| `mise-bin` | 2026.9.5-1 | Dev tools, env vars, task runner |
+| `localsend` | 1.18.2-2 | Cross-platform AirDrop alternative |
+| `mise-bin` | 2026.9.11-1 | Dev tools, env vars, task runner |
 | `obs-studio` | 32.2.2-1 | Video recording and live streaming (no browser source) |
 | `obsidian-appimage` | 1.13.7-2 | Markdown knowledge base (AppImage) |
 | `omacalc` | 0.2.2-1 | Calculator — bound to `SUPER + CTRL + Q` |
 | `omacut` | 0.4.0-1 | Video length trimmer |
 | `omarchy` | 4.0.2-2 | Omarchy Mac scripts and desktop runtime |
+| `omarchy-mac-keyring` | Pending edge bootstrap | Omarchy Mac public signing certificate and trust policy |
 | `omarchy-emacs` | 1.10.1-1 | Emacs theme/font syncing for Omarchy |
 | `omarchy-nvim` | 2026.8.13-1 | Pre-built LazyVim configuration |
 | `omarchy-settings` | 4.0.2-2 | Apple Silicon system and user defaults |
-| `omarchy-webapp-theme` | 0.3.6-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
+| `omarchy-steam-fex` | 1.0.0-1 | Steam launcher for the Asahi muvm/FEX stack |
+| `omarchy-webapp-theme` | 0.3.7-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
 | `omawrite` | 0.5.0-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
 | `omazed` | 2.1.2-1 | Live Omarchy theme sync for Zed |
-| `openai-codex-desktop` | 26.908.40834-1 | ChatGPT desktop app with Codex |
+| `openai-codex-desktop` | 26.915.31029-1 | ChatGPT desktop app with Codex |
 | `pinta` | 3.1.2-1 | Simple image editor |
 | `tensaku` | 0.29.0-1 | Screenshot annotation for Wayland |
 | `ttf-ia-writer` | 20181225-1 | iA Writer font subset |
@@ -102,33 +104,36 @@ small, checked packaging patch described below. Packages come from four places:
 
 ## Usage
 
-Add to `/etc/pacman.conf`:
+Use the repository configuration and keyring delivered by your Omarchy Mac
+release. The historical `edge` feed remains unsigned until its separately
+approved trust conversion; do not enable strict verification before installing
+and verifying the fork keyring. The signed configuration is:
 
 ```ini
 [omarchy-aarch64]
-SigLevel = Optional TrustAll
+SigLevel = PackageRequired DatabaseRequired TrustedOnly
 Server = https://github.com/omarchy-mac/omarchy-pkgs-aarch64/releases/download/edge
 ```
 
-Then:
+After the documented trust transition, install packages with a full upgrade:
 
 ```bash
-sudo pacman -Sy
-sudo pacman -S omacalc omawrite omacut   # or any package from the table
+sudo pacman -Syu omacalc omawrite omacut
 ```
 
-Assets live on a single rolling `edge` tag and are replaced in place, so the
-`Server` URL never changes.
+See [signing and bootstrap](SIGNING.md) for the two-stage trust transition and
+lane status requirements. Do not weaken a signed lane's policy to work around a
+failed signature. The rolling `edge` URL stays constant; its database and
+signature are separate mutable assets, so updates can briefly fail closed.
 
 ## Caveats
 
 - **Unofficial.** Not affiliated with or endorsed by Omarchy or 37signals.
   Upstream owes you nothing for these builds; report packaging bugs here, not
   to them.
-- **Unsigned.** Hence `SigLevel = Optional TrustAll`, which is what Omarchy's
-  own `pacman.conf` uses for its repo. If you'd rather not trust unsigned
-  packages, build them yourself: the Omarchy ones with the command below, the
-  AUR ones with `makepkg` from their PKGBUILD.
+- **Trust transition.** Legacy unsigned edge remains compatible until an
+  explicitly approved complete-inventory conversion. Signed RC/stable bundles
+  and a converted edge require the fork keyring and strict signature policy.
 - **Automated.** Scheduled workflows refresh the general package set and the
   fork-owned Omarchy Mac package pair independently. See [Automation](#automation).
 
@@ -142,13 +147,16 @@ which is what would make `pacman -Syu` offer you a downgrade.
 
 The packages differ only in where they can be built:
 
-| Group | Count | Automated |
-|-------|-------|-----------|
-| `any` — `arch=('any')`, architecture-independent | 9 | yes |
-| `repack` — ships a vendor-prebuilt ARM binary | 20 | yes |
-| `compile` — built from source | 20 | yes |
+| Group | Automated |
+|-------|-----------|
+| `any` — architecture-independent | yes |
+| `repack` — vendor-prebuilt ARM binary | yes |
+| `compile` — built from source | yes |
 
-Two packages stay deliberately excluded from that generic matrix. `omarchy`
+The exact inventory is maintained in [`packages.json`](packages.json).
+The desktop release owns `omarchy-keyring`, `omarchy-mac-keyring` and
+`ttf-jetbrains-mono-nerd-basic` extras when its package declares them; the generic
+matrix skips these names. `omarchy`
 and `omarchy-settings` are built as an atomic pair by
 [`update-omarchy-mac.yml`](.github/workflows/update-omarchy-mac.yml), which
 checks hourly for a new [Omarchy Mac](https://github.com/omarchy-mac/omarchy-mac)
@@ -156,7 +164,9 @@ release. It checks out the exact release tag, builds both packages on a native
 ARM runner, and refuses to publish unless their versions match and the aarch64
 dependency and payload contracts hold. Failures in unrelated AUR packages
 therefore cannot block an Omarchy Mac release, and one half of the pair can
-never publish by itself.
+never publish by itself. The fork keyring has one producer: the same verified
+desktop build, including declared extras. Its in-tree public key recipe is a
+verification input, not a second generic updater.
 
 Before building the pair, `scripts/prepare-omarchy-recipes.sh` applies the
 checked-in recipe changes from [upstream PR #341](https://github.com/omacom/omarchy-pkgs/pull/341):
@@ -179,10 +189,9 @@ install its own unpublished output, including when just one split package is
 selected. The finished packages retain those runtime dependencies. Manpages
 are omitted because `pandoc-cli` is unavailable in Arch Linux ARM.
 
-`herdr` currently fails to build anywhere: its PKGBUILD pins `zig0.15`, which
-Arch dropped from `[extra]` on the move to `zig 0.16`. It is left to fail
-visibly rather than carrying a from-source Zig toolchain build, and
-`fail-fast: false` stops it blocking anything else.
+`herdr` uses the upstream omarchy-pkgs recipe, which downloads a checksum-pinned
+Zig 0.15.2 toolchain for the build architecture. This avoids the AUR recipe's
+dependency on the unavailable `zig0.15` repository package.
 
 `hermes-desktop` carries the ARM recipe fixes from
 [upstream PR #373](https://github.com/omacom/omarchy-pkgs/pull/373) locally.
@@ -207,6 +216,13 @@ db files, re-upload them, and delete the `-git` asset — and only while no
 `omarchy-nvim` is `arch=('any')` but `build()` runs `nvim --headless` on the
 ARM runner. The official artifact has no tree-sitter `.so` files; the
 host-arch binaries to inspect are `mason/packages/shfmt` and `stylua`.
+
+`omarchy-steam-fex` installs `omarchy-launch-steam` for Apple Silicon's
+Asahi Steam/muvm/FEX stack. It is a script-only `arch=('aarch64')` package,
+built through `repack` with `allow_empty_elf`. The launcher creates the user's
+Steam desktop override and applies the Steam UI network workaround at launch
+or with `--prepare`. See the [recipe notes](pkgbuilds/omarchy-steam-fex/README.md)
+for source provenance, behavior tests and Omarchy integration.
 
 `cursor-bin` is an in-tree AppImage: the omarchy-pkgs recipe is x86_64-only
 and strips Electron. Ours keeps the vendor linux-arm64 AppImage and its
@@ -292,7 +308,9 @@ A failed scheduled run opens an issue rather than only turning a run red.
 The scripts under [`scripts/`](scripts) are plain bash and run outside CI too.
 `scripts/smoke-test.sh` is the useful one on its own: it syncs the published repo
 the way pacman does and checks that every package the db advertises is actually
-fetchable.
+fetchable. After publication, both updater workflows pass the newly published
+database as `SMOKE_EXPECTED_DB`. The check retries forced refreshes until pacman
+has that exact database, then verifies packages against the same snapshot.
 
 ## Building these yourself
 

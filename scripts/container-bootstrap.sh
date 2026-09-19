@@ -10,7 +10,7 @@ set -euo pipefail
 role="${1:-full}"
 case "$role" in
   build) pkgs=(git jq);              required=(git jq makepkg bsdtar file) ;;
-  full)  pkgs=(git jq github-cli);   required=(git jq gh repo-add vercmp bsdtar) ;;
+  full)  pkgs=(git jq github-cli python gnupg); required=(git jq gh repo-add vercmp bsdtar python3 gpg gpgconf) ;;
   *) echo "==> ERROR: unknown role '$role' (want build|full)" >&2; exit 1 ;;
 esac
 

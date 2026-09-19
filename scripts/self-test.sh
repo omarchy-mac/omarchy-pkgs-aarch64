@@ -17,6 +17,59 @@ is()   { [[ "$2" == "$3" ]] && ok "$1" || no "$1" "expected '$3', got '$2'"; }
 
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
 
+echo "== temporary storage scope"
+# Model the container's private /root without changing the real home or using
+# default temporary storage on this host. The build probe stops at its first
+# allocation, before user creation, downloads, pacman, or makepkg.
+mkdir -m750 "$work/private-home"
+env -u TMPDIR -u TMP -u TEMP -u XDG_CACHE_HOME HOME="$work/private-home" \
+  bash -euc 'source scripts/common.sh; [[ ! -v TMPDIR && ! -v TMP && ! -v TEMP ]]' \
+  && ok "sourcing common leaves unset temporary variables unset" \
+  || no "sourcing common leaves unset temporary variables unset"
+env TMPDIR="$work" TMP="$work/caller-tmp" TEMP="$work/caller-temp" \
+  bash -euc 'source scripts/common.sh; [[ $TMPDIR == "$1" && $TMP == "$1/caller-tmp" && $TEMP == "$1/caller-temp" ]]' bash "$work" \
+  && ok "sourcing common preserves caller temporary variables" \
+  || no "sourcing common preserves caller temporary variables"
+
+env -u TMPDIR -u TMP -u TEMP -u XDG_CACHE_HOME HOME="$work/private-home" \
+  PKGBASE=avd-fw SOURCE=local CATEGORY=any PKGNAMES=avd-fw OUTDIR="$work/build-probe" \
+  PROBE="$work/build-tmp-ok" bash -c '
+    mktemp() {
+      [[ ! -v TMPDIR && ! -v TMP && ! -v TEMP ]] && : > "$PROBE"
+      return 73
+    }
+    export -f mktemp
+    bash scripts/build-package.sh
+  ' > "$work/build-probe.log" 2>&1
+build_probe_status=$?
+[[ $build_probe_status == 73 && -f "$work/build-tmp-ok" ]] \
+  && ok "build path reaches mktemp without selecting a private home" \
+  || no "build path reaches mktemp without selecting a private home" "$(cat "$work/build-probe.log")"
+
+env -u TMPDIR -u TMP -u TEMP -u XDG_CACHE_HOME HOME="$work/private-home" \
+  bash -euc '
+    source scripts/common.sh
+    ensure_disk_tmp
+    [[ $TMPDIR == "$HOME/.cache/omarchy-publisher/tmp" && $TMP == "$TMPDIR" && $TEMP == "$TMPDIR" ]]
+  ' && ok "explicit temp enforcement selects and exports disk storage" \
+    || no "explicit temp enforcement selects and exports disk storage"
+
+# Model rejected filesystem types while keeping all actual fixture files on
+# the caller's disk. Run the entrypoints to catch a missing opt-in call too.
+for entrypoint in publish smoke-test; do
+  for filesystem in tmpfs ramfs; do
+    env TMPDIR="$work" TEST_FILESYSTEM="$filesystem" bash -c '
+      findmnt() { printf "%s\n" "$TEST_FILESYSTEM"; }
+      export -f findmnt
+      bash "scripts/$1.sh"
+    ' bash "$entrypoint" > "$work/temp-rejection.log" 2>&1
+    rejection_status=$?
+    [[ $rejection_status != 0 ]] && grep -q 'temporary storage must be disk-backed' "$work/temp-rejection.log" \
+      && ok "$entrypoint rejects $filesystem before doing work" \
+      || no "$entrypoint rejects $filesystem before doing work" "$(cat "$work/temp-rejection.log")"
+  done
+done
+
 # --- crafted ELF objects: e_machine at offset 18 ----------------------------
 mkelf() { # machine path [class]
   python3 - "$1" "$2" "${3:-2}" <<'PY'
@@ -325,6 +378,7 @@ depend = iwd
 depend = networkmanager
 depend = snapper
 depend = omarchy-keyring
+depend = omarchy-mac-keyring
 depend = ttf-jetbrains-mono-nerd-basic
 INFO
 ( cd "$work/mac-build/omarchy" \
@@ -333,12 +387,36 @@ INFO
 mkpkgany() { mkdir -p "$work/x-$1"; printf 'pkgname = %s\npkgver = 1-1\narch = any\n' "$1" > "$work/x-$1/.PKGINFO"
   ( cd "$work/x-$1" && tar -cf - .PKGINFO | xz > "$work/mac-extra/$1-1-1-any.pkg.tar.xz" ); }
 
-# declared and present -> all four stage
-mkpkgany omarchy-keyring; mkpkgany ttf-jetbrains-mono-nerd-basic
+# declared and present -> all five stage
+mkpkgany omarchy-mac-keyring; mkpkgany omarchy-keyring; mkpkgany ttf-jetbrains-mono-nerd-basic
 ( RELEASE_TAG=v4.0.2-1 SOURCE_DIR="$work/mac-source" PKGDIR="$work/mac-extra" STAGING_DIR="$work/mac-xstage" \
     bash scripts/omarchy-mac-release.sh verify ) >/dev/null 2>&1
 is "omarchy's dependency packages are published too" \
-  "$(find "$work/mac-xstage" -name '*.pkg.tar.*' | wc -l | tr -d ' ')" '4'
+  "$(find "$work/mac-xstage" -name '*.pkg.tar.*' | wc -l | tr -d ' ')" '5'
+
+# Versioned keyring requirements must still stage the keyring, and reject a
+# missing or stale package before changing the staging directory.
+for constraint in '>=1-1' '=1-1' '>0-1' '<=1-1' '<2-1'; do
+  sed -i "s/^depend = omarchy-mac-keyring.*/depend = omarchy-mac-keyring$constraint/" "$work/mac-build/omarchy/.PKGINFO"
+  ( cd "$work/mac-build/omarchy" && tar -cf - .PKGINFO ./usr/share/omarchy/install ./usr/share/omarchy/themes | xz > "$work/mac-extra/omarchy-4.0.2-1-aarch64.pkg.tar.xz" )
+  if RELEASE_TAG=v4.0.2-1 SOURCE_DIR="$work/mac-source" PKGDIR="$work/mac-extra" STAGING_DIR="$work/mac-xstage" bash scripts/omarchy-mac-release.sh verify >/dev/null 2>&1 &&
+    [[ -f $work/mac-xstage/omarchy-mac-keyring-1-1-any.pkg.tar.xz ]]; then
+    ok "versioned keyring $constraint is included"
+  else no "versioned keyring $constraint is included"; fi
+done
+sed -i 's/^depend = omarchy-mac-keyring.*/depend = omarchy-mac-keyring>=2-1/' "$work/mac-build/omarchy/.PKGINFO"
+( cd "$work/mac-build/omarchy" && tar -cf - .PKGINFO ./usr/share/omarchy/install ./usr/share/omarchy/themes | xz > "$work/mac-extra/omarchy-4.0.2-1-aarch64.pkg.tar.xz" )
+if RELEASE_TAG=v4.0.2-1 SOURCE_DIR="$work/mac-source" PKGDIR="$work/mac-extra" STAGING_DIR="$work/mac-xstage" bash scripts/omarchy-mac-release.sh verify >/dev/null 2>&1; then
+  no 'stale versioned keyring is rejected'
+else ok 'stale versioned keyring is rejected'; fi
+rm "$work/mac-extra/omarchy-mac-keyring-1-1-any.pkg.tar.xz"
+if RELEASE_TAG=v4.0.2-1 SOURCE_DIR="$work/mac-source" PKGDIR="$work/mac-extra" STAGING_DIR="$work/mac-xstage" bash scripts/omarchy-mac-release.sh verify >/dev/null 2>&1; then
+  no 'missing versioned keyring is rejected'
+else ok 'missing versioned keyring is rejected'; fi
+# Restore the successful fixture for the independent missing upstream test.
+mkpkgany omarchy-mac-keyring
+sed -i 's/^depend = omarchy-mac-keyring.*/depend = omarchy-mac-keyring/' "$work/mac-build/omarchy/.PKGINFO"
+( cd "$work/mac-build/omarchy" && tar -cf - .PKGINFO ./usr/share/omarchy/install ./usr/share/omarchy/themes | xz > "$work/mac-extra/omarchy-4.0.2-1-aarch64.pkg.tar.xz" )
 
 # declared but missing -> refuse, rather than publish an uninstallable omarchy
 rm -f "$work/mac-extra/omarchy-keyring-1-1-any.pkg.tar.xz"
@@ -419,6 +497,14 @@ bash scripts/test-prepare-share-picker-recipe.sh \
 bash scripts/test-prepare-omarchy-recipes.sh \
   && ok "recipe patch applies, is idempotent, and rejects drift" \
   || no "recipe patch applies, is idempotent, and rejects drift"
+
+python3 scripts/test-omarchy-steam-fex.py \
+  && ok "Steam FEX launcher preserves prepare, patching, arguments and fallback behavior" \
+  || no "Steam FEX launcher preserves prepare, patching, arguments and fallback behavior"
+
+python3 scripts/test-smoke-test.py \
+  && ok "smoke verification waits for the published database and preserves integrity checks" \
+  || no "smoke verification waits for the published database and preserves integrity checks"
 
 echo
 if (( fail )); then

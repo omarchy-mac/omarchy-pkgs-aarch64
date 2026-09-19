@@ -1,0 +1,8 @@
+{
+  "primary_fingerprint": "FBD6874D423C418DDB6D143EECE19CDDE306DBD2",
+  "signing_subkey_fingerprint": "D791ED0C72439D9F8757421258043B2770A25762",
+  "public_key_sha256": "118b1a5b48a74a2dd993860c4dc3f9d477d5c47c3b1422ea40e8e91f3c7e73d1",
+  "trusted_primary_fingerprints": [
+    "FBD6874D423C418DDB6D143EECE19CDDE306DBD2"
+  ]
+}
