@@ -27,6 +27,7 @@ jobs:
             bash scripts/self-test.sh
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-package-signing.py -v
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-signature-trust.py
+            NATIVE_VERCMP=1 PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-keyring-eligibility.py -v
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-release-bundle.py -v
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-bootstrap-rc.py -v
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-capture-handoff.py -v

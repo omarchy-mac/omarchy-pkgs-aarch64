@@ -806,6 +806,8 @@ def main():
     stage_parser.add_argument('--edge-conversion', action='store_true')
     stage_parser.add_argument('--pkgrel', required=True,
                               help='Explicit package release number for the rebuilt package pair')
+    eligibility_parser = commands.add_parser('check-eligibility', help='Credential-free approved-input signing preflight')
+    eligibility_parser.add_argument('--input', type=Path, required=True)
     prepare_parser = commands.add_parser('prepare')
     prepare_parser.add_argument('--input', type=Path, required=True)
     prepare_parser.add_argument('--output', type=Path, required=True)
@@ -816,7 +818,7 @@ def main():
     publish.add_argument('--lane', choices=['rc'], default='rc')
     publish.add_argument('--execute', action='store_true')
     publish.add_argument('--accept-mutable-alias-window', action='store_true')
-    for sub in (prepare_parser, publish):
+    for sub in (eligibility_parser, prepare_parser, publish):
         sub.add_argument('--manifest-sha256', required=True)
         sub.add_argument('--source-commit', required=True)
         sub.add_argument('--trust-policy', type=Path, default=bundle.SIGNING_POLICY)
@@ -831,6 +833,10 @@ def main():
         print(json.dumps({'result': 'PASS', 'manifest_sha256': args.manifest_sha256, 'archives': evidence['archives']}))
     elif args.command == 'stage-input':
         stage_input(args)
+    elif args.command == 'check-eligibility':
+        manifest = validate(args.input, args.manifest_sha256, args.source_commit, args.trust_policy, signed=False)
+        bundle.signing_eligibility(manifest)
+        print('PASS signing eligibility', args.input)
     elif args.command == 'prepare':
         prepare(args)
     else:

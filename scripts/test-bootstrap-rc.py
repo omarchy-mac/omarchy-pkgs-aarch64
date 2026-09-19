@@ -107,6 +107,93 @@ class BootstrapTests(unittest.TestCase):
                                   lane='rc',publisher_commit='a'*40,expected_rc_db='absent',execute=execute,
                                   accept_mutable_alias_window=execute,scratch=scratch)
     def publish(self,args,remote):return boot.publish_checked(args,self.manifest,remote)
+    def test_versioned_keyring_bootstrap_eligibility_before_signing(self):
+        # Native archive/vercmp fixture; run only in hosted Arch CI.
+        for installed, accepted in [('20260914-2', True), ('20260914-1', False)]:
+            with self.subTest(installed=installed):
+                candidates = Fixture.root / ('eligibility-candidates-' + installed)
+                shutil.copytree(Fixture.candidates, candidates)
+                for name in ('omarchy', 'omarchy-mac-keyring'):
+                    boot.bundle.archives(candidates)[name][0].unlink()
+                Fixture.make_package(candidates, 'omarchy', '4.0.3rc1-1',
+                                     keyring_dependency='omarchy-mac-keyring>=20260914-2')
+                Fixture.make_package(candidates, 'omarchy-mac-keyring', installed)
+                unsigned = Fixture.root / ('eligibility-unsigned-' + installed)
+                boot.bundle.stage(argparse.Namespace(base_db=Fixture.base_db, base_packages=Fixture.base,
+                    candidates=candidates, source=Fixture.source, source_git=None, source_commit=self.source,
+                    release='4.0.3rc1', output=unsigned))
+                checksum = boot.bundle.digest(unsigned / 'manifest.json')
+                argv = ['bootstrap-rc.py', 'check-eligibility', '--input', str(unsigned),
+                        '--manifest-sha256', checksum, '--source-commit', self.source,
+                        '--trust-policy', str(Fixture.keys.policy)]
+                before = {p.relative_to(unsigned).as_posix(): boot.bundle.digest(p)
+                          for p in unsigned.rglob('*') if p.is_file()}
+                output = Fixture.root / ('eligibility-signed-' + installed)
+                with patch.object(boot.bundle.signing, 'Keyring', side_effect=AssertionError('signer reached')) as signer, \
+                     patch.object(boot.bundle.tempfile, 'mkdtemp', side_effect=AssertionError('staging reached')) as staging, \
+                     patch('sys.argv', argv), patch.object(boot, 'guard'):
+                    if accepted:
+                        boot.main()
+                    else:
+                        with self.assertRaisesRegex(ValueError, 'does not satisfy'):
+                            boot.main()
+                        args = argparse.Namespace(input=unsigned, output=output, manifest_sha256=checksum,
+                            source_commit=self.source, trust_policy=Fixture.keys.policy, public_key=Fixture.keys.public)
+                        with self.assertRaisesRegex(ValueError, 'does not satisfy'):
+                            boot.prepare(args)
+                    signer.assert_not_called()
+                    staging.assert_not_called()
+                self.assertFalse(output.exists())
+                self.assertEqual(before, {p.relative_to(unsigned).as_posix(): boot.bundle.digest(p)
+                                          for p in unsigned.rglob('*') if p.is_file()})
+                if accepted:
+                    with patch.object(boot, 'guard'):
+                        boot.prepare(argparse.Namespace(input=unsigned, output=output, manifest_sha256=checksum,
+                            source_commit=self.source, trust_policy=Fixture.keys.policy, public_key=Fixture.keys.public))
+                    boot.validate(output, boot.bundle.digest(output / 'manifest.json'), self.source, Fixture.keys.policy)
+
+    def test_signed_retry_preflight_verifies_publicly_without_derivation(self):
+        # Hosted-only: real signed archives, actual check()/validate()/CLI and
+        # public crypto. No mock check() and no secret authority during preflight.
+        ring_type = boot.bundle.signing.Keyring
+        original_init, original_verify = ring_type.__init__, ring_type.verify
+        initialized, verified = [], []
+        def public_init(ring, public=boot.bundle.signing.PUBLIC,
+                        policy_path=boot.bundle.signing.POLICY, secret=False):
+            self.assertFalse(secret, 'preflight requested secret initialization')
+            initialized.append(Path(public))
+            original_init(ring, public, policy_path, secret=False)
+        def public_verify(ring, path):
+            verified.append(Path(path))
+            return original_verify(ring, path)
+        before = {p.relative_to(self.bundle).as_posix(): boot.bundle.digest(p)
+                  for p in self.bundle.rglob('*') if p.is_file()}
+        argv = ['bootstrap-rc.py', 'check-eligibility', '--input', str(self.bundle),
+                '--manifest-sha256', self.sha, '--source-commit', self.source,
+                '--trust-policy', str(Fixture.keys.policy)]
+        with patch.dict(os.environ, {k: v for k, v in os.environ.items()
+                                    if not k.startswith('PACMAN_SIGNING_')}, clear=True), \
+             patch.object(ring_type, '__init__', public_init), \
+             patch.object(ring_type, 'verify', public_verify), \
+             patch.object(ring_type, 'sign', side_effect=AssertionError('sign reached')) as sign, \
+             patch.object(boot.bundle.signing, 'normalize_credentials', side_effect=AssertionError('credentials reached')) as credentials, \
+             patch.object(boot.bundle, 'seal', side_effect=AssertionError('seal reached')) as seal, \
+             patch.object(boot, 'prepare', side_effect=AssertionError('prepare reached')) as prepare, \
+             patch.object(boot.bundle, 'copy_file', side_effect=AssertionError('copy reached')) as copy_file, \
+             patch.object(boot.bundle, 'build_db', side_effect=AssertionError('database derivation reached')) as build_db, \
+             patch('sys.argv', argv):
+            boot.main()
+            for forbidden in (sign, credentials, seal, prepare, copy_file, build_db):
+                forbidden.assert_not_called()
+        self.assertTrue(initialized, 'actual public key initialization must run')
+        expected = {path for directory in ('assets', 'rollback')
+                    for path in boot.bundle.signing.packages(self.bundle / directory)
+                    + boot.bundle.signing.databases(self.bundle / directory)}
+        self.assertTrue(expected)
+        self.assertEqual(set(verified), expected)
+        self.assertEqual(before, {p.relative_to(self.bundle).as_posix(): boot.bundle.digest(p)
+                                  for p in self.bundle.rglob('*') if p.is_file()})
+
     def test_01_exact_signed_inventory(self):
         self.assertEqual(len(self.manifest['packages']),52)
         for change in ('missing', 'extra', 'substituted', 'duplicate'):
