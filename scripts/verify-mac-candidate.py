@@ -52,6 +52,8 @@ def main():
     for path in ('usr/bin/omarchy-wifi-resume-fix', 'usr/bin/omarchy-audio-asahi-mic-map',
                  'usr/lib/systemd/user/omarchy-asahi-mic.service'):
         assert owners[path] == 'omarchy-mac'
+    # Preserved user units may still use the old detector name.
+    assert owners['usr/bin/omarchy-hw-apple'] == 'omarchy'
     source = run('bsdtar', '-xOf', str(addon), 'usr/share/omarchy-mac/source-revision')
     for name in ('omarchy', 'omarchy-settings'):
         assert run('bsdtar', '-xOf', str(packages[name][0]), f'usr/share/doc/{name}/source-revision') == source
@@ -93,6 +95,9 @@ def main():
                        '--cachedir', str(cache), '--noscriptlet', '--noconfirm', '-U']
             if mode == 'upgrade':
                 run(*command, *(str(p) for p in old))
+                # The add-on alone must refuse the old runtime's owned files.
+                conflict = subprocess.run([*command, str(addon)], capture_output=True, text=True)
+                assert conflict.returncode != 0 and 'exists in filesystem' in conflict.stderr, conflict
             run(*command, *(str(v[0]) for v in packages.values()))
             # Real pacman database owns each transferred file exactly once.
             for path in ('usr/bin/omarchy-wifi-resume-fix', 'usr/bin/omarchy-audio-asahi-mic-map',
@@ -101,8 +106,22 @@ def main():
                 assert result == 'omarchy-mac', (path, result)
             # A repeat install must also avoid overlap/overwrite escape hatches.
             run(*command, *(str(v[0]) for v in packages.values()))
+            # Roll back without suppressing dependency or ownership checks.
+            # This is deliberately two steps: an interruption after removal
+            # must be recoverable by reinstalling the recorded baseline pair.
+            run(*command[:-1], '-R', 'omarchy-mac')
+            run(*command, *(str(p) for p in old))
+            for path, owner in (
+                ('usr/bin/omarchy-wifi-resume-fix', 'omarchy'),
+                ('usr/bin/omarchy-audio-asahi-mic-map', 'omarchy'),
+                ('usr/lib/systemd/user/omarchy-asahi-mic.service', 'omarchy-settings'),
+            ):
+                result = run('pacman', '--config', str(config), '--root', str(root), '--dbpath', str(db), '-Qqo', str(root/path))
+                assert result == owner, (path, result)
+            run(*command, *(str(p) for p in old))
+            run(*command, *(str(v[0]) for v in packages.values()))
     args.output.write_text(json.dumps(dict(source_revision=source, owners=owners,
-        dependencies=dependencies, transactions=['fresh with installed base dependency database', 'upgrade from full baseline pair', 'repeat'],
+        dependencies=dependencies, transactions=['fresh with installed base dependency database', 'reject add-on-only ownership conflict', 'upgrade from full baseline pair', 'repeat', 'rollback through add-on removal', 'rollback retry', 'upgrade after rollback'],
         limits='Scriptlets/hooks are disabled in scratch transactions. Dependencies are resolved against the installed base database and candidate set. Physical boot, signed repository selection and install hooks remain release gates.'), indent=2)+'\n')
     print('ok - pinned payloads, dependencies, unique ownership and scratch pacman transactions')
 

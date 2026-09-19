@@ -1,7 +1,7 @@
 # Maintainer: Scott Jones <scottajones@gmail.com>
 pkgname=omarchy-mac
 pkgver=0.1.0
-pkgrel=1
+pkgrel=4
 pkgdesc='Apple Silicon configuration and support services for Omarchy'
 arch=('aarch64')
 url='https://github.com/omacom/omarchy-mac'
@@ -9,7 +9,7 @@ license=('MIT')
 depends=('omarchy' 'bash' 'coreutils' 'diffutils' 'grep' 'sed' 'gawk' 'systemd' 'pciutils' 'kmod'
          'networkmanager' 'iwd' 'python' 'pipewire' 'pipewire-pulse' 'libpulse' 'wireplumber')
 makedepends=('git' 'findutils')
-_commit=b76c6d79cfe5e5c05c22fdeb83f60b6b872f72c2
+_commit=20b8ae0fb6e2593172226f9f8cf0bb79e666d2aa
 source=("omarchy-mac-source::git+https://github.com/omacom/omarchy-mac.git#commit=$_commit")
 sha256sums=('SKIP')
 
