@@ -480,7 +480,7 @@ def capture(args, trust_policy=bundle.SIGNING_POLICY):
         require(f'{DB}.db' in overlay['asset_map'] and transport.read(overlay, f'{DB}.db', public=True) == overlay_hash,
                 'Published overlay database differs from approved overlay')
         overlay_db = args.output / '.overlay.db.tar.zst'
-        transport.read(overlay, overlay_db.name, destination=overlay_db)
+        transport.read(overlay, f'{DB}.db.tar.zst', destination=overlay_db)
         require(bundle.digest(overlay_db) == overlay_hash, 'Overlay database changed from approved capture')
         overlay_records_all = bundle.database(overlay_db)
         overlay_records = {name: row for name, row in overlay_records_all.items() if name in inventory}
@@ -494,7 +494,9 @@ def capture(args, trust_policy=bundle.SIGNING_POLICY):
             require(target.stat().st_size == int(bundle.field(row, 'CSIZE')) and bundle.digest(target) == bundle.field(row, 'SHA256SUM'),
                     'Captured overlay archive differs from approved database')
             destination = packages / name
-            destination.unlink(missing_ok=True)
+            if package_name in records:
+                previous = bundle.safe_name(bundle.field(records[package_name], 'FILENAME'))
+                (packages / previous).unlink()
             shutil.move(target, destination)
             records[package_name] = row
         overlay_db.unlink()
