@@ -8,45 +8,49 @@ permissions:
   actions: read
 
 concurrency:
-  group: retained-capture-inspection
+  group: signing-pkginfo-evidence
   cancel-in-progress: false
 
 jobs:
-  inspect:
+  diagnose:
     if: github.repository == 'omarchy-mac/omarchy-pkgs-aarch64'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: Prepare verification tools only
-        run: docker build -f .github/publisher.Dockerfile -t capture-inspector .
-      - name: Fetch exact retained artifact and recorded capture evidence
+      - name: Confirm exact diagnostic artifact identity
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          python3 scripts/inspect-capture.py fetch --work "$RUNNER_TEMP/retained-inspection"
-      - name: Offline semantic inspection without credentials or build execution
+          gh api repos/omarchy-mac/omarchy-pkgs-aarch64/actions/artifacts/10588860485 > "$RUNNER_TEMP/artifact.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          a = json.loads((Path(os.environ['RUNNER_TEMP']) / 'artifact.json').read_text())
+          assert a['id'] == 10588860485 and not a['expired']
+          assert a['name'] == 'unsigned-rc-baseline-35455295866-1'
+          assert a['workflow_run']['id'] == 35455295866
+          assert a['workflow_run']['head_sha'] == '9877dfe8395d91cfc9f7d24c4516ee95c1c09bb1'
+          assert a['digest'] == 'sha256:0bdcf4044d8f4d3cbd6e9737e15a030ff98cc51de5f422c68b238b4125e0f1df'
+          PY
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: omarchy-mac/omarchy-pkgs-aarch64
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: '35455295866'
+          artifact-ids: '10588860485'
+          merge-multiple: true
+          path: ${{ runner.temp }}/unsigned-input
+      - name: Read actual package metadata without executing packages
         run: |
           set -euo pipefail
-          task="$RUNNER_TEMP/retained-inspection"
-          mkdir "$task/report" "$task/tmp"
-          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
-            --user "$(id -u):$(id -g)" \
-            -v "$PWD:/w:ro" -w /w \
-            -v "$task/capture:/capture:ro" -v "$task/evidence:/evidence:ro" \
-            -v "$task/report:/report" -v "$task/tmp:/tmp" \
-            -e PYTHONDONTWRITEBYTECODE=1 -e TMPDIR=/tmp \
-            capture-inspector python3 scripts/inspect-capture.py inspect \
-              --capture /capture --evidence /evidence --report /report/inspection.json
-          printf 'Inspection-only report; no build or manifest approval is implied.\n\n```json\n' >> "$GITHUB_STEP_SUMMARY"
-          cat "$task/report/inspection.json" >> "$GITHUB_STEP_SUMMARY"
-          printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+          python3 scripts/diagnose-signing-pkginfo.py "$RUNNER_TEMP/unsigned-input" "$RUNNER_TEMP/pkginfo-report/diagnosis.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: retained-capture-inspection-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/retained-inspection/report/inspection.json
+          name: signing-pkginfo-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/pkginfo-report/diagnosis.json
           if-no-files-found: error
-          retention-days: 90
+          retention-days: 30
