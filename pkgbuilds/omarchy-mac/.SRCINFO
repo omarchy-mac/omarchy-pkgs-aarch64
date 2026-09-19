@@ -1,0 +1,29 @@
+pkgbase = omarchy-mac
+	pkgdesc = Apple Silicon configuration and support services for Omarchy
+	pkgver = 0.1.0
+	pkgrel = 1
+	url = https://github.com/omacom/omarchy-mac
+	arch = aarch64
+	license = MIT
+	makedepends = git
+	makedepends = findutils
+	depends = omarchy
+	depends = bash
+	depends = coreutils
+	depends = grep
+	depends = sed
+	depends = gawk
+	depends = systemd
+	depends = pciutils
+	depends = kmod
+	depends = networkmanager
+	depends = iwd
+	depends = python
+	depends = pipewire
+	depends = pipewire-pulse
+	depends = libpulse
+	depends = wireplumber
+	source = omarchy-mac-source::git+https://github.com/omacom/omarchy-mac.git#commit=8282335ce2479e2d669faa76b084ac71085889c3
+	sha256sums = SKIP
+
+pkgname = omarchy-mac
