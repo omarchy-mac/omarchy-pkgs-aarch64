@@ -1,5 +1,7 @@
 # Maintainer: Scott Jones <scottajones@gmail.com>
 pkgname=omarchy-mac
+# Independent add-on version, matching packages/omarchy-mac/version at _commit.
+# Increase pkgrel for packaging-only releases; reset it when pkgver increases.
 pkgver=0.1.0
 pkgrel=4
 pkgdesc='Apple Silicon configuration and support services for Omarchy'
@@ -9,6 +11,10 @@ license=('MIT')
 depends=('omarchy' 'bash' 'coreutils' 'diffutils' 'grep' 'sed' 'gawk' 'systemd' 'pciutils' 'kmod'
          'networkmanager' 'iwd' 'python' 'pipewire' 'pipewire-pulse' 'libpulse' 'wireplumber')
 makedepends=('git' 'findutils')
+# Pin the reviewed release source, never a moving branch or automatic git HEAD.
+# A namespaced release tag can label this commit; keep the full SHA for builds.
+# Desktop-only commits and history cleanup do not require a new add-on build.
+# See README.md for versioning, validation and coordinated first publication.
 _commit=20b8ae0fb6e2593172226f9f8cf0bb79e666d2aa
 source=("omarchy-mac-source::git+https://github.com/omacom/omarchy-mac.git#commit=$_commit")
 sha256sums=('SKIP')

@@ -4,6 +4,26 @@ The independent source lives at `packages/omarchy-mac/` in `omacom/omarchy-mac`.
 
 Run `makepkg --nosign` in this directory. `prepare()` copies the add-on away from the surrounding desktop tree before running tests or staging it. The artifact records its source revision and attribution.
 
+## Release workflow
+
+Develop the add-on on the shared desktop branch, but release it independently. A desktop commit does not automatically become a package release. The source pin identifies what was reviewed and tested; it does not pin the build environment or dependencies by itself.
+
+1. **Select the add-on release.** When releasing changed add-on behavior, update `packages/omarchy-mac/version` in the source repository. Use a namespaced tag such as `omarchy-mac-v0.1.0` to label the chosen source commit, separate from desktop release tags. Retain release commits and never move a published tag. Tag creation is a release-maintainer step; this recipe does not create tags or GitHub releases.
+2. **Propose the recipe update.** Set `_commit` to that full commit SHA and `pkgver` to the source version. Reset `pkgrel` to `1` only when `pkgver` increases; increment it for a packaging-only release or rebuild of the same source version. Never replace a published artifact with different contents under the same package version/release. Regenerate `.SRCINFO` with `makepkg --printsrcinfo > .SRCINFO` in the recipe directory and submit the changes together in a PR.
+3. **Build and validate the candidate.** Run the independent package tests, inspect the staged payload and runtime dependencies, and record the source/recipe revisions, build inputs and artifact checksums. When changing a desktop interface or file owner, build the compatible runtime/settings packages and exercise the complete upgrade, repeated setup and rollback. Hardware-affecting changes need the relevant physical checks.
+4. **Approve publication separately from source integration.** Select the signed delivery path and retain the validated artifacts and recovery set. For the first release, publish the compatible runtime/settings/add-on set before installer inputs or existing-user migrations require it. Include `omarchy-steam-fex` in transitions from runtimes that still own its launcher. An add-on-only install against the old file owners must remain a clean rejection, not an overwrite workaround.
+5. **Allow independent updates after the ownership transition.** Later add-on fixes can ship on their own when desktop interfaces and dependencies remain compatible. Interface, dependency or ownership changes require a coordinated release again. Testers receive repository packages; they do not need to follow the source branch or maintain a dev link.
+
+The current `0.1.0-4` candidate deliberately retains `20b8ae0f`, the source used for its build and physical trial. The cleaned shared history has identical add-on contents. Do not advance the pin merely to match a newer desktop head. If `0.1.0-4` is selected for first publication, keep that release number; do not reset it to `0.1.0-1`. Changes elsewhere in the desktop repository, or documentation-only recipe edits, do not require rebuilding the add-on.
+
+## How publication fits this repository
+
+After the first coordinated delivery is qualified, register the add-on as a local recipe in `packages.json` in a separate publication change. The general updater reads local `pkgver`/`pkgrel` and compares them with the repository database. Once registered, merging a version bump makes it eligible for a scheduled build/publication, so that recipe PR must carry the release validation and approval. The existing dry-run mode can exercise the build without publishing; a successful dry run does not itself promote its artifacts or qualify the coordinated ownership transition.
+
+Despite its name, `update-omarchy-mac.yml` currently publishes the fork's desktop runtime/settings pair, not this add-on. Do not feed add-on tags into its desktop release detection. Future automation could open recipe PRs when namespaced add-on tags appear; it should resolve a tag to an exact SHA and retain the same review and validation steps. That automation and add-on registration are not implemented by this candidate PR.
+
+## Candidate transaction checks
+
 From the recipe repository root, build the matching runtime/settings candidates with:
 
 ```bash
