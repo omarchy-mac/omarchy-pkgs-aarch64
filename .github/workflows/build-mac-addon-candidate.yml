@@ -19,6 +19,7 @@ on:
       - scripts/build-mac-addon-candidate.py
       - scripts/detect-mac-addon-candidate.py
       - scripts/test-mac-addon-candidate.py
+      - scripts/container-bootstrap.sh
       - .github/workflows/build-mac-addon-candidate.yml
       - .github/workflows/update-omarchy-mac.yml
 
@@ -69,13 +70,15 @@ jobs:
         env:
           SOURCE_SHA: ${{ needs.detect.outputs.source_sha }}
           ARCH_IMAGE_ARM: menci/archlinuxarm:base-devel
+        shell: bash
         run: |
           docker pull "$ARCH_IMAGE_ARM"
           export CANDIDATE_BUILD_IMAGE="$(docker image inspect "$ARCH_IMAGE_ARM" --format '{{index .RepoDigests 0}}')"
           docker run --rm -v "$PWD:/w" -w /w \
             -e SOURCE_SHA -e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT -e CANDIDATE_BUILD_IMAGE \
             "$ARCH_IMAGE_ARM" bash -euo pipefail -c '
-              pacman -Syu --noconfirm --needed git python systemd
+              bash scripts/container-bootstrap.sh build
+              pacman -S --noconfirm --needed python systemd
               useradd --create-home builder
               chown -R builder:builder /w
               runuser -u builder -- python3 scripts/build-mac-addon-candidate.py \

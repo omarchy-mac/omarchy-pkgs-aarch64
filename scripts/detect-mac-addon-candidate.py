@@ -36,7 +36,8 @@ def main():
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     inputs = subprocess.check_output(['git', 'ls-tree', '-r', 'HEAD', '--',
         'pkgbuilds/omarchy-mac', 'scripts/build-mac-addon-candidate.py',
-        'scripts/detect-mac-addon-candidate.py', '.github/workflows/build-mac-addon-candidate.yml'])
+        'scripts/detect-mac-addon-candidate.py', 'scripts/container-bootstrap.sh',
+        '.github/workflows/build-mac-addon-candidate.yml'])
     assert inputs
     digest = hashlib.sha256(inputs).hexdigest()[:24]
     name = f'omarchy-mac-candidate-{source}-{digest}'
