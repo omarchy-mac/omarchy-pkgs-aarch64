@@ -86,6 +86,21 @@ jobs:
       - name: Prepare signing tools without credentials
         run: docker build --build-arg BASE_IMAGE=archlinux:base-devel -f .github/publisher.Dockerfile -t omarchy-publisher .
 
+      - name: Check approved signing eligibility without credentials
+        env:
+          INPUT_HASH: ${{ inputs.manifest_sha256 }}
+          INPUT_SOURCE: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          docker run --rm --network none -v "$PWD:/w:ro" -w /w \
+            -v "$RUNNER_TEMP/rc-bootstrap/input:/task/input:ro" \
+            -v "$RUNNER_TEMP/rc-bootstrap/tmp:/task/tmp" \
+            -e INPUT_HASH -e INPUT_SOURCE \
+            -e TMPDIR=/task/tmp -e TMP=/task/tmp -e TEMP=/task/tmp -e PYTHONDONTWRITEBYTECODE=1 \
+            omarchy-publisher bash -euo pipefail -c \
+            'python3 scripts/bootstrap-rc.py check-eligibility --input /task/input --manifest-sha256 "$INPUT_HASH" --source-commit "$INPUT_SOURCE"' \
+            2>&1 | tee "$RUNNER_TEMP/rc-bootstrap/logs/eligibility.log"
+
       - name: Verify exact inventory and retain a signed derivation
         env:
           INPUT_HASH: ${{ inputs.manifest_sha256 }}

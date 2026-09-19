@@ -275,6 +275,38 @@ def stage(args):
     print(f'BUNDLE {args.output} {digest(args.output / "manifest.json")}')
 
 
+def signing_eligibility(manifest):
+    """Validate metadata for strict sealing; does not assert cryptographic trust."""
+    require(set(manifest['candidates']) == CANDIDATES, 'Stage the fork keyring before sealing')
+    packages = {item['name']: item for item in manifest['packages']}
+    require('omarchy-mac-keyring' in packages, 'Strict feed requires the fork keyring package')
+    version = packages['omarchy-mac-keyring']['version']
+    # PKGBUILD(5): pkgver excludes colon, slash, hyphen and whitespace, not
+    # arbitrary punctuation. Also exclude dependency operators and NUL here.
+    # [epoch:]pkgver[-pkgrel]; ordering itself belongs to pacman via argv, no shell.
+    version_pattern = r'(?:[0-9]+:)?[^:/\s<>=\x00-]+(?:-[0-9]+(?:\.[0-9]+)?)?'
+    require(isinstance(version, str) and re.fullmatch(version_pattern, version),
+            'Invalid fork keyring version')
+    found = False
+    for dependency in packages['omarchy']['depends']:
+        # Parse package identity separately so prefix lookalikes cannot qualify.
+        name = re.match(r'[A-Za-z0-9@_+.-]+', dependency)
+        if not name or name[0] != 'omarchy-mac-keyring':
+            continue
+        found = True
+        constraint = dependency[name.end():]
+        if not constraint:  # Legacy bare dependency remains supported.
+            continue
+        match = re.fullmatch(r'(>=|<=|=|>|<)(' + version_pattern + r')', constraint)
+        require(match, f'Invalid fork keyring dependency: {dependency}')
+        operator, required = match.groups()
+        comparison = int(run('vercmp', version, required).strip())
+        satisfied = {'=': comparison == 0, '>=': comparison >= 0, '<=': comparison <= 0,
+                     '>': comparison > 0, '<': comparison < 0}[operator]
+        require(satisfied, f'Fork keyring {version} does not satisfy {dependency}')
+    require(found, 'Strict feed requires the fork keyring dependency')
+
+
 def check(bundle, trust_policy=SIGNING_POLICY):
     manifest = json.loads((bundle / 'manifest.json').read_text())
     require(manifest.get('schema') == 1, 'Unsupported bundle schema')
@@ -360,7 +392,7 @@ def check(bundle, trust_policy=SIGNING_POLICY):
         inventory = [p['name'] for p in json.loads((bundle / 'provenance/catalog.json').read_text())['packages']]
         require(len(inventory) == len(set(inventory)) and set(inventory) == set(current), 'Complete exact captured package inventory required')
     if strict:
-        require(candidates == CANDIDATES and 'omarchy-mac-keyring' in dependencies, 'Strict feed requires the fork keyring package and dependency')
+        signing_eligibility(manifest)
         require(manifest['signing_policy'] == signing.policy(trust_policy), 'Signer differs from independently trusted policy')
         keyring_archive = bundle / 'assets' / next(item['filename'] for item in records if item['name'] == 'omarchy-mac-keyring')
         key_prefix = 'usr/share/pacman/keyrings/'
@@ -383,7 +415,7 @@ def seal(args):
     """Derive a signed bundle; keep the qualified unsigned input unchanged."""
     original = check(args.bundle, args.trust_policy)
     require(original['signature_policy'] != STRICT_POLICY, 'Already sealed; reuse its exact signatures')
-    require(set(original['candidates']) == CANDIDATES, 'Stage the fork keyring before sealing')
+    signing_eligibility(original)
     require(not args.output.exists(), 'Signed output already exists')
     primary = signing.policy(args.trust_policy)
     require(digest(args.public_key) == primary['public_key_sha256'], 'Public key differs from trust policy')

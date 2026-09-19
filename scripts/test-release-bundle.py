@@ -97,13 +97,14 @@ print(open(os.environ['GH_FIXTURE']).read())
                                                    '\ncustom_recipes=0\nsource_commit=' + commit + '\nsource_version=' + version + '\nsource_dirty=0\n')
 
     @classmethod
-    def make_package(cls, destination, name, version, content='payload', revoked='', builddate=1):
+    def make_package(cls, destination, name, version, content='payload', revoked='', builddate=1,
+                     keyring_dependency='omarchy-mac-keyring'):
         root = Path(tempfile.mkdtemp(dir=cls.root))
         arch = 'any' if name in {'omarchy-keyring', 'omarchy-mac-keyring', 'ttf-jetbrains-mono-nerd-basic'} else 'aarch64'
         info = f'pkgname = {name}\npkgbase = {name}\npkgver = {version}\npkgdesc = fixture\narch = {arch}\nsize = 10\nbuilddate = {builddate}\n'
         if name == 'omarchy':
             for dep in ['omarchy-settings=' + version.rsplit('-', 1)[0], 'snapper', 'iwd', 'networkmanager',
-                        'omarchy-keyring', 'omarchy-mac-keyring', 'ttf-jetbrains-mono-nerd-basic']:
+                        'omarchy-keyring', keyring_dependency, 'ttf-jetbrains-mono-nerd-basic']:
                 info += 'depend = ' + dep + '\n'
         (root / '.PKGINFO').write_text(info)
         (root / 'fixture').write_text(content)
@@ -155,6 +156,25 @@ print(open(os.environ['GH_FIXTURE']).read())
         self.assertEqual(set(manifest['reused_candidates']), {'omarchy-keyring', 'ttf-jetbrains-mono-nerd-basic'})
         self.assertEqual(bundle.digest(self.rc / 'provenance/captured-baseline.db'), bundle.digest(self.base_db))
         self.assertEqual(set(bundle.database(self.rc / 'assets/omarchy-aarch64.files')), set(bundle.database(self.base_db)) | {'omarchy-mac-keyring'})
+
+    def test_versioned_keyring_stage_seal_and_strict_check(self):
+        # Hosted-only native archive/vercmp/signing fixture, matching the builder.
+        candidates = self.root / 'versioned-keyring-candidates'
+        shutil.copytree(self.candidates, candidates)
+        for name in ('omarchy', 'omarchy-mac-keyring'):
+            bundle.archives(candidates)[name][0].unlink()
+        self.make_package(candidates, 'omarchy', '4.0.3rc1-1',
+                          keyring_dependency='omarchy-mac-keyring>=20260914-2')
+        self.make_package(candidates, 'omarchy-mac-keyring', '20260914-2')
+        output = self.root / 'versioned-keyring-bundle'
+        self.stage(output, candidates)
+        manifest = bundle.check(output, self.keys.policy)
+        records = {item['name']: item for item in manifest['packages']}
+        self.assertEqual(records['omarchy-mac-keyring']['version'], '20260914-2')
+        self.assertIn('omarchy-mac-keyring>=20260914-2', records['omarchy']['depends'])
+        unsigned = Path(str(output) + '.unsigned')
+        self.assertEqual(manifest['unsigned_manifest_sha256'], bundle.digest(unsigned / 'manifest.json'))
+        self.assertNotEqual(bundle.check(unsigned)['signature_policy'], bundle.STRICT_POLICY)
 
     def test_02_untracked_source_contamination_rejected(self):
         extra = self.source / 'ignored-runtime'
