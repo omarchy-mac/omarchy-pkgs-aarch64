@@ -10,6 +10,23 @@ candidate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(candidate)
 
 
+build_spec = importlib.util.spec_from_file_location('builder', Path(__file__).with_name('build-mac-addon-candidate.py'))
+builder = importlib.util.module_from_spec(build_spec)
+build_spec.loader.exec_module(builder)
+
+
+class CandidateVersionTest(unittest.TestCase):
+    def test_release_is_valid_for_makepkg_and_orders_reruns(self):
+        release = builder.candidate_release('4', 35464345295, 1)
+        self.assertRegex(release, r'^[0-9]+\.[0-9]+$')
+        self.assertLess(int(release.split('.')[1]), int(builder.candidate_release('4', 35464345295, 2).split('.')[1]))
+        self.assertLess(int(builder.candidate_release('4', 35464345295, 9999).split('.')[1]),
+                        int(builder.candidate_release('4', 35464345296, 1).split('.')[1]))
+        for attempt in (0, 10000):
+            with self.assertRaises(ValueError):
+                builder.candidate_release('4', 35464345295, attempt)
+
+
 class CandidateReuseTest(unittest.TestCase):
     def setUp(self):
         self.artifact = {'expired': False, 'workflow_run': {

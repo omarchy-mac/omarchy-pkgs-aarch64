@@ -14,6 +14,13 @@ def output(*args, cwd=None):
     return subprocess.check_output(args, cwd=cwd, text=True).strip()
 
 
+def candidate_release(base_release, run_id, attempt):
+    # makepkg accepts only integer[.integer]; reserve four digits for reruns.
+    if run_id < 1 or not 1 <= attempt <= 9999:
+        raise ValueError('use a positive run ID and an attempt between 1 and 9999')
+    return f'{base_release}.{run_id}{attempt:04d}'
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('source', type=Path)
@@ -36,7 +43,7 @@ def main():
     assert re.fullmatch(r'[0-9]+(?:\.[0-9]+){2}(?:rc[0-9]+)?', version), version
     recipe = output('git', 'show', recipe_commit + ':pkgbuilds/omarchy-mac/PKGBUILD', cwd=recipes) + '\n'
     base_release = re.search(r'^pkgrel=([0-9]+)$', recipe, re.M).group(1)
-    release = f'{base_release}.{args.run_id}.{args.attempt}'
+    release = candidate_release(base_release, args.run_id, args.attempt)
     for key, value in {'pkgver': version, 'pkgrel': release, '_commit': args.commit}.items():
         recipe, count = re.subn(r'^' + key + r'=.*$', key + '=' + value, recipe, flags=re.M)
         assert count == 1, key
