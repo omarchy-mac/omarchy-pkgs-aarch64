@@ -4,6 +4,14 @@ The independent source lives at `packages/omarchy-mac/` in `omacom/omarchy-mac`.
 
 Run `makepkg --nosign` in this directory. `prepare()` copies the add-on away from the surrounding desktop tree before running tests or staging it. The artifact records its source revision and attribution.
 
+## Automatic candidate builds (temporary)
+
+The existing hourly `update-omarchy-mac.yml` workflow calls `build-mac-addon-candidate.yml` as an independent job. It polls `omacom/omarchy-mac:quattro-upstream`, resolves its head to a full commit, and builds when that source or the relevant recipe/build inputs differ from a retained successful main-branch build. Failed/cancelled jobs remain retryable; expired artifacts trigger a rebuild. PR and fork artifacts cannot suppress the trusted hourly build. This starts when the workflow change is merged into this repository's `main` branch.
+
+PRs changing the recipe or candidate builder run the same ARM build for verification. Builds use the checked-in recipe at a recorded recipe commit, with the source SHA and source version substituted into a temporary PKGBUILD. The reviewed release pin is not rewritten. The generated `pkgrel` is `<recipe pkgrel>.<GitHub run ID>.<attempt>` so candidate archives are distinguishable. For later release publication, preserve the selected artifact's version or choose a version that supersedes any distributed candidate, for example `0.1.0-5` after `0.1.0-4.<run>.<attempt>`.
+
+Each successful run retains the unsigned package, generated PKGBUILD and `.SRCINFO`, standalone test/build log, `.BUILDINFO`, image digest, source/recipe revisions and checksums as Actions artifacts for 30 days. No candidate is installed or published to the repository database. The generic ARM build image runs the standalone tests as an unprivileged user, but does not resolve Omarchy's runtime dependencies or perform physical qualification. Installer delivery, the initial ownership transition and signed publication still follow the release process below.
+
 ## Release workflow
 
 Develop the add-on on the shared desktop branch, but release it independently. A desktop commit does not automatically become a package release. The source pin identifies what was reviewed and tested; it does not pin the build environment or dependencies by itself.
@@ -20,7 +28,7 @@ The current `0.1.0-4` candidate deliberately retains `20b8ae0f`, the source used
 
 After the first coordinated delivery is qualified, register the add-on as a local recipe in `packages.json` in a separate publication change. The general updater reads local `pkgver`/`pkgrel` and compares them with the repository database. Once registered, merging a version bump makes it eligible for a scheduled build/publication, so that recipe PR must carry the release validation and approval. The existing dry-run mode can exercise the build without publishing; a successful dry run does not itself promote its artifacts or qualify the coordinated ownership transition.
 
-Despite its name, `update-omarchy-mac.yml` currently publishes the fork's desktop runtime/settings pair, not this add-on. Do not feed add-on tags into its desktop release detection. Future automation could open recipe PRs when namespaced add-on tags appear; it should resolve a tag to an exact SHA and retain the same review and validation steps. That automation and add-on registration are not implemented by this candidate PR.
+Despite its name, the publishing part of `update-omarchy-mac.yml` handles the fork's desktop runtime/settings pair. Its new independent add-on job only builds candidate artifacts. Do not feed add-on tags into its desktop release detection. Future automation could open recipe PRs when namespaced add-on tags appear; it should resolve a tag to an exact SHA and retain the same review and validation steps. That automation and add-on registration are not implemented by this candidate PR.
 
 ## Candidate transaction checks
 

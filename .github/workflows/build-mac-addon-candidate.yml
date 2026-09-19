@@ -1,0 +1,102 @@
+name: Build Mac add-on candidate
+
+on:
+  workflow_call:
+    inputs:
+      force:
+        description: Rebuild a retained candidate
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Rebuild even if a matching successful artifact is retained
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - pkgbuilds/omarchy-mac/**
+      - scripts/build-mac-addon-candidate.py
+      - scripts/detect-mac-addon-candidate.py
+      - scripts/test-mac-addon-candidate.py
+      - .github/workflows/build-mac-addon-candidate.yml
+      - .github/workflows/update-omarchy-mac.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  detect:
+    name: Check latest add-on source
+    runs-on: ubuntu-24.04
+    outputs:
+      source_sha: ${{ steps.detect.outputs.source_sha }}
+      recipe_sha: ${{ steps.detect.outputs.recipe_sha }}
+      artifact_name: ${{ steps.detect.outputs.artifact_name }}
+      needs_build: ${{ steps.detect.outputs.needs_build }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Test candidate detection
+        run: PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-mac-addon-candidate.py
+      - name: Check source and retained successful builds
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE_BUILD: ${{ github.event_name == 'pull_request' || inputs.force || false }}
+        run: python3 scripts/detect-mac-addon-candidate.py
+
+  build:
+    name: Build add-on archive
+    needs: detect
+    if: needs.detect.outputs.needs_build == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.detect.outputs.recipe_sha }}
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: omacom/omarchy-mac
+          ref: ${{ needs.detect.outputs.source_sha }}
+          path: vendor/omarchy-mac
+          persist-credentials: false
+      - name: Build and test without installing the candidate
+        env:
+          SOURCE_SHA: ${{ needs.detect.outputs.source_sha }}
+          ARCH_IMAGE_ARM: menci/archlinuxarm:base-devel
+        run: |
+          docker pull "$ARCH_IMAGE_ARM"
+          export CANDIDATE_BUILD_IMAGE="$(docker image inspect "$ARCH_IMAGE_ARM" --format '{{index .RepoDigests 0}}')"
+          docker run --rm -v "$PWD:/w" -w /w \
+            -e SOURCE_SHA -e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT -e CANDIDATE_BUILD_IMAGE \
+            "$ARCH_IMAGE_ARM" bash -euo pipefail -c '
+              pacman -Syu --noconfirm --needed git python systemd
+              useradd --create-home builder
+              chown -R builder:builder /w
+              runuser -u builder -- python3 scripts/build-mac-addon-candidate.py \
+                /w/vendor/omarchy-mac "$SOURCE_SHA" /w/candidate "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+            ' 2>&1 | tee candidate-build.log
+      - name: Retain build logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: omarchy-mac-build-log-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            candidate-build.log
+            candidate/build.log
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Retain verified candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ needs.detect.outputs.artifact_name }}
+          path: candidate/artifacts/
+          include-hidden-files: true
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 30
