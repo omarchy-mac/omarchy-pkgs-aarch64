@@ -1,7 +1,7 @@
 pkgbase = omarchy-mac
 	pkgdesc = Apple Silicon configuration and support services for Omarchy
 	pkgver = 0.1.0
-	pkgrel = 1
+	pkgrel = 4
 	url = https://github.com/omacom/omarchy-mac
 	arch = aarch64
 	license = MIT
@@ -24,7 +24,7 @@ pkgbase = omarchy-mac
 	depends = pipewire-pulse
 	depends = libpulse
 	depends = wireplumber
-	source = omarchy-mac-source::git+https://github.com/omacom/omarchy-mac.git#commit=b76c6d79cfe5e5c05c22fdeb83f60b6b872f72c2
+	source = omarchy-mac-source::git+https://github.com/omacom/omarchy-mac.git#commit=20b8ae0fb6e2593172226f9f8cf0bb79e666d2aa
 	sha256sums = SKIP
 
 pkgname = omarchy-mac
