@@ -280,9 +280,9 @@
     {
       "name": "omazed",
       "pkgbase": "omazed",
-      "source": "aur",
+      "source": "omarchy-pkgs",
       "category": "any",
-      "note": "Live Omarchy->Zed theme sync, arch=('any'), depends only on bash. Official edge carries it but Macs cannot install from [omarchy] (Usage = Sync), so omarchy-pkg-add passes the pacman -Si gate and then fails on -S (#24). AUR and omarchy-pkgs recipes are identical at 2.1.2-1; the AUR one is the author's own."
+      "note": "Live Omarchy->Zed theme sync, arch=('any'), depends only on bash. Reuses the upstream omarchy-pkgs recipe. Macs cannot install its official-edge copy while [omarchy] is Usage = Sync, so it must also be published here (#24)."
     },
     {
       "name": "openai-codex-desktop",
@@ -416,7 +416,7 @@
       "pkgbase": "zed",
       "source": "local",
       "category": "repack",
-      "note": "Arch extra zed is x86_64-only and ALARM has none. omarchy-install-editor-zed asks for zed by name and omarchy-pkg-add gates on pacman -Si, which never resolves provides, so this must be pkgname=zed, not zed-bin (#24). In-tree recipe is AUR zed-bin 1.19.2-1 reduced to aarch64: vendor zed-linux-aarch64.tar.gz, system libs instead of the bundled zed.app/lib, /usr/bin/zed wrapper sets ZED_UPDATE_EXPLANATION so the editor never self-updates. conflicts zed-bin: users who applied the AUR workaround must pacman -Rns zed-bin first. Version bumps are edits to the PKGBUILD: pkgver and sha256sums_aarch64."
+      "note": "Arch extra zed is x86_64-only and ALARM has none. omarchy-install-editor-zed asks for zed by name and omarchy-pkg-add gates on pacman -Si, which never resolves provides, so this must be pkgname=zed, not zed-bin (#24). In-tree recipe is derived from AUR zed-bin and limited to aarch64: vendor zed-linux-aarch64.tar.gz, system libs instead of the bundled zed.app/lib, /usr/bin/zed wrapper sets ZED_UPDATE_EXPLANATION so the editor never self-updates. conflicts zed-bin: users who applied the AUR workaround must pacman -Rns zed-bin first. Version bumps are edits to the PKGBUILD: pkgver and sha256sums_aarch64."
     }
   ]
 }

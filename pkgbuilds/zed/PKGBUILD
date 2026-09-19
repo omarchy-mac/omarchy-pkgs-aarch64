@@ -11,7 +11,7 @@
 #   https://github.com/zed-industries/zed/releases/download/v<ver>/zed-linux-aarch64.tar.gz
 
 pkgname=zed
-pkgver=1.19.2
+pkgver=1.20.2
 pkgrel=1
 pkgdesc='A high-performance, multiplayer code editor from the creators of Atom and Tree-sitter'
 arch=('aarch64')
@@ -38,8 +38,10 @@ optdepends=('openbsd-netcat: SSH remote development support'
             'typescript-language-server: improved TypeScript/JavaScript support'
             'org.freedesktop.secrets: to keep you logged into your Zed account')
 conflicts=('zed-bin' 'zed-git' 'zed-preview-bin')
+# The vendor binaries are already stripped.
+options=('!strip')
 source_aarch64=("${pkgname}-${pkgver}-aarch64.tar.gz::https://github.com/zed-industries/zed/releases/download/v${pkgver}/zed-linux-aarch64.tar.gz")
-sha256sums_aarch64=('6a7b9dac4c17b3901fda30d07e35f85f7eeb06bb96e1a348ff012aa2abed8af9')
+sha256sums_aarch64=('715a5252234522bc9e8e4a8c1f9b462cf7bb2881eed23b7c8ae650b41c24aa6f')
 
 package() {
   cd 'zed.app'

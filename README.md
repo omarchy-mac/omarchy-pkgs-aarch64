@@ -100,7 +100,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `xdg-terminal-exec` | 0.14.3-1 | Launch desktop apps with `Terminal=true` |
 | `yaru-icon-theme` | 26.04.5.1ubuntu-1 | Yaru default Ubuntu icon theme |
 | `yay` | 13.0.1-1 | Pacman wrapper and AUR helper |
-| `zed` | 1.19.2-1 | Zed editor (vendor linux aarch64 release) |
+| `zed` | 1.20.2-1 | Zed editor (vendor linux aarch64 release) |
 
 ## Usage
 
@@ -258,8 +258,8 @@ instead of the bundled `zed.app/lib`, and a `/usr/bin/zed` wrapper that sets
 conflicts with `zed-bin`; anyone who installed that from the AUR as a
 workaround must `pacman -Rns zed-bin` first, because `pacman -S --noconfirm`
 does not remove a conflicting package on its own. `omazed`, the other half of
-that installer, is `arch=('any')` from the AUR and is published here only
-because `[omarchy]` is `Usage = Sync` (#24).
+that installer, reuses the `arch=('any')` recipe from `omarchy-pkgs` and is
+published here because `[omarchy]` is `Usage = Sync` (#24).
 
 Signed source tarballs (`1password`, `1password-cli`, `vi`, `voxtype-bin`)
 import only the fingerprints listed in `validpgpkeys`, plus any matching key
