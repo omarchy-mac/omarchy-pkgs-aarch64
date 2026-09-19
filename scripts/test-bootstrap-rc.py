@@ -259,6 +259,147 @@ class BootstrapTests(unittest.TestCase):
         self.assertFalse((args.output/'.overlay.db.tar.zst').exists())
         self.assertFalse((args.output/'.overlay-packages').exists())
 
+    def test_capture_catalog_extras_are_not_adopted(self):
+        remote,args,overlay=self.overlay_capture_fixture('extras')
+        extra_base=Fixture.root/'extras-base';shutil.copytree(Fixture.base,extra_base)
+        Fixture.make_package(extra_base,'excluded-edge-package','1-1')
+        Fixture.make_package(overlay,'excluded-rc-package','1-1')
+        for lane,directory in [('edge',extra_base),('rc',overlay)]:
+            boot.bundle.build_db(directory)
+            remote.releases[lane]['assets']={p.name:p.read_bytes() for p in directory.iterdir()}
+        args.database_sha256=boot.bundle.digest(extra_base/'omarchy-aarch64.db')
+        args.overlay_database_sha256=boot.bundle.digest(overlay/'omarchy-aarch64.db')
+        with patch.object(boot,'GitHub',return_value=remote):boot.capture(args,Fixture.keys.policy)
+        evidence=boot.check_capture(args.output,boot.bundle.digest(args.output/'capture-manifest.json'))
+        self.assertEqual(evidence['excluded_catalog_extras'],{'edge':['excluded-edge-package'],'rc':['excluded-rc-package']})
+        self.assertEqual(evidence['filtered_extras'],['excluded-edge-package','excluded-rc-package'])
+        self.assertEqual(evidence['archives'],52)
+        self.assertFalse(any(e[0]=='read' and e[2].startswith('excluded-') for e in remote.events))
+        self.assertFalse(any(e[0] in ('create','upload','expose','delete') for e in remote.events))
+
+    def test_capture_rejects_false_remote_verification(self):
+        remote,args,overlay=self.overlay_capture_fixture('classification')
+        remote.releases['rc']['assets']['orphan.pkg.tar.xz']=b'unknown'
+        self.assert_overlay_capture(remote,args,overlay)
+        evidence=json.loads((args.output/'capture.json').read_text())
+        evidence['remote_assets']['rc']['orphan.pkg.tar.xz'].update(verification='downloaded-verified',sha256='0'*64,path='packages/missing')
+        boot.bundle.write_json(args.output/'capture.json',evidence)
+        manifest=json.loads((args.output/'capture-manifest.json').read_text())
+        manifest['files']['capture.json']=boot.bundle.digest(args.output/'capture.json')
+        boot.bundle.write_json(args.output/'capture-manifest.json',manifest)
+        self.assertRaises(ValueError,boot.check_capture,args.output,boot.bundle.digest(args.output/'capture-manifest.json'))
+
+    def test_capture_end_drift_has_no_success_manifest(self):
+        for lane in ('edge','rc'):
+            remote,args,overlay=self.overlay_capture_fixture('drift-'+lane)
+            read=remote.read
+            def drifting(release,name,public=False,destination=None):
+                result=read(release,name,public,destination)
+                if release['tag_name']=='rc' and name.endswith('.pkg.tar.gz'):
+                    remote.releases[lane]['assets']['omarchy-aarch64.db']=b'changed selection'
+                return result
+            with patch.object(remote,'read',side_effect=drifting), patch.object(boot,'GitHub',return_value=remote):
+                self.assertRaisesRegex(ValueError,'database changed during capture',boot.capture,args,Fixture.keys.policy)
+            self.assertFalse((args.output/'capture-manifest.json').exists())
+            self.assertFalse(any(e[0] in ('create','upload','expose','delete') for e in remote.events))
+
+    def test_capture_offline_approval(self):
+        remote,args,overlay=self.overlay_capture_fixture('offline')
+        self.assert_overlay_capture(remote,args,overlay)
+        digest=boot.bundle.digest(args.output/'capture-manifest.json')
+        remote.releases.clear()
+        with patch.object(boot,'ROOT',Fixture.root/'no-live-catalog'), patch.object(boot,'GitHub',side_effect=AssertionError('offline')):
+            checked=boot.check_capture(args.output,digest)
+        self.assertEqual(checked['archives'],52)
+        result=boot.bundle.run('python3',Path(boot.__file__),'check-capture','--capture',args.output,'--manifest-sha256',digest)
+        self.assertEqual(json.loads(result)['manifest_sha256'],digest)
+        self.assertRaises(ValueError,boot.check_capture,args.output,'0'*64)
+        for change in ('corrupt','missing','extra','symlink','directory-symlink'):
+            with self.subTest(change=change):
+                target=Fixture.root/('offline-'+change);shutil.copytree(args.output,target)
+                file=next((target/'packages').iterdir())
+                if change=='corrupt':file.write_bytes(b'corrupt')
+                elif change=='missing':file.unlink()
+                elif change=='extra':(target/'extra').write_bytes(b'extra')
+                elif change=='symlink':
+                    file.unlink();file.symlink_to(next((args.output/'packages').iterdir()))
+                else:(target/'linked').symlink_to(args.output,target_is_directory=True)
+                self.assertRaises(ValueError,boot.check_capture,target,digest)
+        for change in ('schema','unsafe','identity','catalog'):
+            target=Fixture.root/('offline-'+change);shutil.copytree(args.output,target)
+            manifest=json.loads((target/'capture-manifest.json').read_text())
+            if change=='schema':manifest['schema']=2
+            elif change=='unsafe':manifest['files']['../escape']='a'*64
+            else:
+                name='capture.json' if change=='identity' else 'catalog.json'
+                data=json.loads((target/name).read_text())
+                if change=='identity':data['selected']['omarchy-keyring']['lane']='edge'
+                else:data['packages'].append({'name':'new-required-package'})
+                boot.bundle.write_json(target/name,data)
+                manifest['files'][name]=boot.bundle.digest(target/name)
+            boot.bundle.write_json(target/'capture-manifest.json',manifest)
+            self.assertRaises(ValueError,boot.check_capture,target,boot.bundle.digest(target/'capture-manifest.json'))
+
+    def test_capture_offline_rejects_baseline_only_overlay_keyring(self):
+        remote,args,overlay=self.overlay_capture_fixture('offline-baseline-keyring')
+        self.assert_overlay_capture(remote,args,overlay)
+        evidence=json.loads((args.output/'capture.json').read_text())
+        keyring='omarchy-mac-keyring'
+        filename=evidence['selected'][keyring]['filename']
+        baseline=Fixture.root/'offline-keyring-baseline';shutil.copytree(Fixture.base,baseline)
+        shutil.copyfile(args.output/'packages'/filename,baseline/filename)
+        partial=Fixture.root/'offline-keyring-overlay';partial.mkdir()
+        for archive in overlay.glob('*.pkg.tar.*'):
+            if archive.name != filename:shutil.copyfile(archive,partial/archive.name)
+        # Keep all retained bytes and evidence consistent, but move the trust
+        # anchor to the baseline only. Reapproval must not bypass overlay policy.
+        observation=evidence['remote_assets']['rc'].pop(filename)
+        observation['metadata']['id']=max(item['metadata']['id'] for item in evidence['remote_assets']['edge'].values())+1
+        evidence['remote_assets']['edge'][filename]=observation
+        evidence['selected'][keyring]['lane']='edge'
+        for lane,directory,hash_field in [('edge',baseline,'lane_database_sha256'),('rc',partial,'overlay_database_sha256')]:
+            boot.bundle.build_db(directory)
+            source=args.output/'sources'/f'{lane}.db'
+            shutil.copyfile(directory/'omarchy-aarch64.db',source)
+            evidence[hash_field]=boot.bundle.digest(source)
+            for name,item in evidence['remote_assets'][lane].items():
+                item['metadata']['size']=(directory/name).stat().st_size
+                if item.get('path') == f'sources/{lane}.db':item['sha256']=evidence[hash_field]
+        self.assertIn(keyring,boot.bundle.database(args.output/'sources/edge.db'))
+        self.assertNotIn(keyring,boot.bundle.database(args.output/'sources/rc.db'))
+        boot.bundle.write_json(args.output/'capture.json',evidence)
+        manifest_path=args.output/'capture-manifest.json'
+        old_approval=boot.bundle.digest(manifest_path)
+        manifest=json.loads(manifest_path.read_text())
+        manifest['files']={name:boot.bundle.digest(args.output/name) for name in manifest['files']}
+        boot.bundle.write_json(manifest_path,manifest)
+        approval=boot.bundle.digest(manifest_path)
+        self.assertNotEqual(approval,old_approval)
+        with patch.object(boot,'ROOT',Fixture.root/'no-live-catalog'), patch.object(boot,'GitHub',side_effect=AssertionError('offline')):
+            self.assertRaisesRegex(ValueError,'Overlay must include the installed trust anchor',boot.check_capture,args.output,approval)
+
+    def test_capture_retains_frozen_evidence(self):
+        remote,args,overlay=self.overlay_capture_fixture('frozen')
+        remote.releases['rc']['assets']['build-inputs.txt']=b'known provenance\n'
+        remote.releases['rc']['assets']['orphan.pkg.tar.xz']=b'not selected'
+        self.assert_overlay_capture(remote,args,overlay)
+        self.assertEqual((args.output/'sources/edge.db').read_bytes(),Fixture.base_db.read_bytes())
+        self.assertEqual((args.output/'sources/rc.db').read_bytes(),(overlay/'omarchy-aarch64.db').read_bytes())
+        self.assertEqual(json.loads((args.output/'catalog.json').read_text()),json.loads((boot.ROOT/'packages.json').read_text()))
+        self.assertEqual((args.output/'sources/rc-build-inputs.txt').read_bytes(),b'known provenance\n')
+        evidence=json.loads((args.output/'capture.json').read_text())
+        self.assertEqual(evidence['selected']['omarchy-keyring']['lane'],'rc')
+        orphan=evidence['remote_assets']['rc']['orphan.pkg.tar.xz']
+        self.assertEqual(orphan['classification'],'unreferenced')
+        self.assertEqual(orphan['verification'],'metadata-only')
+        self.assertNotIn('sha256',orphan)
+        self.assertFalse(any(e[:3]==('read','rc','orphan.pkg.tar.xz') for e in remote.events))
+        manifest=json.loads((args.output/'capture-manifest.json').read_text())
+        self.assertEqual(manifest['schema'],1)
+        self.assertEqual(set(manifest['files']),{p.relative_to(args.output).as_posix() for p in args.output.rglob('*') if p.is_file()}-{'capture-manifest.json'})
+        for name,digest in manifest['files'].items():
+            self.assertEqual(boot.bundle.digest(args.output/name),digest)
+
     def test_09a_partial_overlay_preserves_same_filename_approved_bytes(self):
         remote,args,overlay=self.overlay_capture_fixture('same-filename')
         name='omarchy-keyring-20251027-1-any.pkg.tar.gz'
