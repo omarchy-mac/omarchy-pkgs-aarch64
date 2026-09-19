@@ -1,0 +1,31 @@
+{
+  "repository_id": 1327386148,
+  "run_id": 35445613014,
+  "run_attempt": 1,
+  "head_sha": "caa0c0fad797722fe7b0819abcb1e6f02e685f15",
+  "artifact_id": 10584274342,
+  "artifact_name": "rc-baseline-capture-35445613014-1",
+  "size_in_bytes": 1756617201,
+  "zip_sha256": "c36b9986b15abc8d47b417499b553bfcc0446fbd3acd0aec2aedfa03b197515f",
+  "approved_databases": {
+    "edge": "c22ac5f4f659dc14908015faa67a32a8b14a254248992b8d752b29b2eab93645",
+    "rc": "57807c29715b7a47ccbcfdee3c2e3223777081bbe10d39f77560a6e696fa6cfc"
+  },
+  "catalog_sha256": "284da6cdd674dce7b624c2d0c6ee911a0feb9b20bc408da7c3a91e93ca11789e",
+  "published_capture": {
+    "database_sha256": "9ed3a24f954f9012e26356d694225662aefaa41257c89742e2f67d8c6e9338e2",
+    "lane_database_sha256": "c22ac5f4f659dc14908015faa67a32a8b14a254248992b8d752b29b2eab93645",
+    "archives": 52,
+    "lane": "edge",
+    "filtered_extras": ["omarchy-steam-fex"],
+    "manifest_sha256": "a1a8cf9bb2b75fd4b76377d229118d2333e7cbf4efa75f9b99422ffa7506fa14"
+  },
+  "unapproved_build_proposal": {
+    "source_repository": "omarchy-mac/omarchy-mac",
+    "source_commit": "79b074a8921ae2e195451991eda987445bcae962",
+    "source_version": "4.0.3rc4",
+    "recipe_pin": "19ef4b560ffd6f26df67665400394278065cf437",
+    "pkgrel": "2",
+    "edge_conversion": false
+  }
+}
