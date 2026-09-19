@@ -176,11 +176,18 @@ A PR branch push alone does not activate them; default-branch deployment remains
 a separately authorized step. All use the protected `package-signing` Environment. The producer has read-only
 repository permission and receives no signing secret:
 
-1. Run **Prepare complete baseline artifact** with an approved exact desktop
-   source commit, selected baseline lane and its reviewed database SHA256. Select
-   `edge` for initial RC4 preparation; select the published `rc` RC4 baseline for
-   RC5. RC5 staging rejects an edge capture. It captures every
-   baseline archive against that database, builds the five inputs canonically on
+1. First run **Retain read-only baseline capture** with the selected baseline lane
+   and reviewed database SHA256, plus an optional approved partial overlay.
+   Select `edge` with an `rc` overlay for initial RC4 reconciliation; select the
+   published `rc` RC4 baseline without overlay for RC5. Review the retained capture
+   and separately approve its manifest SHA256. Then run **Prepare complete baseline
+   artifact** with that same-repository capture run ID/name, externally approved
+   capture manifest digest, exact desktop source commit and explicit pkgrel.
+   See [CAPTURE.md](CAPTURE.md) for the handoff and read-only mount contract.
+   Capture is a separate manual read-only workflow with no signing Environment;
+   preparation retains its existing protected Environment. Preparation does not
+   recapture or consult live lanes. It verifies before building and again at staging;
+   RC5 staging rejects an edge capture. It builds the five inputs canonically on
    ARM from the source's recipe pin, and compares reused upstream keyring/font
    payloads. An unchanged fork-keyring filename is reused byte-for-byte from the
    captured RC4 baseline after matching its public key, trust fingerprint, empty
@@ -188,7 +195,7 @@ repository permission and receives no signing secret:
    version/pkgrel bump. This preserves archive identity when the signed stage adds its detached
    signature. Comparison uses `bsdtar` for compression portability and excludes only
    build-date/packager/comments, `.BUILDINFO`, `.MTREE` and timestamps. File contents, types, links, modes and ownership must agree. It stages
-   the complete configured `packages.json` inventory and uploads
+   the complete retained `catalog.json` inventory and uploads
    `unsigned-rc-baseline-RUN-ATTEMPT` plus logs containing the manifest digest.
    A changed baseline, missing package or functional reuse mismatch stops it.
    This proves build/capture/integrity, not runtime qualification; review and test
@@ -214,8 +221,8 @@ repository permission and receives no signing secret:
    before any network mutation. A subsequent execute requires the protected
    Environment approval and explicit mutable-alias-window acceptance.
 
-The executable tool is `scripts/bootstrap-rc.py`; the workflow calls its
-`capture`, `stage-input`, `prepare` and `publish` subcommands. `publish` is read-only
+The executable tool is `scripts/bootstrap-rc.py`; the separate workflows call its
+`capture`, `check-capture`, `stage-input`, `prepare` and `publish` subcommands. `publish` is read-only
 unless `--execute --accept-mutable-alias-window` are both present, and its only
 allowed destination is `rc` in this repository. It cannot publish edge/stable.
 

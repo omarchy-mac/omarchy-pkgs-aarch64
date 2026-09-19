@@ -49,7 +49,8 @@ def validate(path, expected_manifest, expected_source, trust_policy=bundle.SIGNI
     require(bundle.digest(path / 'manifest.json') == expected_manifest, 'Input manifest differs from approval')
     manifest = bundle.check(path, trust_policy)
     names = [p['name'] for p in manifest['packages']]
-    inventory = [p['name'] for p in json.loads((ROOT / 'packages.json').read_text())['packages']]
+    catalog = path / 'provenance/catalog.json' if 'capture_manifest_sha256' in manifest else ROOT / 'packages.json'
+    inventory = [p['name'] for p in json.loads(catalog.read_text())['packages']]
     require(len(names) == len(inventory) and len(names) == len(set(names)) and set(names) == set(inventory), 'Complete exact configured package inventory required')
     require(channel in ('rc', 'stable') and manifest['channel'] == channel, 'Baseline channel differs')
     require(('rc' in manifest['version']) == (channel == 'rc'), 'Baseline version/channel differs')
@@ -450,7 +451,14 @@ def capture(args, trust_policy=bundle.SIGNING_POLICY):
     transport.read(release, path.name, destination=path)
     require(bundle.digest(path) == args.database_sha256, 'Baseline database changed from approved capture')
     records = bundle.database(path)
-    inventory = {p['name'] for p in json.loads((ROOT / 'packages.json').read_text())['packages']}
+    catalog = (ROOT / 'packages.json').read_text()
+    (args.output / 'catalog.json').write_text(catalog)
+    inventory = {p['name'] for p in json.loads(catalog)['packages']}
+    sources = args.output / 'sources'; sources.mkdir()
+    bundle.copy_file(path, sources / f'{lane}.db')
+    source_records = {lane: dict(records)}
+    releases = {lane: release}
+    origins = {name: lane for name in records if name in inventory}
     # Lane DBs may contain extras (e.g. omarchy-steam-fex on edge). Do not pull
     # those into the RC/signing inventory. Edge may omit omarchy-mac-keyring;
     # Prepare rebuilds that candidate. Missing configured names still fail.
@@ -471,7 +479,6 @@ def capture(args, trust_policy=bundle.SIGNING_POLICY):
         transport.read(release, name, destination=target)
         require(target.stat().st_size == int(bundle.field(row, 'CSIZE')) and bundle.digest(target) == bundle.field(row, 'SHA256SUM'),
                 'Captured archive differs from approved database')
-    overlay_extras = []
     if overlay_lane is not None:
         require(overlay_lane in ('edge', 'rc') and overlay_lane != lane, 'Overlay lane must differ from baseline lane')
         require(re.fullmatch('[a-f0-9]{64}', overlay_hash), 'Approved overlay database SHA256 required')
@@ -480,11 +487,13 @@ def capture(args, trust_policy=bundle.SIGNING_POLICY):
         require(f'{DB}.db' in overlay['asset_map'] and transport.read(overlay, f'{DB}.db', public=True) == overlay_hash,
                 'Published overlay database differs from approved overlay')
         overlay_db = args.output / '.overlay.db.tar.zst'
-        transport.read(overlay, overlay_db.name, destination=overlay_db)
+        transport.read(overlay, f'{DB}.db.tar.zst', destination=overlay_db)
         require(bundle.digest(overlay_db) == overlay_hash, 'Overlay database changed from approved capture')
+        bundle.copy_file(overlay_db, sources / f'{overlay_lane}.db')
         overlay_records_all = bundle.database(overlay_db)
+        source_records[overlay_lane] = overlay_records_all
+        releases[overlay_lane] = overlay
         overlay_records = {name: row for name, row in overlay_records_all.items() if name in inventory}
-        overlay_extras = sorted(set(overlay_records_all) - set(overlay_records))
         overlay_dir = args.output / '.overlay-packages'; overlay_dir.mkdir()
         for package_name, row in overlay_records.items():
             name = bundle.safe_name(bundle.field(row, 'FILENAME'))
@@ -494,9 +503,12 @@ def capture(args, trust_policy=bundle.SIGNING_POLICY):
             require(target.stat().st_size == int(bundle.field(row, 'CSIZE')) and bundle.digest(target) == bundle.field(row, 'SHA256SUM'),
                     'Captured overlay archive differs from approved database')
             destination = packages / name
-            destination.unlink(missing_ok=True)
+            if package_name in records:
+                previous = bundle.safe_name(bundle.field(records[package_name], 'FILENAME'))
+                (packages / previous).unlink()
             shutil.move(target, destination)
             records[package_name] = row
+            origins[package_name] = overlay_lane
         overlay_db.unlink()
         shutil.rmtree(overlay_dir)
         require('omarchy-mac-keyring' in overlay_records, 'Overlay must include the installed trust anchor')
@@ -509,7 +521,7 @@ def capture(args, trust_policy=bundle.SIGNING_POLICY):
     # database names == archive names, so rebuild a filtered capture DB from the
     # downloaded inventory only. Preserve the approved lane DB hash as provenance.
     lane_database_sha256 = args.database_sha256
-    extras = sorted(set(bundle.database(path)) - set(records)) + overlay_extras
+    extras = sorted({name for rows in source_records.values() for name in rows if name not in inventory})
     path.unlink()
     for suffix in ['db', 'files', 'db.tar.zst', 'files.tar.zst']:
         (args.output / f'{DB}.{suffix}').unlink(missing_ok=True)
@@ -539,8 +551,128 @@ def capture(args, trust_policy=bundle.SIGNING_POLICY):
         'overlay_lane': overlay_lane,
         'overlay_database_sha256': overlay_hash,
     }
+    evidence['selected'] = {name: {'lane': origins[name], 'filename': bundle.field(row, 'FILENAME'),
+                                  'sha256': bundle.field(row, 'SHA256SUM')}
+                            for name, row in sorted(records.items())}
+    evidence['excluded_catalog_extras'] = {tag: sorted(set(rows) - inventory) for tag, rows in source_records.items()}
+    evidence['remote_assets'] = {}
+    for tag, observed in releases.items():
+        referenced = {bundle.field(row, 'FILENAME') for row in source_records[tag].values()}
+        observations = {}
+        for name, metadata in sorted(observed['asset_map'].items()):
+            classification = ('database' if name.removesuffix('.sig') in DATABASES else
+                              'provenance' if name == 'build-inputs.txt' else
+                              'db-referenced' if name.removesuffix('.sig') in referenced else 'unreferenced')
+            item = {'classification': classification, 'verification': 'metadata-only',
+                    'metadata': metadata}
+            retained = None
+            if name in (f'{DB}.db', f'{DB}.db.tar.zst'):
+                retained = sources / f'{tag}.db'
+            elif name == 'build-inputs.txt':
+                retained = sources / f'{tag}-build-inputs.txt'
+                checksum = transport.read(observed, name, destination=retained)
+                require(bundle.digest(retained) == checksum, 'Provenance readback differs')
+            elif any(origin == tag and bundle.field(records[p], 'FILENAME') == name for p, origin in origins.items()):
+                retained = packages / name
+            if retained is not None:
+                item.update(verification='downloaded-verified', path=retained.relative_to(args.output).as_posix(),
+                            sha256=bundle.digest(retained))
+            observations[name] = item
+        evidence['remote_assets'][tag] = observations
+    # Fresh metadata and public selected bytes: do not approve a moving lane.
+    for tag, checksum in [(lane, lane_database_sha256)] + ([(overlay_lane, overlay_hash)] if overlay_lane else []):
+        current = transport.release(tag, require_prerelease=tag == 'rc')
+        require(current is not None and not current['draft'] and f'{DB}.db' in current['asset_map'] and
+                transport.read(current, f'{DB}.db', public=True) == checksum,
+                f'{tag} database changed during capture')
     bundle.write_json(args.output / 'capture.json', evidence)
-    print(json.dumps({k: evidence[k] for k in ('database_sha256', 'lane_database_sha256', 'archives', 'lane', 'filtered_extras')}))
+    manifest = {'schema': 1, 'files': {p.relative_to(args.output).as_posix(): bundle.digest(p)
+                                     for p in sorted(args.output.rglob('*')) if p.is_file()}}
+    bundle.write_json(args.output / 'capture-manifest.json', manifest)
+    print(json.dumps({**{k: evidence[k] for k in ('database_sha256', 'lane_database_sha256', 'archives', 'lane', 'filtered_extras')},
+                      'manifest_sha256': bundle.digest(args.output / 'capture-manifest.json')}))
+
+
+def check_capture(path, manifest_sha256):
+    """Verify an externally approved capture using retained inputs only."""
+    require(isinstance(manifest_sha256, str) and re.fullmatch('[a-f0-9]{64}', manifest_sha256),
+            'Exact capture manifest SHA256 required')
+    require(path.is_dir() and not path.is_symlink(), 'Capture must be a real directory')
+    actual = set()
+    for item in path.rglob('*'):
+        require(not item.is_symlink(), 'Capture symlinks are forbidden')
+        require(item.is_file() or item.is_dir(), 'Capture special files are forbidden')
+        if item.is_file():
+            actual.add(item.relative_to(path).as_posix())
+    require('capture-manifest.json' in actual, 'Missing capture manifest')
+    require(bundle.digest(path / 'capture-manifest.json') == manifest_sha256, 'Capture manifest differs from approval')
+    manifest = json.loads((path / 'capture-manifest.json').read_text())
+    require(isinstance(manifest, dict) and set(manifest) == {'schema', 'files'} and
+            type(manifest['schema']) is int and manifest['schema'] == 1 and isinstance(manifest['files'], dict),
+            'Unsupported capture manifest schema')
+    for name, checksum in manifest['files'].items():
+        require(isinstance(name, str) and name and not name.startswith('/') and
+                '\\' not in name and all(part not in ('', '.', '..') for part in name.split('/')),
+                'Unsafe capture relative path')
+        require(isinstance(checksum, str) and re.fullmatch('[a-f0-9]{64}', checksum), 'Invalid capture file digest')
+    require(actual == set(manifest['files']) | {'capture-manifest.json'} and
+            'capture-manifest.json' not in manifest['files'], 'Capture file inventory differs')
+    for name, checksum in manifest['files'].items():
+        require(bundle.digest(path / name) == checksum, f'Capture file changed: {name}')
+    evidence = json.loads((path / 'capture.json').read_text())
+    catalog = json.loads((path / 'catalog.json').read_text())
+    names = [p['name'] for p in catalog['packages']]
+    require(all(isinstance(n, str) and n for n in names) and len(names) == len(set(names)), 'Invalid captured catalog')
+    inventory = set(names)
+    lane, overlay = evidence['lane'], evidence['overlay_lane']
+    require(lane in ('edge', 'rc') and (overlay is None or overlay in ('edge', 'rc') and overlay != lane), 'Invalid captured lanes')
+    require((overlay is None) == (evidence['overlay_database_sha256'] is None), 'Invalid overlay approval')
+    rows, origins, excluded = {}, {}, {}
+    for tag, checksum in [(lane, evidence['lane_database_sha256'])] + ([(overlay, evidence['overlay_database_sha256'])] if overlay else []):
+        database = path / 'sources' / f'{tag}.db'
+        require(bundle.digest(database) == checksum, 'Captured source database differs')
+        source = bundle.database(database)
+        if tag == lane:
+            require(inventory - {'omarchy-mac-keyring'} <= set(source), 'Captured catalog baseline incomplete')
+        excluded[tag] = sorted(set(source) - inventory)
+        for name, row in source.items():
+            if name in inventory:
+                rows[name], origins[name] = row, tag
+    require(set(rows) in (inventory, inventory - {'omarchy-mac-keyring'}), 'Captured catalog inventory differs')
+    require(not (lane == 'rc' or overlay) or 'omarchy-mac-keyring' in rows, 'Captured trust anchor missing')
+    require(not overlay or origins.get('omarchy-mac-keyring') == overlay, 'Overlay must include the installed trust anchor')
+    archives = bundle.archives(path / 'packages')
+    bundle.validate_inventory(rows, archives)
+    for name in DATABASES:
+        bundle.validate_inventory(bundle.database(path / name), archives)
+    require(bundle.digest(path / f'{DB}.db') == bundle.digest(path / f'{DB}.db.tar.zst') == evidence['database_sha256'], 'Captured database aliases differ')
+    require(bundle.digest(path / f'{DB}.files') == bundle.digest(path / f'{DB}.files.tar.zst'), 'Captured files aliases differ')
+    selected = {name: {'lane': origins[name], 'filename': bundle.field(row, 'FILENAME'),
+                       'sha256': bundle.field(row, 'SHA256SUM')} for name, row in rows.items()}
+    require(evidence['selected'] == selected and evidence['archives'] == len(rows), 'Captured package origins differ')
+    require(evidence['excluded_catalog_extras'] == excluded and evidence['filtered_extras'] == sorted({n for extra in excluded.values() for n in extra}), 'Captured exclusions differ')
+    require(set(evidence['remote_assets']) == set(excluded), 'Captured remote lanes differ')
+    for tag, observations in evidence['remote_assets'].items():
+        source = bundle.database(path / 'sources' / f'{tag}.db')
+        referenced = {bundle.field(row, 'FILENAME') for row in source.values()}
+        require({f'{DB}.db', f'{DB}.db.tar.zst'} <= set(observations), 'Missing source DB observations')
+        for name, item in observations.items():
+            classification = ('database' if name.removesuffix('.sig') in DATABASES else
+                              'provenance' if name == 'build-inputs.txt' else
+                              'db-referenced' if name.removesuffix('.sig') in referenced else 'unreferenced')
+            require(item['classification'] == classification and isinstance(item['metadata'], dict), 'Invalid remote classification')
+            retained = (f'sources/{tag}.db' if name in (f'{DB}.db', f'{DB}.db.tar.zst') else
+                        f'sources/{tag}-build-inputs.txt' if name == 'build-inputs.txt' else
+                        f'packages/{name}' if any(p['lane'] == tag and p['filename'] == name for p in selected.values()) else None)
+            if retained:
+                require(set(item) == {'classification', 'verification', 'metadata', 'path', 'sha256'} and
+                        item['verification'] == 'downloaded-verified' and item['path'] == retained and
+                        retained in manifest['files'] and item['sha256'] == manifest['files'][retained],
+                        'Invalid downloaded-byte evidence')
+            else:
+                require(set(item) == {'classification', 'verification', 'metadata'} and item['verification'] == 'metadata-only',
+                        'Unverified asset cannot assert downloaded bytes')
+    return evidence
 
 
 def functional_payload(path):
@@ -598,6 +730,7 @@ def reuse_published_extra(incoming, published, database, trust_policy=bundle.SIG
 
 
 def stage_input(args, trust_policy=bundle.SIGNING_POLICY):
+    capture_evidence = check_capture(args.capture, getattr(args, 'capture_manifest_sha256', None))
     require(not args.candidates.exists(), 'Candidate directory must be new')
     guard(args.candidates.parent)
     built = bundle.archives(args.built)
@@ -607,7 +740,6 @@ def stage_input(args, trust_policy=bundle.SIGNING_POLICY):
     pkgrel = str(getattr(args, 'pkgrel', ''))
     require(re.fullmatch(r'[1-9][0-9]*', pkgrel), 'Explicit package release number required')
     package_version = f'{release}-{pkgrel}'
-    capture_evidence = json.loads((args.capture / 'capture.json').read_text())
     require(capture_evidence['database_sha256'] == bundle.digest(args.capture / f'{DB}.db.tar.zst'), 'Capture provenance database differs')
     conversion = getattr(args, 'edge_conversion', False)
     if conversion:
@@ -643,7 +775,8 @@ def stage_input(args, trust_policy=bundle.SIGNING_POLICY):
     bundle.stage(argparse.Namespace(base_db=args.capture / f'{DB}.db.tar.zst',
                                     base_packages=args.capture / 'packages', candidates=args.candidates,
                                     source=args.source, source_git=None, source_commit=args.source_commit,
-                                    release=package_version, output=args.output))
+                                    release=package_version, output=args.output,
+                                    capture=args.capture, capture_manifest_sha256=args.capture_manifest_sha256))
     digest = bundle.digest(args.output / 'manifest.json')
     manifest = validate(args.output, digest, args.source_commit, trust_policy, signed=False, channel='stable' if conversion else 'rc')
     print(json.dumps({'manifest_sha256': digest, 'source_commit': args.source_commit,
@@ -662,9 +795,13 @@ def main():
     capture_parser.add_argument('--overlay-lane', choices=['edge', 'rc'])
     capture_parser.add_argument('--overlay-database-sha256')
     capture_parser.add_argument('--output', type=Path, required=True)
+    check_parser = commands.add_parser('check-capture')
+    check_parser.add_argument('--capture', type=Path, required=True)
+    check_parser.add_argument('--manifest-sha256', required=True)
     stage_parser = commands.add_parser('stage-input')
     for option in ['capture', 'built', 'candidates', 'source', 'output']:
         stage_parser.add_argument('--' + option, type=Path, required=True)
+    stage_parser.add_argument('--capture-manifest-sha256', required=True)
     stage_parser.add_argument('--source-commit', required=True)
     stage_parser.add_argument('--edge-conversion', action='store_true')
     stage_parser.add_argument('--pkgrel', required=True,
@@ -689,6 +826,9 @@ def main():
         reuse_published_extra(args.incoming, args.published, args.database)
     elif args.command == 'capture':
         capture(args)
+    elif args.command == 'check-capture':
+        evidence = check_capture(args.capture, args.manifest_sha256)
+        print(json.dumps({'result': 'PASS', 'manifest_sha256': args.manifest_sha256, 'archives': evidence['archives']}))
     elif args.command == 'stage-input':
         stage_input(args)
     elif args.command == 'prepare':

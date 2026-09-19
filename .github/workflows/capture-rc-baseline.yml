@@ -1,0 +1,91 @@
+name: Retain read-only baseline capture
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_lane:
+        description: 'Selected baseline lane; use published rc for RC5'
+        type: choice
+        options: [rc, edge]
+        default: rc
+        required: true
+      baseline_database_sha256:
+        description: 'Approved selected baseline database SHA256'
+        type: string
+        required: true
+      overlay_lane:
+        description: 'Optional partial target lane reconciliation; none for a complete baseline'
+        type: choice
+        options: [none, rc, edge]
+        default: none
+        required: true
+      overlay_database_sha256:
+        description: 'Approved overlay database SHA256; required when overlay is selected'
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc-baseline-capture
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Validate read-only capture inputs
+        env:
+          BASE_HASH: ${{ inputs.baseline_database_sha256 }}
+          BASE_LANE: ${{ inputs.baseline_lane }}
+          OVERLAY_LANE: ${{ inputs.overlay_lane }}
+          OVERLAY_HASH: ${{ inputs.overlay_database_sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$BASE_HASH" =~ ^[a-f0-9]{64}$ ]]
+          if [[ "$OVERLAY_LANE" != none ]]; then
+            [[ "$OVERLAY_HASH" =~ ^[a-f0-9]{64}$ && "$OVERLAY_LANE" != "$BASE_LANE" ]]
+          else
+            [[ -z "$OVERLAY_HASH" ]]
+          fi
+          case $(findmnt -n -o FSTYPE -T "$RUNNER_TEMP") in ''|tmpfs|ramfs) exit 1;; esac
+          mkdir -p "$RUNNER_TEMP/rc-capture-task"/{tmp,logs}
+      - name: Prepare capture tools without signing credentials
+        run: docker build --build-arg BASE_IMAGE=menci/archlinuxarm:base-devel -f .github/publisher.Dockerfile -t omarchy-capture .
+      - name: Capture exact approved remote bytes without remote writes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_HASH: ${{ inputs.baseline_database_sha256 }}
+          BASE_LANE: ${{ inputs.baseline_lane }}
+          OVERLAY_LANE: ${{ inputs.overlay_lane }}
+          OVERLAY_HASH: ${{ inputs.overlay_database_sha256 }}
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD:/w:ro" -w /w -v "$RUNNER_TEMP/rc-capture-task:/task" \
+            -e GH_TOKEN -e BASE_HASH -e BASE_LANE -e OVERLAY_HASH -e OVERLAY_LANE \
+            -e TMPDIR=/task/tmp -e TMP=/task/tmp -e TEMP=/task/tmp -e PYTHONDONTWRITEBYTECODE=1 \
+            omarchy-capture bash -euo pipefail -c '
+              args=(--lane "$BASE_LANE" --database-sha256 "$BASE_HASH" --output /task/capture)
+              if [[ "$OVERLAY_LANE" != none ]]; then args+=(--overlay-lane "$OVERLAY_LANE" --overlay-database-sha256 "$OVERLAY_HASH"); fi
+              python3 scripts/bootstrap-rc.py capture "${args[@]}"
+            ' 2>&1 | tee "$RUNNER_TEMP/rc-capture-task/logs/capture.log"
+          sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/rc-capture-task/capture"
+          sha256sum "$RUNNER_TEMP/rc-capture-task/capture/capture-manifest.json" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rc-baseline-capture-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rc-capture-task/capture/
+          if-no-files-found: error
+          retention-days: 90
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: rc-baseline-capture-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rc-capture-task/logs/
+          if-no-files-found: warn
+          retention-days: 90

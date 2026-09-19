@@ -249,6 +249,10 @@ def stage(args):
             copy_file(args.base_db, staging / 'rollback' / f'{DB}.{suffix}')
         validate_inventory(database(staging / 'assets' / f'{DB}.db'), combined)
         copy_file(build_input_path, staging / 'provenance/build-inputs.txt')
+        capture = getattr(args, 'capture', None)
+        if capture is not None:
+            for name in ('catalog.json', 'capture.json', 'capture-manifest.json'):
+                copy_file(capture / name, staging / 'provenance' / name)
         files = {p.relative_to(staging).as_posix(): digest(p) for p in sorted(staging.rglob('*')) if p.is_file()}
         manifest = {'schema': 1, 'version': version, 'package_release': version,
                     'channel': channel, 'source': source,
@@ -258,6 +262,8 @@ def stage(args):
                     'candidate_build_inputs_sha256': digest(build_input_path), 'build_inputs': expected_inputs,
                     'packages': [v[1] for k, v in sorted(combined.items())],
                     'files': files, 'signature_policy': 'optional-existing-signatures; no signer authority asserted'}
+        if capture is not None:
+            manifest['capture_manifest_sha256'] = args.capture_manifest_sha256
         if re.fullmatch(r'.+-[1-9][0-9]*', version):
             manifest['pkgrel'] = version.rsplit('-', 1)[1]
         write_json(staging / 'manifest.json', manifest)
@@ -337,6 +343,22 @@ def check(bundle, trust_policy=SIGNING_POLICY):
     for name in set(rollback) - candidates:
         require(current[name]['sha256'] == field(rollback[name], 'SHA256SUM'), 'Bundle changed an unrelated baseline package')
     require(manifest['baseline_db_sha256'] == digest(bundle / ('provenance/captured-baseline.db' if strict else f'rollback/{DB}.db')), 'Rollback identity mismatch')
+    capture_files = {'provenance/' + name for name in ('catalog.json', 'capture.json', 'capture-manifest.json')}
+    require(('capture_manifest_sha256' in manifest) == bool(capture_files & set(files)), 'Missing capture approval or provenance')
+    if 'capture_manifest_sha256' in manifest:
+        require(capture_files <= set(files), 'Incomplete capture provenance')
+        approval = manifest['capture_manifest_sha256']
+        require(isinstance(approval, str) and re.fullmatch('[a-f0-9]{64}', approval), 'Malformed capture approval')
+        require(digest(bundle / 'provenance/capture-manifest.json') == approval, 'Capture manifest differs from approval')
+        captured = json.loads((bundle / 'provenance/capture-manifest.json').read_text())
+        require(captured.get('schema') == 1, 'Unsupported capture schema')
+        for name in ('catalog.json', 'capture.json'):
+            require(digest(bundle / 'provenance' / name) == captured['files'][name], 'Retained capture provenance differs')
+        require(captured['files'][f'{DB}.db.tar.zst'] == manifest['baseline_db_sha256'], 'Approved capture baseline differs')
+        evidence = json.loads((bundle / 'provenance/capture.json').read_text())
+        require(evidence['database_sha256'] == manifest['baseline_db_sha256'], 'Capture evidence baseline differs')
+        inventory = [p['name'] for p in json.loads((bundle / 'provenance/catalog.json').read_text())['packages']]
+        require(len(inventory) == len(set(inventory)) and set(inventory) == set(current), 'Complete exact captured package inventory required')
     if strict:
         require(candidates == CANDIDATES and 'omarchy-mac-keyring' in dependencies, 'Strict feed requires the fork keyring package and dependency')
         require(manifest['signing_policy'] == signing.policy(trust_policy), 'Signer differs from independently trusted policy')
