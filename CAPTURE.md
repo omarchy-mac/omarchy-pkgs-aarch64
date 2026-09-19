@@ -130,6 +130,26 @@ catalog. This compatibility is not a bypass in `stage-input`, which always needs
 external capture approval. Downstream approval of the derived bundle manifest
 also binds its capture digest; keep both approval records.
 
+## Hosted inspection-only checkpoint
+
+`inspect-retained-capture.yml` is a deliberately one-capture, manual-only inspector for run `35445613014`, attempt `1`, artifact `10584274342` (`rc-baseline-capture-35445613014-1`). It has only `contents: read` and `actions: read`; there is no signing environment, package build, recapture, publisher, rolling-edge change or build dispatch. Tool-container preparation installs verification utilities, not release packages. All full artifact transfer and inspection run on GitHub-hosted runners. Local tests create only tiny synthetic archives.
+
+The reviewed identity record is `scripts/retained-capture-35445613014.json`. Its database hashes were independently operator-approved. The capture-manifest digest `a1a8cf9bb2b75fd4b76377d229118d2333e7cbf4efa75f9b99422ffa7506fa14` and filtered database digest/count/exclusions are recorded evidence from the successful capture step in [run 35445613014](https://github.com/omarchy-mac/omarchy-pkgs-aarch64/actions/runs/35445613014), NOT operator approval of a build. The catalog hash is the exact `packages.json` at capture checkout `caa0c0fad797722fe7b0819abcb1e6f02e685f15`. The ZIP digest is a separate transport identity and is never used as the capture-manifest approval input.
+
+The fetch stage re-reads exact repository IDs, run/attempt/workflow/commit/status and unexpired artifact ID/name/size/digest, and compares the published log result against the reviewed record. It downloads only that artifact ID, rejects ZIP size/digest mismatches before extraction, rejects unsafe/duplicate/nonregular paths, bounds extraction and reserves disk space. There is no name-based artifact search or live release-package download. Missing/expired evidence is a hard failure, not permission to recapture or substitute another run.
+
+The offline stage receives no token, has `--network none`, and mounts both capture and fetched evidence read-only. It invokes the existing `check_capture` verifier using the previously recorded digest, not a newly computed digest substituted as approval. It independently compares actual source DB hashes against the approved inputs, verifies frozen catalog identity and published capture evidence, and reports the actual manifest digest, full selected inventory with versions/hashes/origins, reconciliation exclusions, observation counts and retained provenance claims. The report is capped at 256 KiB and uploaded alone; no package archives are re-uploaded. Provenance and metadata-only observations remain explicitly qualified rather than asserted as authenticated builds or verified remote bytes.
+
+The unapproved proposal is `source_commit=79b074a8921ae2e195451991eda987445bcae962`, `pkgrel=2`, `edge_conversion=false` (desktop `4.0.3rc4`, recipe pin `19ef4b560ffd6f26df67665400394278065cf437`). This is the merged/tagged RC4 source named by published RC provenance, not RC5 or desktop main. The report checks retained RC provenance corroboration and captured metadata for candidate pair filename conflicts. The existing RC4 `-1` identity must not be rebuilt and overwritten; `-2` is a proposal, not a reservation. Extra-package reuse still requires the existing later functional/trust comparisons. Source selection, manifest approval and preparation authorization remain external.
+
+Deployment is a separate gate: a new manual workflow must exist on the default branch before it is dispatchable. A feature-branch PR and passing fixture CI do not complete that deployment or the full hosted inspection. Do not add automatic triggers, merge, bypass protection or repurpose an existing build workflow to get around this gate. After separately authorized deployment, the bounded inspection command is:
+
+```sh
+gh workflow run inspect-retained-capture.yml --repo omarchy-mac/omarchy-pkgs-aarch64 --ref main
+```
+
+Inspect the resulting run and its `retained-capture-inspection-<run-id>-<attempt>` report before proposing any next action. This command is inspection-only and cannot approve or dispatch preparation. Future captures require a separately reviewed identity-record change, not unvalidated dispatch inputs.
+
 ## Explicit boundaries
 
 Capture approval does not establish signer trust for all packages, runtime

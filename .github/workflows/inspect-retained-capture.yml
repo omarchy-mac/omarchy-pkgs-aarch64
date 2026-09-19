@@ -1,0 +1,52 @@
+name: Inspect retained capture without building
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: retained-capture-inspection
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    if: github.repository == 'omarchy-mac/omarchy-pkgs-aarch64'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Prepare verification tools only
+        run: docker build -f .github/publisher.Dockerfile -t capture-inspector .
+      - name: Fetch exact retained artifact and recorded capture evidence
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 scripts/inspect-capture.py fetch --work "$RUNNER_TEMP/retained-inspection"
+      - name: Offline semantic inspection without credentials or build execution
+        run: |
+          set -euo pipefail
+          task="$RUNNER_TEMP/retained-inspection"
+          mkdir "$task/report" "$task/tmp"
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --user "$(id -u):$(id -g)" \
+            -v "$PWD:/w:ro" -w /w \
+            -v "$task/capture:/capture:ro" -v "$task/evidence:/evidence:ro" \
+            -v "$task/report:/report" -v "$task/tmp:/tmp" \
+            -e PYTHONDONTWRITEBYTECODE=1 -e TMPDIR=/tmp \
+            capture-inspector python3 scripts/inspect-capture.py inspect \
+              --capture /capture --evidence /evidence --report /report/inspection.json
+          printf 'Inspection-only report; no build or manifest approval is implied.\n\n```json\n' >> "$GITHUB_STEP_SUMMARY"
+          cat "$task/report/inspection.json" >> "$GITHUB_STEP_SUMMARY"
+          printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: retained-capture-inspection-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/retained-inspection/report/inspection.json
+          if-no-files-found: error
+          retention-days: 90
