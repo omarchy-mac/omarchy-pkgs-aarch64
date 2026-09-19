@@ -1,6 +1,6 @@
 # omarchy-mac candidate
 
-The independent source lives at `packages/omarchy-mac/` in `omacom/omarchy-mac`. `PKGBUILD` pins collaboration commit `8282335ce2479e2d669faa76b084ac71085889c3` and packages only that directory. It supplies no kernel, installer, replacement settings package or trust configuration. Nothing here registers the add-on with the rolling updater.
+The independent source lives at `packages/omarchy-mac/` in `omacom/omarchy-mac`. `PKGBUILD` pins collaboration commit `b76c6d79cfe5e5c05c22fdeb83f60b6b872f72c2` and packages only that directory. It supplies no kernel, installer, replacement settings package or trust configuration. Nothing here registers the add-on with the rolling updater.
 
 Run `makepkg --nosign` in this directory. `prepare()` copies the add-on away from the surrounding desktop tree before running tests or staging it. The artifact records its source revision and attribution.
 

@@ -6,10 +6,10 @@ pkgdesc='Apple Silicon configuration and support services for Omarchy'
 arch=('aarch64')
 url='https://github.com/omacom/omarchy-mac'
 license=('MIT')
-depends=('omarchy' 'bash' 'coreutils' 'grep' 'sed' 'gawk' 'systemd' 'pciutils' 'kmod'
+depends=('omarchy' 'bash' 'coreutils' 'diffutils' 'grep' 'sed' 'gawk' 'systemd' 'pciutils' 'kmod'
          'networkmanager' 'iwd' 'python' 'pipewire' 'pipewire-pulse' 'libpulse' 'wireplumber')
 makedepends=('git' 'findutils')
-_commit=8282335ce2479e2d669faa76b084ac71085889c3
+_commit=b76c6d79cfe5e5c05c22fdeb83f60b6b872f72c2
 source=("omarchy-mac-source::git+https://github.com/omacom/omarchy-mac.git#commit=$_commit")
 sha256sums=('SKIP')
 

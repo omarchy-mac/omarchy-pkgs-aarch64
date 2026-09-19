@@ -5,7 +5,7 @@ source_tree=${1:?Usage: build-mac-candidate-pair.sh DESKTOP_REPO UPSTREAM_RECIPE
 recipe_tree=${2:?}
 output=${3:?}
 [[ $output == /* && ! -e $output ]] || { echo 'Use a new absolute output directory' >&2; exit 1; }
-source_commit=8282335ce2479e2d669faa76b084ac71085889c3
+source_commit=b76c6d79cfe5e5c05c22fdeb83f60b6b872f72c2
 case ${4:-candidate} in
   candidate) ;;
   baseline) source_commit=350c46550b99688cdb5224408edd5870de2ca07b ;;

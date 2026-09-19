@@ -10,6 +10,7 @@ pkgbase = omarchy-mac
 	depends = omarchy
 	depends = bash
 	depends = coreutils
+	depends = diffutils
 	depends = grep
 	depends = sed
 	depends = gawk
@@ -23,7 +24,7 @@ pkgbase = omarchy-mac
 	depends = pipewire-pulse
 	depends = libpulse
 	depends = wireplumber
-	source = omarchy-mac-source::git+https://github.com/omacom/omarchy-mac.git#commit=8282335ce2479e2d669faa76b084ac71085889c3
+	source = omarchy-mac-source::git+https://github.com/omacom/omarchy-mac.git#commit=b76c6d79cfe5e5c05c22fdeb83f60b6b872f72c2
 	sha256sums = SKIP
 
 pkgname = omarchy-mac
