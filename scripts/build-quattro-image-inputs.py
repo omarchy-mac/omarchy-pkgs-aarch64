@@ -196,8 +196,11 @@ def main():
         with (logs / f'{name}.log').open('w') as log:
             # Build dependencies are provisioned in the disposable CI container.
             # Runtime dependencies belong to the later image assembly check.
-            subprocess.run(['makepkg', '--nodeps', '--nosign', '--cleanbuild'], cwd=build,
-                           env=package_env, stdout=log, stderr=subprocess.STDOUT, check=True)
+            command = ['makepkg', '--nodeps', '--nosign', '--cleanbuild']
+            if name == 'omarchy-mac':
+                command.append('--check')  # Do not inherit a local BUILDENV=(!check).
+            subprocess.run(command, cwd=build, env=package_env, stdout=log,
+                           stderr=subprocess.STDOUT, check=True)
         evidence = artifacts / 'recipes' / name
         evidence.mkdir(parents=True)
         for path in build.iterdir():
