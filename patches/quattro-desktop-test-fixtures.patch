@@ -17,3 +17,14 @@
  [[ -n $symlink_backup && $(readlink "$symlink_backup") == "$user_keyboard" ]] ||
    fail "migration discards an unsafe custom symlink instead of preserving it"
  pass "migration quarantines unsafe symlinks outside the active systemd directory"
+--- a/test/shell.d/hermes-remove-test.sh
++++ b/test/shell.d/hermes-remove-test.sh
+@@ -294,7 +294,7 @@
+     runtime.mkdir(parents=True)
+     (runtime / '.hermes-bootstrap-complete').touch()
+     (home / '.config/Hermes').mkdir(parents=True)
+-    env = {**os.environ, 'HOME': str(home), 'PATH': f"{scratch / 'bin'}:/usr/bin:/bin",
++    env = {**os.environ, 'HOME': str(home), 'PATH': f"{scratch / 'bin'}:{os.environ['PATH']}",
+            'OMARCHY_TEST_GUM_STATUS': '0'}
+     for key in ('DROP', 'INSTALLER', 'SYSTEMCTL', 'GUM'):
+         log = home / (key + '.log')

@@ -12,7 +12,7 @@ on:
       - scripts/container-bootstrap.sh
       - scripts/prepare-omarchy-recipes.sh
       - patches/omarchy-first-run-packages.patch
-      - patches/quattro-test-quarantine-symlink.patch
+      - patches/quattro-desktop-test-fixtures.patch
       - pkgbuilds/omarchy-steam-fex/omarchy-launch-steam
       - pkgbuilds/omarchy-mac/**
   workflow_dispatch:

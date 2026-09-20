@@ -168,13 +168,15 @@ def main():
     helper = test_tools / 'omarchy-launch-steam'
     helper.write_text(output('git', 'show', f'{recipe_commit}:pkgbuilds/omarchy-steam-fex/omarchy-launch-steam', cwd=repository) + '\n')
     helper.chmod(0o755)
-    test_patch = repository / 'patches/quattro-test-quarantine-symlink.patch'
+    test_patch = repository / 'patches/quattro-desktop-test-fixtures.patch'
     # Exports can be nested below the Actions checkout. Prevent git apply from
     # discovering that parent repository and silently ignoring paths outside it.
     patch_env = dict(os.environ, GIT_CEILING_DIRECTORIES=str(destination))
     patch_paths = output('git', 'apply', '--numstat', str(test_patch), cwd=source, env=patch_env).splitlines()
-    require(len(patch_paths) == 1 and patch_paths[0].split('\t')[-1] ==
-            'test/shell.d/system-sleep-ownership-migration-test.sh', 'test patch may not change runtime source')
+    require(len(patch_paths) == 2 and {line.split('\t')[-1] for line in patch_paths} == {
+        'test/shell.d/system-sleep-ownership-migration-test.sh',
+        'test/shell.d/hermes-remove-test.sh',
+    }, 'test patch may not change runtime source')
     subprocess.run(['git', 'apply', '--check', str(test_patch)], cwd=source, env=patch_env, check=True)
     subprocess.run(['git', 'apply', str(test_patch)], cwd=source, env=patch_env, check=True)
     with (logs / 'recipe-preparation.log').open('w') as log:
