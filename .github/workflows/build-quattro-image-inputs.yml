@@ -1,13 +1,32 @@
 name: Build quattro image inputs
 
-# Manual candidates and PR validation are artifact-only. No updater calls this
-# workflow; successful builds never create releases or change a pacman database.
+# Scheduled checks, manual builds and PR validation retain artifacts only.
+# This workflow never creates releases or changes a pacman database.
 on:
+  schedule:
+    - cron: '23 * * * *'
   pull_request:
     paths:
       - .github/workflows/build-quattro-image-inputs.yml
       - scripts/build-quattro-image-inputs.py
       - scripts/test-quattro-image-inputs.py
+      - scripts/detect-quattro-image-inputs.py
+      - scripts/test-quattro-image-inputs-detection.py
+      - scripts/quattro-image-inputs-*-revision
+      - scripts/container-bootstrap.sh
+      - scripts/prepare-omarchy-recipes.sh
+      - patches/omarchy-first-run-packages.patch
+      - patches/quattro-desktop-test-fixtures.patch
+      - pkgbuilds/omarchy-steam-fex/omarchy-launch-steam
+      - pkgbuilds/omarchy-mac/**
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/build-quattro-image-inputs.yml
+      - scripts/build-quattro-image-inputs.py
+      - scripts/test-quattro-image-inputs.py
+      - scripts/detect-quattro-image-inputs.py
+      - scripts/test-quattro-image-inputs-detection.py
       - scripts/quattro-image-inputs-*-revision
       - scripts/container-bootstrap.sh
       - scripts/prepare-omarchy-recipes.sh
@@ -17,6 +36,11 @@ on:
       - pkgbuilds/omarchy-mac/**
   workflow_dispatch:
     inputs:
+      force:
+        description: Rebuild even if a matching successful candidate is retained
+        required: false
+        default: false
+        type: boolean
       source_ref:
         description: 'omacom/omarchy-mac ref to resolve once for all three packages'
         required: true
@@ -26,14 +50,48 @@ on:
 permissions:
   contents: read
 
+# Serialize main's scheduled, push and manual requests without interrupting an
+# in-flight artifact upload. PR validation uses its own ref.
+concurrency:
+  group: quattro-image-inputs-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  detect:
+    name: Check candidate inputs
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      source_sha: ${{ steps.detect.outputs.source_sha }}
+      recipe_sha: ${{ steps.detect.outputs.recipe_sha }}
+      artifact_name: ${{ steps.detect.outputs.artifact_name }}
+      needs_build: ${{ steps.detect.outputs.needs_build }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Test candidate detection
+        run: PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-quattro-image-inputs-detection.py
+      - name: Resolve source and check retained successful builds
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_REF: ${{ inputs.source_ref || 'quattro-upstream' }}
+          FORCE_BUILD: ${{ github.event_name == 'pull_request' || inputs.force || false }}
+        run: python3 scripts/detect-quattro-image-inputs.py
+
   build:
     name: Build three candidate packages
+    needs: detect
+    if: needs.detect.outputs.needs_build == 'true'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          ref: ${{ needs.detect.outputs.recipe_sha }}
           persist-credentials: false
       - name: Read the upstream recipe pin
         id: recipes
@@ -49,7 +107,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: omacom/omarchy-mac
-          ref: ${{ inputs.source_ref || 'quattro-upstream' }}
+          ref: ${{ needs.detect.outputs.source_sha }}
           path: vendor/desktop
           persist-credentials: false
       - name: Check out the recorded upstream recipes
@@ -102,8 +160,9 @@ jobs:
       - name: Retain the complete candidate set
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: quattro-image-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ needs.detect.outputs.artifact_name }}
           path: candidate/artifacts/
           include-hidden-files: true
+          overwrite: true
           if-no-files-found: error
           retention-days: 30

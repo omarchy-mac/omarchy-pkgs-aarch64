@@ -6,11 +6,9 @@ Run `makepkg --nosign` in this directory. `prepare()` copies the add-on away fro
 
 ## Automatic candidate builds (temporary)
 
-The existing hourly `update-omarchy-mac.yml` workflow calls `build-mac-addon-candidate.yml` as an independent job. It polls `omacom/omarchy-mac:quattro-upstream`, resolves its head to a full commit, and builds when that source or the relevant recipe/build inputs differ from a retained successful main-branch build. Failed/cancelled jobs remain retryable; expired artifacts trigger a rebuild. PR and fork artifacts cannot suppress the trusted hourly build. This starts when the workflow change is merged into this repository's `main` branch.
+The shared [three-package candidate builder](../../docs/quattro-image-inputs.md) now builds this add-on together with `omarchy` and `omarchy-settings` from one recorded `omacom/omarchy-mac:quattro-upstream` commit. It replaces the separate hourly add-on workflow and scripts. Hourly checks and relevant package-repository pushes build only when the selected source or build inputs lack a retained successful candidate. Manual builds can force a rebuild, and PR validation always builds.
 
-PRs changing the recipe or candidate builder run the same ARM build for verification. Builds use the checked-in recipe at a recorded recipe commit, with the source SHA and source version substituted into a temporary PKGBUILD. The reviewed release pin is not rewritten. The generated `pkgrel` is `<recipe pkgrel>.<GitHub run ID><four-digit attempt>` so candidate archives are distinguishable. For later release publication, preserve the selected artifact's version or choose a version that supersedes any distributed candidate, for example `0.1.0-5` after `0.1.0-4.<run><attempt>`.
-
-Each successful run retains the unsigned package, generated PKGBUILD and `.SRCINFO`, standalone test/build log, `.BUILDINFO`, image digest, source/recipe revisions and checksums as Actions artifacts for 30 days. No candidate is installed or published to the repository database. The generic ARM build image runs the standalone tests as an unprivileged user, but does not resolve Omarchy's runtime dependencies or perform physical qualification. Installer delivery, the initial ownership transition and signed publication still follow the release process below.
+The add-on keeps its independent source version and a run-specific `pkgrel`. The shared artifact retains all three unsigned archives, generated recipes, source revisions, checksums and test/build evidence for 30 days. No candidate is installed or published to the repository database. Runtime dependency resolution, installer delivery, the initial ownership transition and signed publication still follow the release process below.
 
 ## Release workflow
 
@@ -28,7 +26,7 @@ The current `0.1.0-4` candidate deliberately retains `20b8ae0f`, the source used
 
 After the first coordinated delivery is qualified, register the add-on as a local recipe in `packages.json` in a separate publication change. The general updater reads local `pkgver`/`pkgrel` and compares them with the repository database. Once registered, merging a version bump makes it eligible for a scheduled build/publication, so that recipe PR must carry the release validation and approval. The existing dry-run mode can exercise the build without publishing; a successful dry run does not itself promote its artifacts or qualify the coordinated ownership transition.
 
-Despite its name, the publishing part of `update-omarchy-mac.yml` handles the fork's desktop runtime/settings pair. Its new independent add-on job only builds candidate artifacts. Do not feed add-on tags into its desktop release detection. Future automation could open recipe PRs when namespaced add-on tags appear; it should resolve a tag to an exact SHA and retain the same review and validation steps. That automation and add-on registration are not implemented by this candidate PR.
+Despite its name, `update-omarchy-mac.yml` handles the fork's desktop runtime/settings release pair. Candidate builds now live entirely in the separate three-package workflow. Do not feed add-on tags into its desktop release detection. Future automation could open recipe PRs when namespaced add-on tags appear; it should resolve a tag to an exact SHA and retain the same review and validation steps. That automation and add-on registration are not implemented by this candidate PR.
 
 ## Candidate transaction checks
 

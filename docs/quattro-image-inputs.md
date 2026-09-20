@@ -4,13 +4,17 @@
 
 ## Delivery boundary
 
-This workflow runs through `workflow_dispatch` and on pull requests changing its build inputs. PR builds validate the hosted ARM path before a workflow change merges. There is no schedule or push trigger. Its token has `contents: read`, checkout credentials are not retained, and the job has no signing secrets or publishing environment. It uploads unsigned Actions artifacts for 30 days. It does not create a GitHub release, run `repo-add`, update a pacman database, install candidate packages, or register a package in `packages.json`. The existing hourly release jobs do not call it or consume its artifacts. Ordinary Omarchy Mac updates therefore cannot pick up these candidates through this workflow.
+This workflow checks hourly, on relevant pushes to the package repository's `main`, through `workflow_dispatch`, and on pull requests changing its build inputs. The lightweight detection job resolves the selected desktop ref once and checks for a retained successful candidate matching that source SHA and the committed build inputs. Matching successful main-branch scheduled, push, or manual builds are reused. Failed, cancelled, expired, PR, and fork artifacts cannot suppress a required build. PRs always build; manual dispatch offers a `force` option. Main-branch requests are serialized so overlapping checks do not build the same candidate concurrently.
+
+Detection has only `contents: read` and `actions: read`; the ARM build has only `contents: read` and receives no GitHub API token. Checkout credentials are not retained, and neither job has signing secrets or a publishing environment. Successful builds upload unsigned Actions artifacts for 30 days. The workflow does not create a GitHub release, run `repo-add`, update a pacman database, install candidate packages, or register a package in `packages.json`. The existing release publishers do not consume its artifacts. Ordinary Omarchy Mac updates therefore cannot pick up these candidates through this workflow.
+
+This replaces the separate hourly add-on candidate builder. The tagged fork desktop release workflow retains its existing edge publication path; it no longer also builds an independent add-on candidate.
 
 Artifacts in this public repository are downloadable; they are development inputs, not a private distribution channel. A future signed development snapshot or installer catalog needs a separate reviewed change. Do not upload these packages to `edge`, RC, or stable while testing the image path.
 
 ## Run a build
 
-After the workflow is merged into the default branch, select **Actions → Build quattro image inputs → Run workflow**. Leave `source_ref` as `quattro-upstream`, or supply a full commit SHA to reproduce a selected source. The checkout resolves the ref once, and all three packages record that exact commit.
+For a manual build, select **Actions → Build quattro image inputs → Run workflow**. Leave `source_ref` as `quattro-upstream`, or supply a full commit SHA to reproduce a selected source. Detection resolves the ref once, and all three packages build and record that exact commit. Select `force` to rebuild unchanged inputs, for example to exercise a newer container or dependency set. The cache identifies source and committed build inputs; it does not monitor mutable container tags or dependency repositories.
 
 The native ARM runner uses an Arch Linux ARM container resolved to an image digest. `makepkg` and the source tests run as an ordinary user. Desktop recipes come from the commit in `scripts/quattro-image-inputs-recipes-revision`, with this repository's existing `omarchy-first-run-packages.patch` applied through its checked preparation helper. This carries the ARM Snapper dependency and keyboard backlight unit while retaining newer upstream packaged defaults. The desktop aggregate tests also read upstream ISO source, pinned in `scripts/quattro-image-inputs-iso-revision`; this is a test dependency, not an Apple image build. The add-on recipe comes from this package repository's recorded commit. Only temporary recipes have their source and candidate versions changed. The generated recipes and compatibility patch are retained with the artifacts.
 
@@ -18,7 +22,7 @@ The suite runs with the exported desktop commands on `PATH`, plus the real `omar
 
 The desktop pair shares `<source version>.quattro.r<source timestamp>.g<short SHA>` and a run-specific package release. The add-on retains `packages/omarchy-mac/version`, with a run-specific package release. These versions identify candidates; they do not define a future public release version or upgrade policy. Never promote a candidate merely because its version sorts above another package.
 
-Successful builds retain one `quattro-image-inputs-<run ID>-<attempt>` artifact containing all three package archives, `manifest.json`, `SHA256SUMS`, `ownership.json`, generated recipes and `.SRCINFO`, source package manifests, and test/build logs. The packages include their normal `.BUILDINFO` plus the recorded source revision. Failed runs retain diagnostic logs, but never a complete candidate artifact.
+Successful builds retain one `quattro-image-inputs-<source SHA>-<build-input digest>` artifact containing all three package archives, `manifest.json`, `SHA256SUMS`, `ownership.json`, generated recipes and `.SRCINFO`, source package manifests, and test/build logs. The packages include their normal `.BUILDINFO` plus the recorded source revision. Failed runs retain diagnostic logs, but never a complete candidate artifact.
 
 For an equivalent local build on native aarch64, use clean, committed package tooling and existing Git checkouts containing the selected desktop commit and recipe pin:
 
