@@ -5,6 +5,26 @@ import json
 import os
 import re
 import subprocess
+from urllib.parse import quote
+
+
+# Hash committed file identities, so unrelated package-repository commits do
+# not rebuild the same desktop. Keep workflow trigger coverage in sync.
+BUILD_INPUTS = (
+    'pkgbuilds/omarchy-mac',
+    'pkgbuilds/omarchy-steam-fex/omarchy-launch-steam',
+    'scripts/build-quattro-image-inputs.py',
+    'scripts/detect-quattro-image-inputs.py',
+    'scripts/test-quattro-image-inputs.py',
+    'scripts/test-quattro-image-inputs-detection.py',
+    'scripts/quattro-image-inputs-recipes-revision',
+    'scripts/quattro-image-inputs-iso-revision',
+    'scripts/container-bootstrap.sh',
+    'scripts/prepare-omarchy-recipes.sh',
+    'patches/omarchy-first-run-packages.patch',
+    'patches/quattro-desktop-test-fixtures.patch',
+    '.github/workflows/build-quattro-image-inputs.yml',
+)
 
 
 def api(path, paginate=False):
@@ -22,25 +42,22 @@ def trusted_artifact(artifact):
 
 
 def successful_build(run, jobs):
-    return (run['event'] in ('schedule', 'workflow_dispatch')
-            and run['path'] in ('.github/workflows/update-omarchy-mac.yml',
-                                '.github/workflows/build-mac-addon-candidate.yml')
-            and any(job['name'].endswith('Build add-on archive') and job['conclusion'] == 'success'
+    return (run['event'] in ('schedule', 'workflow_dispatch', 'push') and run['conclusion'] == 'success'
+            and run['path'] == '.github/workflows/build-quattro-image-inputs.yml'
+            and any(job['name'] == 'Build three candidate packages' and job['conclusion'] == 'success'
                     for job in jobs))
 
 
 def main():
     repo = os.environ['GITHUB_REPOSITORY']
-    source = api('repos/omacom/omarchy-mac/commits/quattro-upstream')['sha']
+    source_ref = os.environ.get('SOURCE_REF') or 'quattro-upstream'
+    source = api('repos/omacom/omarchy-mac/commits/' + quote(source_ref, safe=''))['sha']
     assert re.fullmatch('[0-9a-f]{40}', source)
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
-    inputs = subprocess.check_output(['git', 'ls-tree', '-r', 'HEAD', '--',
-        'pkgbuilds/omarchy-mac', 'scripts/build-mac-addon-candidate.py',
-        'scripts/detect-mac-addon-candidate.py', 'scripts/container-bootstrap.sh',
-        '.github/workflows/build-mac-addon-candidate.yml'])
+    inputs = subprocess.check_output(['git', 'ls-tree', '-r', 'HEAD', '--', *BUILD_INPUTS])
     assert inputs
     digest = hashlib.sha256(inputs).hexdigest()[:24]
-    name = f'omarchy-mac-candidate-{source}-{digest}'
+    name = f'quattro-image-inputs-{source}-{digest}'
     needed = True
     if os.environ.get('FORCE_BUILD') != 'true':
         pages = api(f'repos/{repo}/actions/artifacts?name={name}&per_page=100', paginate=True)

@@ -139,7 +139,7 @@ signature are separate mutable assets, so updates can briefly fail closed.
 
 ## Shared quattro image candidates
 
-The manual [Build quattro image inputs](.github/workflows/build-quattro-image-inputs.yml) workflow builds `omarchy`, `omarchy-settings`, and `omarchy-mac` together from `omacom/omarchy-mac:quattro-upstream`. It retains unsigned CI artifacts only; it has no publishing permissions or signing credentials and cannot deliver candidates through the existing update feeds. See [the build contract and instructions](docs/quattro-image-inputs.md).
+The [Build quattro image inputs](.github/workflows/build-quattro-image-inputs.yml) workflow builds `omarchy`, `omarchy-settings`, and `omarchy-mac` together from `omacom/omarchy-mac:quattro-upstream`. It checks hourly and after relevant build-input changes, reuses matching successful candidates, and supports manual or PR builds. It replaces the separate add-on candidate builder and retains unsigned CI artifacts only, with no publishing permissions or signing credentials and no delivery through the existing update feeds. See [the build contract and instructions](docs/quattro-image-inputs.md).
 
 ## Automation
 

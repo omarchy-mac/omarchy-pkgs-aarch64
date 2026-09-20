@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 """Candidate provenance, ownership and delivery-boundary regression tests."""
 import copy
+import fnmatch
 import importlib.util
 from pathlib import Path
 import subprocess
@@ -104,18 +105,24 @@ class RecipeTest(unittest.TestCase):
 
 
 class DeliveryBoundaryTest(unittest.TestCase):
-    def test_manual_and_pr_workflow_is_artifact_only_and_has_no_credentials(self):
+    def test_scheduled_candidate_workflow_has_no_publishing_credentials(self):
         text = (ROOT / '.github/workflows/build-quattro-image-inputs.yml').read_text()
         workflow = yaml.load(text, Loader=yaml.BaseLoader)
-        self.assertEqual(set(workflow['on']), {'workflow_dispatch', 'pull_request'})
+        self.assertEqual(set(workflow['on']), {'schedule', 'push', 'workflow_dispatch', 'pull_request'})
         self.assertIn('scripts/build-quattro-image-inputs.py', workflow['on']['pull_request']['paths'])
-        self.assertEqual(set(workflow['on']['workflow_dispatch']['inputs']), {'source_ref'})
+        self.assertEqual(set(workflow['on']['workflow_dispatch']['inputs']), {'source_ref', 'force'})
         self.assertEqual(workflow['permissions'], {'contents': 'read'})
         self.assertNotIn('secrets.', text)
-        self.assertNotIn('GH_TOKEN', text)
         self.assertNotIn('GITHUB_TOKEN', text)
-        self.assertEqual(set(workflow['jobs']), {'build'})
+        self.assertEqual(set(workflow['jobs']), {'detect', 'build'})
+        self.assertEqual(workflow['jobs']['detect']['permissions'], {'contents': 'read', 'actions': 'read'})
+        self.assertEqual(workflow['on']['push']['branches'], ['main'])
+        self.assertEqual(workflow['concurrency']['cancel-in-progress'], 'false')
         job = workflow['jobs']['build']
+        self.assertNotIn('GH_TOKEN', str(job))
+        self.assertNotIn('github.token', str(job))
+        self.assertEqual(job['needs'], 'detect')
+        self.assertEqual(job['if'], "needs.detect.outputs.needs_build == 'true'")
         self.assertNotIn('environment', job)
         self.assertNotIn('permissions', job)
         allowed_actions = ('actions/checkout@', 'actions/upload-artifact@')
@@ -127,10 +134,31 @@ class DeliveryBoundaryTest(unittest.TestCase):
             if step.get('uses', '').startswith('actions/checkout@'):
                 self.assertEqual(step['with']['persist-credentials'], 'false')
 
+    def test_triggers_cover_every_cached_build_input_and_pin_detected_revisions(self):
+        spec = importlib.util.spec_from_file_location('detector', ROOT / 'scripts/detect-quattro-image-inputs.py')
+        detector = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(detector)
+        workflow = yaml.load((ROOT / '.github/workflows/build-quattro-image-inputs.yml').read_text(), Loader=yaml.BaseLoader)
+        for event in ('push', 'pull_request'):
+            patterns = workflow['on'][event]['paths']
+            for path in detector.BUILD_INPUTS:
+                probe = path + '/PKGBUILD' if path == 'pkgbuilds/omarchy-mac' else path
+                self.assertTrue(any(fnmatch.fnmatchcase(probe, pattern) for pattern in patterns), probe)
+        steps = workflow['jobs']['build']['steps']
+        self.assertEqual(steps[0]['with']['ref'], '${{ needs.detect.outputs.recipe_sha }}')
+        desktop = next(step for step in steps if step.get('with', {}).get('repository') == 'omacom/omarchy-mac')
+        self.assertEqual(desktop['with']['ref'], '${{ needs.detect.outputs.source_sha }}')
+        artifact = steps[-1]
+        self.assertEqual(artifact['with']['name'], '${{ needs.detect.outputs.artifact_name }}')
+        self.assertEqual(artifact['with']['overwrite'], 'true')
+
     def test_existing_updaters_do_not_consume_the_candidate_artifacts(self):
         for name in ('update-omarchy-mac.yml', 'update-packages.yml'):
             text = (ROOT / '.github/workflows' / name).read_text()
             self.assertNotIn('quattro-image-inputs', text)
+            self.assertNotIn('addon-candidate:', text)
+        for name in ('build-mac-addon-candidate.yml',):
+            self.assertFalse((ROOT / '.github/workflows' / name).exists())
 
 
 if __name__ == '__main__':
