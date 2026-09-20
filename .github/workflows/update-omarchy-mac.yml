@@ -32,6 +32,13 @@ env:
   ARCH_IMAGE_X86: archlinux:base-devel
 
 jobs:
+  addon-candidate:
+    name: Build latest add-on candidate
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/build-mac-addon-candidate.yml
+
   detect:
     name: Detect Omarchy Mac release
     runs-on: ubuntu-24.04
