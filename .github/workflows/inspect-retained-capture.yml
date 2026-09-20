@@ -2,6 +2,34 @@ name: Inspect retained capture without building
 
 on:
   workflow_dispatch:
+    inputs:
+      capture_run_id:
+        required: true
+        type: string
+      capture_run_attempt:
+        required: true
+        type: string
+      capture_head_sha:
+        required: true
+        type: string
+      capture_workflow_blob_sha:
+        required: true
+        type: string
+      capture_artifact_id:
+        required: true
+        type: string
+      capture_artifact_name:
+        required: true
+        type: string
+      capture_artifact_size:
+        required: true
+        type: string
+      capture_artifact_zip_sha256:
+        required: true
+        type: string
+      expected_semantics_json:
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -22,12 +50,38 @@ jobs:
           persist-credentials: false
       - name: Prepare verification tools only
         run: docker build -f .github/publisher.Dockerfile -t capture-inspector .
+      - name: Write exact retained capture identity
+        env:
+          CAPTURE_RUN_ID: ${{ inputs.capture_run_id }}
+          CAPTURE_RUN_ATTEMPT: ${{ inputs.capture_run_attempt }}
+          CAPTURE_HEAD_SHA: ${{ inputs.capture_head_sha }}
+          CAPTURE_WORKFLOW_BLOB_SHA: ${{ inputs.capture_workflow_blob_sha }}
+          CAPTURE_ARTIFACT_ID: ${{ inputs.capture_artifact_id }}
+          CAPTURE_ARTIFACT_NAME: ${{ inputs.capture_artifact_name }}
+          CAPTURE_ARTIFACT_SIZE: ${{ inputs.capture_artifact_size }}
+          CAPTURE_ARTIFACT_ZIP_SHA256: ${{ inputs.capture_artifact_zip_sha256 }}
+          EXPECTED_SEMANTICS_JSON: ${{ inputs.expected_semantics_json }}
+        run: |
+          set -euo pipefail
+          python3 scripts/inspect-capture.py write-identity \
+            --output "$RUNNER_TEMP/expected-retained-capture-identity.json" \
+            --run-id "$CAPTURE_RUN_ID" \
+            --run-attempt "$CAPTURE_RUN_ATTEMPT" \
+            --head-sha "$CAPTURE_HEAD_SHA" \
+            --workflow-blob-sha "$CAPTURE_WORKFLOW_BLOB_SHA" \
+            --artifact-id "$CAPTURE_ARTIFACT_ID" \
+            --artifact-name "$CAPTURE_ARTIFACT_NAME" \
+            --size-in-bytes "$CAPTURE_ARTIFACT_SIZE" \
+            --zip-sha256 "$CAPTURE_ARTIFACT_ZIP_SHA256" \
+            --expected-semantics-json "$EXPECTED_SEMANTICS_JSON"
       - name: Fetch exact retained artifact and recorded capture evidence
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          python3 scripts/inspect-capture.py fetch --work "$RUNNER_TEMP/retained-inspection"
+          python3 scripts/inspect-capture.py fetch \
+            --expected "$RUNNER_TEMP/expected-retained-capture-identity.json" \
+            --work "$RUNNER_TEMP/retained-inspection"
       - name: Offline semantic inspection without credentials or build execution
         run: |
           set -euo pipefail
@@ -40,6 +94,7 @@ jobs:
             -v "$task/report:/report" -v "$task/tmp:/tmp" \
             -e PYTHONDONTWRITEBYTECODE=1 -e TMPDIR=/tmp \
             capture-inspector python3 scripts/inspect-capture.py inspect \
+              --expected /evidence/expected-identity.json \
               --capture /capture --evidence /evidence --report /report/inspection.json
           printf 'Inspection-only report; no build or manifest approval is implied.\n\n```json\n' >> "$GITHUB_STEP_SUMMARY"
           cat "$task/report/inspection.json" >> "$GITHUB_STEP_SUMMARY"
