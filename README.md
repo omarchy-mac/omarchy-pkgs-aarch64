@@ -50,7 +50,7 @@ small, checked packaging patch described below. Packages come from four places:
 |---------|---------|----------|
 | `1password` | 8.12.36-2 | Password manager |
 | `1password-cli` | 2.39.0-1 | 1Password CLI |
-| `aether` | 4.29.9-1 | Wallpaper-driven desktop theming |
+| `aether` | 4.30.0-1 | Wallpaper-driven desktop theming |
 | `aspnet-runtime-bin` | 10.0.12.sdk401-1 | ASP.NET Core runtime |
 | `aspnet-targeting-pack-bin` | 10.0.12.sdk401-1 | ASP.NET Core targeting pack |
 | `avd-fw` | 0.1-1 | Apple Video Decoder firmware — H.264/HEVC/VP9 hardware decode |
