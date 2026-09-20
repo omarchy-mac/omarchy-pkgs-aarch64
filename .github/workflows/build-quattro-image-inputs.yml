@@ -1,8 +1,18 @@
 name: Build quattro image inputs
 
-# Deliberately manual and artifact-only. No updater calls this workflow, and
-# successful builds do not create releases or change a pacman database.
+# Manual candidates and PR validation are artifact-only. No updater calls this
+# workflow; successful builds never create releases or change a pacman database.
 on:
+  pull_request:
+    paths:
+      - .github/workflows/build-quattro-image-inputs.yml
+      - scripts/build-quattro-image-inputs.py
+      - scripts/test-quattro-image-inputs.py
+      - scripts/quattro-image-inputs-*-revision
+      - scripts/container-bootstrap.sh
+      - scripts/prepare-omarchy-recipes.sh
+      - patches/omarchy-first-run-packages.patch
+      - pkgbuilds/omarchy-mac/**
   workflow_dispatch:
     inputs:
       source_ref:
@@ -37,7 +47,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: omacom/omarchy-mac
-          ref: ${{ inputs.source_ref }}
+          ref: ${{ inputs.source_ref || 'quattro-upstream' }}
           path: vendor/desktop
           persist-credentials: false
       - name: Check out the recorded upstream recipes
@@ -68,7 +78,8 @@ jobs:
             -e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT \
             "$build_image" bash -euo pipefail -c '
               bash scripts/container-bootstrap.sh build
-              pacman -S --noconfirm --needed python systemd imagemagick nodejs
+              pacman -S --noconfirm --needed python systemd imagemagick nodejs \
+                lua ffmpeg plocate libxkbcommon xkeyboard-config glib2 openssh pciutils
               useradd --create-home builder
               chown -R builder:builder /w
               runuser -u builder -- python3 scripts/build-quattro-image-inputs.py \

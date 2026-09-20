@@ -4,7 +4,7 @@
 
 ## Delivery boundary
 
-This workflow runs only through `workflow_dispatch`. Its token has `contents: read`, checkout credentials are not retained, and the job has no signing secrets or publishing environment. It uploads unsigned Actions artifacts for 30 days. It does not create a GitHub release, run `repo-add`, update a pacman database, install packages, or register a package in `packages.json`. The existing hourly release jobs do not call it or consume its artifacts. Ordinary Omarchy Mac updates therefore cannot pick up these candidates through this workflow.
+This workflow runs through `workflow_dispatch` and on pull requests changing its build inputs. PR builds validate the hosted ARM path before a workflow change merges. There is no schedule or push trigger. Its token has `contents: read`, checkout credentials are not retained, and the job has no signing secrets or publishing environment. It uploads unsigned Actions artifacts for 30 days. It does not create a GitHub release, run `repo-add`, update a pacman database, install candidate packages, or register a package in `packages.json`. The existing hourly release jobs do not call it or consume its artifacts. Ordinary Omarchy Mac updates therefore cannot pick up these candidates through this workflow.
 
 Artifacts in this public repository are downloadable; they are development inputs, not a private distribution channel. A future signed development snapshot or installer catalog needs a separate reviewed change. Do not upload these packages to `edge`, RC, or stable while testing the image path.
 
@@ -26,7 +26,7 @@ python3 scripts/build-quattro-image-inputs.py \
   /path/to/omarchy-pkgs /path/to/omarchy-iso /absolute/new/output 1 1
 ```
 
-Build tools must already be installed (`base-devel`, Git, Python, jq, Node.js, ImageMagick, systemd, and the utilities used by the source tests). The script never installs missing dependencies on the host. Use a fresh output directory and a distinct run ID for another local candidate.
+Build tools must already be installed (`base-devel`, Git, Python, jq, Node.js, ImageMagick, systemd, Lua, FFmpeg, plocate, libxkbcommon, xkeyboard-config, GLib, OpenSSH, and pciutils). The script never installs missing dependencies on the host. Use a fresh output directory and a distinct run ID for another local candidate.
 
 ## What a successful build proves
 

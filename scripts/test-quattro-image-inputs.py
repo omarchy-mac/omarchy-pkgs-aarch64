@@ -103,10 +103,11 @@ class RecipeTest(unittest.TestCase):
 
 
 class DeliveryBoundaryTest(unittest.TestCase):
-    def test_workflow_is_manual_artifact_only_and_has_no_credentials(self):
+    def test_manual_and_pr_workflow_is_artifact_only_and_has_no_credentials(self):
         text = (ROOT / '.github/workflows/build-quattro-image-inputs.yml').read_text()
         workflow = yaml.load(text, Loader=yaml.BaseLoader)
-        self.assertEqual(set(workflow['on']), {'workflow_dispatch'})
+        self.assertEqual(set(workflow['on']), {'workflow_dispatch', 'pull_request'})
+        self.assertIn('scripts/build-quattro-image-inputs.py', workflow['on']['pull_request']['paths'])
         self.assertEqual(set(workflow['on']['workflow_dispatch']['inputs']), {'source_ref'})
         self.assertEqual(workflow['permissions'], {'contents': 'read'})
         self.assertNotIn('secrets.', text)
