@@ -12,6 +12,8 @@ on:
       - scripts/container-bootstrap.sh
       - scripts/prepare-omarchy-recipes.sh
       - patches/omarchy-first-run-packages.patch
+      - patches/quattro-test-quarantine-symlink.patch
+      - pkgbuilds/omarchy-steam-fex/omarchy-launch-steam
       - pkgbuilds/omarchy-mac/**
   workflow_dispatch:
     inputs:
@@ -79,7 +81,8 @@ jobs:
             "$build_image" bash -euo pipefail -c '
               bash scripts/container-bootstrap.sh build
               pacman -S --noconfirm --needed python systemd imagemagick nodejs \
-                lua ffmpeg plocate libxkbcommon xkeyboard-config glib2 openssh pciutils
+                lua ffmpeg plocate libxkbcommon xkeyboard-config glib2 openssh pciutils \
+                ripgrep gum desktop-file-utils inetutils
               useradd --create-home builder
               chown -R builder:builder /w
               runuser -u builder -- python3 scripts/build-quattro-image-inputs.py \

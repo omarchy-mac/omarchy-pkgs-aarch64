@@ -77,12 +77,13 @@ class PackageSetTest(unittest.TestCase):
 class RecipeTest(unittest.TestCase):
     def test_desktop_tests_use_the_recorded_checkouts_and_neutral_terminal_environment(self):
         original = {'LC_ALL': 'C', 'NO_COLOR': '1', 'WAYLAND_DISPLAY': 'wayland-1', 'OMARCHY_PATH': '/active/desktop'}
-        env = builder.test_environment(original, Path('/candidate/source'), Path('/candidate/recipes'), Path('/candidate/iso'))
+        env = builder.test_environment(original, Path('/candidate/source'), Path('/candidate/recipes'), Path('/candidate/iso'), Path('/candidate/test-tools'))
         self.assertEqual(env['OMARCHY_PATH'], '/candidate/source')
         self.assertEqual(env['OMARCHY_PKGS_PATH'], '/candidate/recipes')
         self.assertEqual(env['OMARCHY_ISO_PATH'], '/candidate/iso')
         self.assertNotIn('NO_COLOR', env)
         self.assertNotIn('LC_ALL', env)
+        self.assertTrue(env['PATH'].startswith('/candidate/source/bin:/candidate/test-tools:'))
         self.assertNotIn('WAYLAND_DISPLAY', env)
         self.assertEqual(original['NO_COLOR'], '1')
 

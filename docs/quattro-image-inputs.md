@@ -14,6 +14,8 @@ After the workflow is merged into the default branch, select **Actions → Build
 
 The native ARM runner uses an Arch Linux ARM container resolved to an image digest. `makepkg` and the source tests run as an ordinary user. Desktop recipes come from the commit in `scripts/quattro-image-inputs-recipes-revision`, with this repository's existing `omarchy-first-run-packages.patch` applied through its checked preparation helper. This carries the ARM Snapper dependency and keyboard backlight unit while retaining newer upstream packaged defaults. The desktop aggregate tests also read upstream ISO source, pinned in `scripts/quattro-image-inputs-iso-revision`; this is a test dependency, not an Apple image build. The add-on recipe comes from this package repository's recorded commit. Only temporary recipes have their source and candidate versions changed. The generated recipes and compatibility patch are retained with the artifacts.
 
+The suite runs with the exported desktop commands on `PATH`, plus the real `omarchy-steam-fex` launcher from the recorded package repository as a test dependency. A temporary test-only patch makes the historical sleep-hook migration fixture find the preserved symlink by its target rather than selecting the first backup in filesystem traversal order. It applies only to that test file, is recorded and retained with the artifacts, and changes no packaged runtime source. Retire it when the shared desktop includes the fixture correction.
+
 The desktop pair shares `<source version>.quattro.r<source timestamp>.g<short SHA>` and a run-specific package release. The add-on retains `packages/omarchy-mac/version`, with a run-specific package release. These versions identify candidates; they do not define a future public release version or upgrade policy. Never promote a candidate merely because its version sorts above another package.
 
 Successful builds retain one `quattro-image-inputs-<run ID>-<attempt>` artifact containing all three package archives, `manifest.json`, `SHA256SUMS`, `ownership.json`, generated recipes and `.SRCINFO`, source package manifests, and test/build logs. The packages include their normal `.BUILDINFO` plus the recorded source revision. Failed runs retain diagnostic logs, but never a complete candidate artifact.
@@ -26,7 +28,7 @@ python3 scripts/build-quattro-image-inputs.py \
   /path/to/omarchy-pkgs /path/to/omarchy-iso /absolute/new/output 1 1
 ```
 
-Build tools must already be installed (`base-devel`, Git, Python, jq, Node.js, ImageMagick, systemd, Lua, FFmpeg, plocate, libxkbcommon, xkeyboard-config, GLib, OpenSSH, and pciutils). The script never installs missing dependencies on the host. Use a fresh output directory and a distinct run ID for another local candidate.
+Build tools must already be installed (`base-devel`, Git, Python, jq, Node.js, ImageMagick, systemd, Lua, FFmpeg, plocate, libxkbcommon, xkeyboard-config, GLib, OpenSSH, pciutils, ripgrep, gum, desktop-file-utils, and inetutils). The script never installs missing dependencies on the host. Use a fresh output directory and a distinct run ID for another local candidate.
 
 ## What a successful build proves
 

@@ -114,8 +114,9 @@ def verify_packages(records, commit, versions):
     return owners
 
 
-def test_environment(env, source, recipes, iso):
-    env = dict(env, LANG='C.UTF-8', OMARCHY_PATH=str(source), OMARCHY_PKGS_PATH=str(recipes),
+def test_environment(env, source, recipes, iso, test_tools):
+    env = dict(env, LANG='C.UTF-8', PATH=f'{source / "bin"}:{test_tools}:{env.get("PATH", "/usr/bin")}',
+               OMARCHY_PATH=str(source), OMARCHY_PKGS_PATH=str(recipes),
                OMARCHY_ISO_PATH=str(iso))
     # These are headless source tests. About tests deliberately exercise both
     # colour modes; an inherited NO_COLOR must not change their starting state.
@@ -160,9 +161,25 @@ def main():
     archive(args.upstream_iso, iso_commit, iso)
     artifacts.mkdir()
     logs.mkdir()
+    test_tools = destination / 'test-tools'
+    test_tools.mkdir()
+    # Steam's --prepare command is now owned by its independent package. Stage
+    # its real helper solely for the desktop suite; it is not an image artifact.
+    helper = test_tools / 'omarchy-launch-steam'
+    helper.write_text(output('git', 'show', f'{recipe_commit}:pkgbuilds/omarchy-steam-fex/omarchy-launch-steam', cwd=repository) + '\n')
+    helper.chmod(0o755)
+    test_patch = repository / 'patches/quattro-test-quarantine-symlink.patch'
+    # Exports can be nested below the Actions checkout. Prevent git apply from
+    # discovering that parent repository and silently ignoring paths outside it.
+    patch_env = dict(os.environ, GIT_CEILING_DIRECTORIES=str(destination))
+    patch_paths = output('git', 'apply', '--numstat', str(test_patch), cwd=source, env=patch_env).splitlines()
+    require(len(patch_paths) == 1 and patch_paths[0].split('\t')[-1] ==
+            'test/shell.d/system-sleep-ownership-migration-test.sh', 'test patch may not change runtime source')
+    subprocess.run(['git', 'apply', '--check', str(test_patch)], cwd=source, env=patch_env, check=True)
+    subprocess.run(['git', 'apply', str(test_patch)], cwd=source, env=patch_env, check=True)
     with (logs / 'recipe-preparation.log').open('w') as log:
         subprocess.run(['bash', str(repository / 'scripts/prepare-omarchy-recipes.sh'), str(recipes)],
-                       stdout=log, stderr=subprocess.STDOUT, check=True)
+                       env=patch_env, stdout=log, stderr=subprocess.STDOUT, check=True)
     stamp = output('git', 'show', '-s', '--format=%ct', commit, cwd=args.source)
     version = (source / 'version').read_text().strip()
     addon_version = (source / 'packages/omarchy-mac/version').read_text().strip()
@@ -179,7 +196,7 @@ def main():
                PKGDEST=str(artifacts), SOURCE_DATE_EPOCH=stamp)
     print('Running the headless desktop aggregate suite...', flush=True)
     with (logs / 'desktop-tests.log').open('w') as log:
-        subprocess.run(['bash', 'test/all'], cwd=source, env=test_environment(env, source, recipes, iso), stdout=log,
+        subprocess.run(['bash', 'test/all'], cwd=source, env=test_environment(env, source, recipes, iso, test_tools), stdout=log,
                        stderr=subprocess.STDOUT, check=True)
     for name in PACKAGES:
         print(f'Building {name}...', flush=True)
@@ -221,6 +238,8 @@ def main():
     for name in ('omarchy-base.packages', 'omarchy-apple.packages'):
         shutil.copy2(source / 'install' / name, artifacts / name)
     shutil.copytree(logs, artifacts / 'logs')
+    shutil.copy2(test_patch, artifacts / test_patch.name)
+    shutil.copytree(test_tools, artifacts / 'test-tools')
     shutil.copy2(repository / 'patches/omarchy-first-run-packages.patch',
                  artifacts / 'recipes/omarchy-first-run-packages.patch')
     (artifacts / 'manifest.json').write_text(json.dumps(dict(
@@ -228,6 +247,8 @@ def main():
         package_repository_revision=recipe_commit, upstream_recipe_revision=upstream_commit,
         desktop_test_iso_revision=iso_commit,
         recipe_patch='patches/omarchy-first-run-packages.patch',
+        desktop_test_patch=test_patch.name,
+        desktop_test_tools='omarchy-steam-fex helper from package_repository_revision',
         build_image=os.environ.get('CANDIDATE_BUILD_IMAGE', 'local native aarch64'),
         run_id=args.run_id, attempt=args.attempt, packages=packages,
         validation=dict(desktop_tests='passed', addon_tests='passed', payload_ownership='passed',
