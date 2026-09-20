@@ -137,6 +137,10 @@ signature are separate mutable assets, so updates can briefly fail closed.
 - **Automated.** Scheduled workflows refresh the general package set and the
   fork-owned Omarchy Mac package pair independently. See [Automation](#automation).
 
+## Shared quattro image candidates
+
+The manual [Build quattro image inputs](.github/workflows/build-quattro-image-inputs.yml) workflow builds `omarchy`, `omarchy-settings`, and `omarchy-mac` together from `omacom/omarchy-mac:quattro-upstream`. It retains unsigned CI artifacts only; it has no publishing permissions or signing credentials and cannot deliver candidates through the existing update feeds. See [the build contract and instructions](docs/quattro-image-inputs.md).
+
 ## Automation
 
 [`.github/workflows/update-packages.yml`](.github/workflows/update-packages.yml)

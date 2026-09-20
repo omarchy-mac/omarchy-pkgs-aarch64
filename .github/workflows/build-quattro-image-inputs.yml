@@ -1,0 +1,109 @@
+name: Build quattro image inputs
+
+# Manual candidates and PR validation are artifact-only. No updater calls this
+# workflow; successful builds never create releases or change a pacman database.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/build-quattro-image-inputs.yml
+      - scripts/build-quattro-image-inputs.py
+      - scripts/test-quattro-image-inputs.py
+      - scripts/quattro-image-inputs-*-revision
+      - scripts/container-bootstrap.sh
+      - scripts/prepare-omarchy-recipes.sh
+      - patches/omarchy-first-run-packages.patch
+      - patches/quattro-desktop-test-fixtures.patch
+      - pkgbuilds/omarchy-steam-fex/omarchy-launch-steam
+      - pkgbuilds/omarchy-mac/**
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: 'omacom/omarchy-mac ref to resolve once for all three packages'
+        required: true
+        default: quattro-upstream
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build three candidate packages
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Read the upstream recipe pin
+        id: recipes
+        shell: bash
+        run: |
+          revision=$(cat scripts/quattro-image-inputs-recipes-revision)
+          [[ $revision =~ ^[0-9a-f]{40}$ ]]
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          iso_revision=$(cat scripts/quattro-image-inputs-iso-revision)
+          [[ $iso_revision =~ ^[0-9a-f]{40}$ ]]
+          echo "iso_revision=$iso_revision" >> "$GITHUB_OUTPUT"
+      - name: Check out the selected desktop source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: omacom/omarchy-mac
+          ref: ${{ inputs.source_ref || 'quattro-upstream' }}
+          path: vendor/desktop
+          persist-credentials: false
+      - name: Check out the recorded upstream recipes
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: omacom/omarchy-pkgs
+          ref: ${{ steps.recipes.outputs.revision }}
+          path: vendor/recipes
+          persist-credentials: false
+      - name: Check out the ISO source for desktop contract tests
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: omacom/omarchy-iso
+          ref: ${{ steps.recipes.outputs.iso_revision }}
+          path: vendor/iso-tests
+          persist-credentials: false
+      - name: Build and audit without installation or publication
+        shell: bash
+        run: |
+          source_sha=$(git -C vendor/desktop rev-parse HEAD)
+          # Nested checkouts and outputs are disposable build inputs, not edits
+          # to the package repository; retain the clean-tree provenance check.
+          printf '/vendor/\n/candidate/\n/candidate-build.log\n' >> .git/info/exclude
+          docker pull menci/archlinuxarm:base-devel
+          build_image=$(docker image inspect menci/archlinuxarm:base-devel --format '{{index .RepoDigests 0}}')
+          docker run --rm -v "$PWD:/w" -w /w \
+            -e SOURCE_SHA="$source_sha" -e CANDIDATE_BUILD_IMAGE="$build_image" \
+            -e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT \
+            "$build_image" bash -euo pipefail -c '
+              bash scripts/container-bootstrap.sh build
+              pacman -S --noconfirm --needed python systemd imagemagick nodejs \
+                lua ffmpeg plocate libxkbcommon xkeyboard-config glib2 openssh pciutils \
+                ripgrep gum desktop-file-utils inetutils
+              useradd --create-home builder
+              chown -R builder:builder /w
+              runuser -u builder -- python3 scripts/build-quattro-image-inputs.py \
+                /w/vendor/desktop "$SOURCE_SHA" /w/vendor/recipes /w/vendor/iso-tests /w/candidate \
+                "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+            ' 2>&1 | tee candidate-build.log
+      - name: Retain diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: quattro-image-inputs-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            candidate-build.log
+            candidate/logs/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Retain the complete candidate set
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: quattro-image-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: candidate/artifacts/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
