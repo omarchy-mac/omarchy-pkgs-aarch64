@@ -71,7 +71,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `herdr` | 0.9.1-1 | Terminal workspace manager for AI coding agents |
 | `hermes-desktop` | 2026.9.7-1 | Native desktop shell for Hermes Agent |
 | `hypa-ttfx-bin` | 0.3.1-1 | Hypa terminal text effects |
-| `hyprland-preview-share-picker` | 0.2.1-1 | Share picker with window/monitor previews |
+| `hyprland-preview-share-picker` | 0.2.1-2 | Share picker with window/monitor previews |
 | `libva-v4l2_request-avd` | 1.3-1 | VA-API driver so applications can reach the Apple Video Decoder |
 | `localsend` | 1.18.2-2 | Cross-platform AirDrop alternative |
 | `mise-bin` | 2026.9.11-1 | Dev tools, env vars, task runner |
