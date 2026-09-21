@@ -583,7 +583,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('FROM ${BASE_IMAGE}', dockerfile)
         self.assertIn('org.omarchy.rc4.dockerfile-blob-sha', dockerfile)
         self.assertIn('org.omarchy.rc4.base-image-digest', dockerfile)
-        self.assertNotRegex(dockerfile, r'(?m)^\s*RUN\s')
+        self.assertIn('apt-get install -y --no-install-recommends libarchive-tools', dockerfile)
         self.assertNotIn('pacman', dockerfile)
         self.assertNotIn('curl', dockerfile)
         feeder_text = (ROOT / 'scripts/rc4-signing-secret-feeder.py').read_text()
@@ -634,6 +634,13 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertLess(verify_names.index('Install input validation tools'),
                         verify_names.index('Validate exact immutable inputs without credentials'))
         sign_names = [step.get('name') for step in sign['steps']]
+        protected_tools = next((step for step in sign['steps']
+                                if step.get('name') == 'Install input validation tools'), None)
+        self.assertIsNotNone(protected_tools, 'Protected revalidation also requires bsdtar')
+        assert protected_tools is not None
+        self.assertEqual(protected_tools['run'], tools['run'])
+        self.assertLess(sign_names.index('Install input validation tools'),
+                        sign_names.index('Revalidate exact eligibility before protected secrets'))
         self.assertIn('Authenticate private GHCR pull', sign_names)
         self.assertIn('Remove private GHCR credentials before protected secrets', sign_names)
         login_step = next(step for step in sign['steps'] if step.get('name') == 'Authenticate private GHCR pull')
