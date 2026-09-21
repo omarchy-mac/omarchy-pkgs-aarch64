@@ -332,3 +332,5 @@ builds natively. Each of these takes well under a minute.
 Everything else comes from the AUR — clone the package and run `makepkg`.
 Packages marked `arch=('any')` need no rebuild at all; the AUR artifact works
 on ARM unchanged.
+
+Selected development candidates can be signed separately through [Sign quattro image inputs](.github/workflows/sign-quattro-image-inputs.yml), using the existing approval-gated signing environment. Signed outputs remain Actions artifacts and never enter the rolling feed.
