@@ -2,6 +2,7 @@
 """Tiny synthetic tests for the nonpublishing signed RC4 fixture only."""
 import copy
 from contextlib import ExitStack, contextmanager
+from email.message import Message
 import hashlib
 import importlib.util
 import io
@@ -11,8 +12,10 @@ import re
 from pathlib import Path
 import tarfile
 import tempfile
+import traceback
 import unittest
 from unittest.mock import patch
+import urllib.error
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -148,6 +151,28 @@ def execution_identity(run_id=700, attempt=1):
 
 
 class ImmutableInputTests(unittest.TestCase):
+    def test_github_request_error_exposes_safe_endpoint_and_status(self):
+        module = load_helper(self)
+        path = '/repos/omarchy-mac/omarchy-pkgs-aarch64/releases/assets/123'
+        markers = ('token-value-must-not-appear', 'server-reason-must-not-appear',
+                   'body-marker-must-not-appear', 'https://secret.example/')
+        headers = Message()
+        headers['X-Secret'] = markers[2]
+        error = urllib.error.HTTPError(
+            'https://secret.example/' + markers[0], 403, markers[1], headers,
+            io.BytesIO(markers[2].encode()))
+        with patch.object(module.urllib.request, 'urlopen', side_effect=error):
+            with self.assertRaisesRegex(ValueError,
+                                         r'^GitHub API request failed: ' +
+                                         r'/repos/omarchy-mac/omarchy-pkgs-aarch64/releases/assets/123 '
+                                         r'\(HTTPError status=403\)$') as raised:
+                module.github_request(path, markers[0])
+        self.assertIsNone(raised.exception.__cause__)
+        self.assertIsNone(raised.exception.__context__)
+        traceback_text = ''.join(traceback.format_exception(raised.exception))
+        for marker in markers:
+            self.assertNotIn(marker, traceback_text)
+
     def test_production_identity_is_fixed_rc4_set_not_operator_defined(self):
         module = load_helper(self)
         path = ROOT / 'scripts/rc4-sign-retain-inputs.json'

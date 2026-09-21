@@ -886,7 +886,12 @@ def github_request(path, token, accept='application/vnd.github+json'):
         with urllib.request.urlopen(request, timeout=120) as response:
             return response.read()
     except Exception as error:
-        raise ValueError('GitHub API request failed') from error
+        detail = type(error).__name__
+        status = getattr(error, 'code', None)
+        if type(status) is int:
+            detail += f' status={status}'
+    # Raise outside the handler so tracebacks cannot expose the original response.
+    raise ValueError(f'GitHub API request failed: {path} ({detail})')
 
 
 def acquire_from_github(identity_path, expected_sha256, output, metadata_output):
