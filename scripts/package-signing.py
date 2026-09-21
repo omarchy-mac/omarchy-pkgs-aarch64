@@ -1,19 +1,26 @@
 #!/usr/bin/env python3
 """Sign only verified package/database bytes; never execute a build with a key loaded."""
-import argparse, base64, hashlib, json, os, re, subprocess, tempfile
+import argparse, base64, hashlib, json, os, re, shutil, subprocess, tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PUBLIC = ROOT / 'pkgbuilds/omarchy-mac-keyring/omarchy-mac.gpg'
 POLICY = ROOT / 'pkgbuilds/omarchy-mac-keyring/signing-policy.json'
 DB = 'omarchy-aarch64'
+SECRET_ENV = {'PACMAN_SIGNING_SUBKEY_B64', 'PACMAN_SIGNING_PASSPHRASE'}
 
 def require(ok, message):
     if not ok:
         raise ValueError(message)
 
 def run(*args, data=None, check=True):
-    result = subprocess.run([str(x) for x in args], input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    command = [str(x) for x in args]
+    if data is None:
+        result = subprocess.run(command, stdin=subprocess.DEVNULL,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    else:
+        result = subprocess.run(command, input=data,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if check and result.returncode:
         # Do not echo commands, imported key material, passphrases or GnuPG diagnostics.
         raise ValueError('Signing/verification command failed: ' + str(args[0]))
@@ -59,18 +66,39 @@ def normalize_credentials(encoded, password):
     return base64.b64decode(compact, validate=True), (password + '\n').encode()
 
 class Keyring:
-    def __init__(self, public=PUBLIC, policy_path=POLICY, secret=False):
-        self.public, self.policy = Path(public), policy(policy_path)
-        require(self.public.is_file() and not self.public.is_symlink(), 'Public key must be a regular file')
-        require(digest(self.public) == self.policy['public_key_sha256'], 'Public key differs from reviewed policy')
-        location = Path(os.environ.get('TMPDIR', '/tmp')).resolve()
-        fs = run('findmnt', '-n', '-o', 'FSTYPE', '-T', location).stdout.decode().strip()
-        require(fs and fs not in ('tmpfs', 'ramfs'), 'GnuPG temporary storage must be disk-backed')
-        self.temp = tempfile.TemporaryDirectory(prefix='package-signing-', dir=location)
-        self.home = Path(self.temp.name)
-        self.home.chmod(0o700)
-        self.gpg = ['gpg', '--homedir', str(self.home), '--batch', '--no-tty', '--no-auto-key-retrieve']
+    def __init__(self, public=PUBLIC, policy_path=POLICY, secret=False, secret_material=None):
+        self.password = None
+        self._pending_key = None
+        self._closed = False
+        self.temp = None
+        self.home = None
+        self.gpg = None
+        if secret and isinstance(secret_material, tuple):
+            if len(secret_material) > 0 and isinstance(secret_material[0], bytearray):
+                self._pending_key = secret_material[0]
+            if len(secret_material) > 1 and isinstance(secret_material[1], bytearray):
+                self.password = secret_material[1]
         try:
+            if secret and secret_material is not None:
+                require(not (SECRET_ENV & set(os.environ)),
+                        'Explicit signing secret must not also enter the process environment')
+                require(isinstance(secret_material, tuple) and len(secret_material) == 2 and
+                        isinstance(secret_material[0], bytearray) and
+                        isinstance(secret_material[1], bytearray),
+                        'Explicit signing credentials must use mutable buffers')
+                require(self._pending_key and self.password and
+                        b'\n' not in self.password and b'\r' not in self.password,
+                        'Explicit signing credentials missing or malformed')
+            self.public, self.policy = Path(public), policy(policy_path)
+            require(self.public.is_file() and not self.public.is_symlink(), 'Public key must be a regular file')
+            require(digest(self.public) == self.policy['public_key_sha256'], 'Public key differs from reviewed policy')
+            location = Path(os.environ.get('TMPDIR', '/tmp')).resolve()
+            fs = run('findmnt', '-n', '-o', 'FSTYPE', '-T', location).stdout.decode().strip()
+            require(fs and fs not in ('tmpfs', 'ramfs'), 'GnuPG temporary storage must be disk-backed')
+            self.temp = tempfile.TemporaryDirectory(prefix='package-signing-', dir=location)
+            self.home = Path(self.temp.name)
+            self.home.chmod(0o700)
+            self.gpg = ['gpg', '--homedir', str(self.home), '--batch', '--no-tty', '--no-auto-key-retrieve']
             run(*self.gpg, '--import', data=self.public.read_bytes())
             records = run(*self.gpg, '--with-colons', '--list-keys').stdout.decode().splitlines()
             primaries = []
@@ -91,16 +119,27 @@ class Keyring:
             require(len(primaries) == len(set(primaries)) and set(primaries) == set(trusted_primaries(self.policy)),
                     'Public key must contain the exact approved primary set')
             require(self.policy['signing_subkey_fingerprint'] in active_subkeys, 'Approved signing subkey missing from active primary')
-            self.password = None
             if secret:
-                for env, field in [('PACMAN_SIGNING_PRIMARY_FPR', 'primary_fingerprint'),
-                                   ('PACMAN_SIGNING_SUBKEY_FPR', 'signing_subkey_fingerprint')]:
-                    require(os.environ.get(env) == self.policy[field], 'Protected signing fingerprint differs from reviewed policy')
-                encoded = os.environ.get('PACMAN_SIGNING_SUBKEY_B64', '')
-                password = os.environ.get('PACMAN_SIGNING_PASSPHRASE')
-                raw, normalized_password = normalize_credentials(encoded, password)
-                run(*self.gpg, '--import', data=raw)
-                del raw
+                if secret_material is None:
+                    for env, field in [('PACMAN_SIGNING_PRIMARY_FPR', 'primary_fingerprint'),
+                                       ('PACMAN_SIGNING_SUBKEY_FPR', 'signing_subkey_fingerprint')]:
+                        require(os.environ.get(env) == self.policy[field], 'Protected signing fingerprint differs from reviewed policy')
+                    encoded = os.environ.get('PACMAN_SIGNING_SUBKEY_B64', '')
+                    password = os.environ.get('PACMAN_SIGNING_PASSPHRASE')
+                    raw_bytes, password_bytes = normalize_credentials(encoded, password)
+                    raw = bytearray(raw_bytes)
+                    self.password = bytearray(password_bytes)
+                else:
+                    raw = self._pending_key
+                    assert raw is not None and self.password is not None
+                    require(raw and self.password and b'\n' not in self.password and b'\r' not in self.password,
+                            'Explicit signing credentials missing or malformed')
+                    self.password.extend(b'\n')
+                try:
+                    run(*self.gpg, '--import', data=raw)
+                finally:
+                    raw[:] = b'\x00' * len(raw)
+                    self._pending_key = None
                 records = run(*self.gpg, '--with-colons', '--list-secret-keys').stdout.decode().splitlines()
                 sec = [line.split(':') for line in records if line.startswith('sec:')]
                 require(len(sec) == 1 and len(sec[0]) > 14 and sec[0][14] == '#', 'CI must not contain usable primary secret material')
@@ -116,14 +155,27 @@ class Keyring:
                             usable.append(fields[9])
                         pending = None
                 require(usable == [self.policy['signing_subkey_fingerprint']], 'CI must contain exactly the approved usable signing subkey')
-                self.password = normalized_password
         except BaseException:
             self.close()
             raise
 
     def close(self):
-        run('gpgconf', '--homedir', self.home, '--kill', 'gpg-agent', check=False)
-        self.temp.cleanup()
+        for value in (self._pending_key, self.password):
+            if isinstance(value, bytearray):
+                value[:] = b'\x00' * len(value)
+        self._pending_key = None
+        self.password = None
+        if self._closed:
+            return
+        self._closed = True
+        temporary = self.temp
+        self.temp = None
+        try:
+            if self.home is not None:
+                run('gpgconf', '--homedir', self.home, '--kill', 'gpg-agent', check=False)
+        finally:
+            if temporary is not None:
+                temporary.cleanup()
 
     def verify(self, path):
         path = Path(path); sig = Path(str(path) + '.sig')
@@ -156,6 +208,40 @@ class Keyring:
         finally:
             if pending.exists():
                 pending.unlink()
+
+def preflight(public, policy_path, expected_public_sha256, expected_policy_sha256,
+              primary_fingerprint, signing_subkey_fingerprint):
+    """Validate immutable public bootstrap and required tools before secret input."""
+    public, policy_path = Path(public), Path(policy_path)
+    require(not (SECRET_ENV & set(os.environ)), 'Signing secret must not enter preflight environment')
+    require(public.is_file() and not public.is_symlink() and
+            digest(public) == expected_public_sha256, 'Public key differs from frozen bootstrap')
+    require(policy_path.is_file() and not policy_path.is_symlink() and
+            digest(policy_path) == expected_policy_sha256, 'Signing policy differs from frozen bootstrap')
+    reviewed = policy(policy_path)
+    require(reviewed == {
+        'primary_fingerprint': primary_fingerprint,
+        'signing_subkey_fingerprint': signing_subkey_fingerprint,
+        'public_key_sha256': expected_public_sha256,
+        'trusted_primary_fingerprints': [primary_fingerprint],
+    }, 'Signing policy differs from frozen bootstrap')
+    for command, version_args in (('python3', ('--version',)), ('gpg', ('--version',)),
+                                  ('gpgconf', ('--version',)), ('bsdtar', ('--version',)),
+                                  ('findmnt', ('--version',))):
+        require(shutil.which(command) is not None, f'Required signing tool missing: {command}')
+        result = run(command, *version_args, check=False)
+        require(result.returncode == 0, f'Required signing tool unusable: {command}')
+    ring = Keyring(public, policy_path, secret=False)
+    try:
+        require(ring.policy == reviewed, 'Public key policy changed during preflight')
+    finally:
+        ring.close()
+    return {
+        'primary_fingerprint': primary_fingerprint,
+        'signing_subkey_fingerprint': signing_subkey_fingerprint,
+        'public_key_sha256': expected_public_sha256,
+        'signing_policy_sha256': expected_policy_sha256,
+    }
 
 def packages(directory):
     paths = sorted(p for p in Path(directory).iterdir() if '.pkg.tar.' in p.name and not p.name.endswith(('.sig', '.pending')))
