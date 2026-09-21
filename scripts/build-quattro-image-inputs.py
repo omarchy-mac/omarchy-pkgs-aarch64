@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Build three unsigned, unpublished image inputs from one desktop commit."""
+"""Build an unsigned, unpublished desktop and video dependency candidate set."""
 import argparse
 import hashlib
 import json
@@ -10,7 +10,9 @@ import shutil
 import subprocess
 
 
-PACKAGES = ('omarchy', 'omarchy-settings', 'omarchy-mac')
+DESKTOP_PACKAGES = ('omarchy', 'omarchy-settings', 'omarchy-mac')
+VIDEO_PACKAGES = ('avd-fw', 'libva-v4l2_request-avd')
+PACKAGES = DESKTOP_PACKAGES + VIDEO_PACKAGES
 TRANSFERRED = (
     'usr/bin/omarchy-wifi-resume-fix',
     'usr/bin/omarchy-audio-asahi-mic-map',
@@ -70,6 +72,18 @@ def prepare_recipe(recipe, name, commit, version, release):
     return recipe
 
 
+def prepare_video_recipe(recipe, name, revision, release):
+    require(name in VIDEO_PACKAGES, 'unexpected video package')
+    require(re.fullmatch('[0-9a-f]{40}', revision), 'invalid recipe revision')
+    recipe = replace_assignment(recipe, 'pkgrel', release)
+    recipe += "\noptions+=('!debug')\n"
+    anchor = 'package() {\n'
+    require(recipe.count(anchor) == 1, 'video package entrypoint changed')
+    return recipe.replace(anchor, anchor +
+        f'  install -Dm644 /dev/stdin "$pkgdir/usr/share/doc/{name}/source-revision" <<\'REVISION\'\n'
+        f'{revision}\nREVISION\n')
+
+
 def inspect_package(path):
     fields = {}
     for line in output('bsdtar', '-xOf', str(path), '.PKGINFO').splitlines():
@@ -85,14 +99,14 @@ def inspect_package(path):
     return fields, paths, source
 
 
-def verify_packages(records, commit, versions):
-    require(set(records) == set(PACKAGES), 'candidate must contain exactly three packages')
+def verify_packages(records, commit, versions, recipe_commit):
+    require(set(records) == set(PACKAGES), 'candidate must contain exactly five packages')
     owners = {}
     for name, (fields, paths, source) in records.items():
         require(fields.get('pkgname') == [name], f'wrong package name: {name}')
-        require(fields.get('arch') == ['aarch64'], f'wrong architecture: {name}')
+        require(fields.get('arch') == ['any' if name == 'avd-fw' else 'aarch64'], f'wrong architecture: {name}')
         require(fields.get('pkgver') == [versions[name]], f'wrong version: {name}')
-        require(source == commit, f'mixed source revisions: {name}')
+        require(source == (recipe_commit if name in VIDEO_PACKAGES else commit), f'mixed source revisions: {name}')
         for path in paths:
             require(path not in owners, f'duplicate file owner: {path}')
             owners[path] = name
@@ -193,7 +207,16 @@ def main():
     releases = {'omarchy': f'1.{run}', 'omarchy-settings': f'1.{run}',
                 'omarchy-mac': f'{addon_release[1]}.{run}'}
     versions = {name: f'{addon_version if name == "omarchy-mac" else desktop_version}-{releases[name]}'
-                for name in PACKAGES}
+                for name in DESKTOP_PACKAGES}
+    for name in VIDEO_PACKAGES:
+        archive(repository, recipe_commit, destination / name, f"pkgbuilds/{name}")
+        shutil.copytree(destination / name / "pkgbuilds" / name, recipes / "pkgbuilds" / name)
+        recipe = (recipes / "pkgbuilds" / name / "PKGBUILD").read_text()
+        version = re.search(r"^pkgver=([0-9A-Za-z.+_]+)$", recipe, re.M)
+        release = re.search(r"^pkgrel=([0-9]+)$", recipe, re.M)
+        require(version and release, "expected literal video version/release")
+        releases[name] = f"{release[1]}.{run}"
+        versions[name] = f"{version[1]}-{releases[name]}"
     env = dict(os.environ, LC_ALL='C.UTF-8', PYTHONDONTWRITEBYTECODE='1',
                PKGDEST=str(artifacts), SOURCE_DATE_EPOCH=stamp)
     print('Running the headless desktop aggregate suite...', flush=True)
@@ -206,11 +229,14 @@ def main():
         build.mkdir(exist_ok=True)
         recipe_path = build / 'PKGBUILD'
         text = addon_recipe if name == 'omarchy-mac' else recipe_path.read_text()
-        recipe_path.write_text(prepare_recipe(text, name, commit,
-            addon_version if name == 'omarchy-mac' else desktop_version, releases[name]))
+        if name in VIDEO_PACKAGES:
+            recipe_path.write_text(prepare_video_recipe(text, name, recipe_commit, releases[name]))
+        else:
+            recipe_path.write_text(prepare_recipe(text, name, commit,
+                addon_version if name == 'omarchy-mac' else desktop_version, releases[name]))
         package_env = dict(env)
         package_env.pop('OMARCHY_SRC', None)
-        if name != 'omarchy-mac':
+        if name in ('omarchy', 'omarchy-settings'):
             package_env['OMARCHY_SRC'] = str(source)
         with (logs / f'{name}.log').open('w') as log:
             # Build dependencies are provisioned in the disposable CI container.
@@ -235,7 +261,7 @@ def main():
         records[name] = record
         packages.append(dict(name=name, version=record[0]['pkgver'][0], filename=path.name,
                              sha256=digest(path), dependencies=record[0].get('depend', [])))
-    owners = verify_packages(records, commit, versions)
+    owners = verify_packages(records, commit, versions, recipe_commit)
     (artifacts / 'ownership.json').write_text(json.dumps(owners, indent=2, sort_keys=True) + '\n')
     for name in ('omarchy-base.packages', 'omarchy-apple.packages'):
         shutil.copy2(source / 'install' / name, artifacts / name)
@@ -245,7 +271,7 @@ def main():
     shutil.copy2(repository / 'patches/omarchy-first-run-packages.patch',
                  artifacts / 'recipes/omarchy-first-run-packages.patch')
     (artifacts / 'manifest.json').write_text(json.dumps(dict(
-        schema=1, candidate_only=True, source_repository='omacom/omarchy-mac', source_revision=commit,
+        schema=2, candidate_only=True, source_repository='omacom/omarchy-mac', source_revision=commit,
         package_repository_revision=recipe_commit, upstream_recipe_revision=upstream_commit,
         desktop_test_iso_revision=iso_commit,
         recipe_patch='patches/omarchy-first-run-packages.patch',
@@ -259,7 +285,7 @@ def main():
     ), indent=2) + '\n')
     files = sorted(p for p in artifacts.rglob('*') if p.is_file())
     (artifacts / 'SHA256SUMS').write_text(''.join(f'{digest(p)}  {p.relative_to(artifacts)}\n' for p in files))
-    print(f'Built three unsigned image inputs from {commit}; no packages installed or published.')
+    print(f'Built five unsigned image inputs from {commit}; no packages installed or published.')
 
 
 if __name__ == '__main__':

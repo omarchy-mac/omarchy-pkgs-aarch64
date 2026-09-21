@@ -21,22 +21,32 @@ VERSION = '4.0.0.alpha.quattro.r1790000000.gaaaaaaaaaaaa'
 class PackageSetTest(unittest.TestCase):
     def setUp(self):
         self.versions = {'omarchy': VERSION + '-1.10001', 'omarchy-settings': VERSION + '-1.10001',
-                         'omarchy-mac': '0.1.0-4.10001'}
+                         'omarchy-mac': '0.1.0-4.10001', 'avd-fw': '0.1-1.10001', 'libva-v4l2_request-avd': '1.3-1.10001'}
         self.records = {}
         for name, version in self.versions.items():
-            self.records[name] = ({'pkgname': [name], 'pkgver': [version], 'arch': ['aarch64']}, set(), COMMIT)
+            self.records[name] = ({'pkgname': [name], 'pkgver': [version], 'arch': ['any' if name == 'avd-fw' else 'aarch64']}, set(), COMMIT)
         self.records['omarchy'][0]['depend'] = ['omarchy-settings=' + VERSION, 'snapper']
         self.records['omarchy'][1].add('usr/bin/omarchy-hw-apple')
         self.records['omarchy-mac'][0]['depend'] = ['omarchy', 'iwd']
         self.records['omarchy-mac'][1].update(builder.TRANSFERRED)
 
     def verify(self):
-        return builder.verify_packages(self.records, COMMIT, self.versions)
+        return builder.verify_packages(self.records, COMMIT, self.versions, COMMIT)
 
     def test_complete_same_source_set_has_one_owner_per_transferred_file(self):
         owners = self.verify()
         for path in builder.TRANSFERRED:
             self.assertEqual(owners[path], 'omarchy-mac')
+
+    def test_video_revision_and_architecture_are_checked(self):
+        fields, paths, _ = self.records['avd-fw']
+        self.records['avd-fw'] = (fields, paths, 'b' * 40)
+        with self.assertRaisesRegex(ValueError, 'mixed source revisions'):
+            self.verify()
+        self.records['avd-fw'] = (fields, paths, COMMIT)
+        fields['arch'] = ['aarch64']
+        with self.assertRaisesRegex(ValueError, 'wrong architecture'):
+            self.verify()
 
     def test_old_desktop_still_owning_mapper_is_rejected(self):
         self.records['omarchy'][1].add(builder.TRANSFERRED[1])
@@ -46,7 +56,7 @@ class PackageSetTest(unittest.TestCase):
     def test_partial_and_mixed_revision_sets_are_rejected(self):
         saved = copy.deepcopy(self.records)
         del self.records['omarchy-settings']
-        with self.assertRaisesRegex(ValueError, 'exactly three'):
+        with self.assertRaisesRegex(ValueError, 'exactly five'):
             self.verify()
         self.records = saved
         fields, paths, _ = self.records['omarchy-settings']

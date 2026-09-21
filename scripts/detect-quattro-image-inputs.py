@@ -12,6 +12,8 @@ from urllib.parse import quote
 # not rebuild the same desktop. Keep workflow trigger coverage in sync.
 BUILD_INPUTS = (
     'pkgbuilds/omarchy-mac',
+    'pkgbuilds/avd-fw',
+    'pkgbuilds/libva-v4l2_request-avd',
     'pkgbuilds/omarchy-steam-fex/omarchy-launch-steam',
     'scripts/build-quattro-image-inputs.py',
     'scripts/sign-quattro-image-inputs.py',
@@ -47,9 +49,9 @@ def trusted_artifact(artifact):
 
 
 def successful_build(run, jobs, require_signed=True):
-    required_jobs = ['Build three candidate packages']
+    required_jobs = ['Build five candidate packages']
     if require_signed:
-        required_jobs.append('Sign three candidate packages')
+        required_jobs.append('Sign five candidate packages')
     return (run['event'] in ('schedule', 'workflow_dispatch', 'push') and run['conclusion'] == 'success'
             and run['path'] == '.github/workflows/build-quattro-image-inputs.yml'
             and all(any(job['name'] == name and job['conclusion'] == 'success' for job in jobs)
