@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Seal a reviewed candidate set without building, installing or publishing it."""
+"""Sign a validated candidate build output without building, installing or publishing it."""
 import argparse
 import importlib.util
 import json
