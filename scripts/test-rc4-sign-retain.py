@@ -583,7 +583,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('FROM ${BASE_IMAGE}', dockerfile)
         self.assertIn('org.omarchy.rc4.dockerfile-blob-sha', dockerfile)
         self.assertIn('org.omarchy.rc4.base-image-digest', dockerfile)
-        self.assertNotRegex(dockerfile, r'(?m)^\s*RUN\s')
+        self.assertIn('apt-get install -y --no-install-recommends libarchive-tools', dockerfile)
         self.assertNotIn('pacman', dockerfile)
         self.assertNotIn('curl', dockerfile)
         feeder_text = (ROOT / 'scripts/rc4-signing-secret-feeder.py').read_text()
