@@ -138,7 +138,7 @@ class RetainedTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             task = Path(directory)
             install = subprocess.CompletedProcess([], 0, b'Initialize pacman trust\n')
-            query = subprocess.CompletedProcess([], 0, b'warning: query diagnostic\nomarchy-mac-keyring 20260914-2\n')
+            query = subprocess.CompletedProcess([], 0, b'warning: query diagnostic\nomarchy-mac-keyring 20260914-2\n', b'query stderr diagnostic')
             command = Mock(return_value=query)
             output = io.StringIO()
             with contextlib.redirect_stdout(output), self.assertRaisesRegex(ValueError, 'Exact package installation not recorded') as failure:
@@ -146,9 +146,9 @@ class RetainedTests(unittest.TestCase):
                                                ['pacman', '--dbpath', task/'db'], 'omarchy-mac-keyring', task/'root', task)
             detail = str(failure.exception)
             for expected in ['valid-package-install', 'install exit status 0', 'query exit status 0',
-                             repr(install.stdout), repr(query.stdout), str(task/'db')]:
+                             repr(install.stdout), repr(query.stdout), repr(query.stderr), str(task/'db')]:
                 self.assertIn(expected, detail)
-            command.assert_called_once_with('pacman', '--dbpath', task/'db', '-Q', 'omarchy-mac-keyring', ok=False)
+            command.assert_called_once_with('pacman', '--dbpath', task/'db', '-Q', 'omarchy-mac-keyring', ok=False, separate_stderr=True)
             self.assertNotIn('PASS', output.getvalue())
 
     def test_installation_pass_requires_transaction_query_payload_and_scriptlet(self):
@@ -194,6 +194,64 @@ class RetainedTests(unittest.TestCase):
                         self.assertEqual(output.getvalue(), 'PASS supplemental native trust: '+name+'\n')
                     if name in ('nonzero-install', 'zero-exit-scriptlet-error'):
                         command.assert_not_called()
+
+    def test_installed_query_warning_is_not_version_output(self):
+        import ast, contextlib, io, shutil, tempfile
+        from typing import Any
+        spec = importlib.util.spec_from_file_location('trust', ROOT/'scripts/test-signature-trust.py')
+        assert spec and spec.loader
+        trust = importlib.util.module_from_spec(spec); spec.loader.exec_module(trust)
+        # Exercise the actual nested subprocess wrapper without native setup.
+        tree = ast.parse((ROOT/'scripts/test-signature-trust.py').read_text())
+        retained = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'retained_candidate')
+        wrapper = next(node for node in retained.body if isinstance(node, ast.FunctionDef) and node.name == 'command')
+        namespace: dict[str, Any] = {'subprocess': subprocess}
+        exec(compile(ast.Module(body=[wrapper], type_ignores=[]), '<retained-command>', 'exec'), namespace)
+        warning = b"warning: database file for 'omarchy-aarch64' does not exist (use '-Sy' to download)\n"
+        version = b'omarchy-mac-keyring 20260914-2\n'
+        query_rc = 0
+        def command(*args, **kwargs):
+            return namespace['command'](sys.executable, '-c',
+                f'import os; os.write(2, {warning!r}); os.write(1, {version!r}); raise SystemExit({query_rc})', **kwargs)
+        with tempfile.TemporaryDirectory() as directory:
+            task = Path(directory); root = task/'root'
+            payload = root/'usr/share/pacman/keyrings/omarchy-mac.gpg'
+            payload.parent.mkdir(parents=True)
+            shutil.copyfile(ROOT/'pkgbuilds/omarchy-mac-keyring/omarchy-mac.gpg', payload)
+            (task/'pacman.log').write_text('[ALPM-SCRIPTLET] populated\n')
+            with contextlib.redirect_stdout(io.StringIO()):
+                trust.installed_package_result('warning-query', subprocess.CompletedProcess([], 0, b'ok'),
+                                               command, ['pacman'], 'omarchy-mac-keyring', root, task)
+            # Transactions must still combine stderr for signature/scriptlet checks.
+            combined = command()
+            self.assertIn(warning, combined.stdout)
+            self.assertIn(version, combined.stdout)
+            self.assertIsNone(combined.stderr)
+            # Execute only the container's exact-version query/assertion, not setup.
+            work = next(node for node in retained.body if isinstance(node, ast.With))
+            start = next(i for i, node in enumerate(work.body)
+                         if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+                         and isinstance(node.value.func, ast.Name) and node.value.func.id == 'command'
+                         and any(isinstance(arg, ast.Constant) and arg.value == '-U' for arg in node.value.args)) + 1
+            end = next(i for i, node in enumerate(work.body)
+                       if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name)
+                       and node.targets[0].id == 'fresh')
+            bootstrap_check = compile(ast.Module(body=work.body[start:end], type_ignores=[]), '<bootstrap-query>', 'exec')
+            scope = {'command': command, 'helper': trust.rc4(), 'package_name': 'omarchy-mac-keyring'}
+            exec(bootstrap_check, scope)
+            for version, query_rc in [(b'omarchy-mac-keyring 20260914-1\n', 0),
+                                      (warning + b'omarchy-mac-keyring 20260914-2\n', 0),
+                                      (b'omarchy-mac-keyring 20260914-2\n', 1)]:
+                with self.subTest(version=version, query_rc=query_rc):
+                    with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(ValueError) as failure:
+                        trust.installed_package_result('bad-query', subprocess.CompletedProcess([], 0, b'ok'),
+                                                       command, ['pacman'], 'omarchy-mac-keyring', root, task)
+                    self.assertIn(repr(warning), str(failure.exception))
+                    self.assertIn(repr(version), str(failure.exception))
+                    with self.assertRaises(ValueError) as failure:
+                        exec(bootstrap_check, scope)
+                    self.assertIn(repr(warning), str(failure.exception))
+                    self.assertIn(repr(version), str(failure.exception))
 
     def test_default_cli_routes_only_to_fixture(self):
         from unittest.mock import patch

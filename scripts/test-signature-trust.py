@@ -198,14 +198,14 @@ def signature_result(name, result, success, *, report=True):
 def installed_package_result(name, result, command, cmd, package_name, root, task):
     # Validate the transaction before querying; scriptlet errors can exit zero.
     signature_result(name, result, True, report=False)
-    query = command(*cmd, '-Q', package_name, ok=False)
+    query = command(*cmd, '-Q', package_name, ok=False, separate_stderr=True)
     helper = rc4()
     helper.require(query.returncode == 0 and query.stdout.strip() ==
                    b'omarchy-mac-keyring 20260914-2',
                    f'{name}: Exact package installation not recorded\n'
                    f'install exit status {result.returncode}; combined output: {result.stdout!r}\n'
                    f'query command: {list(map(str, cmd)) + ["-Q", package_name]!r}\n'
-                   f'query exit status {query.returncode}; combined output: {query.stdout!r}')
+                   f'query exit status {query.returncode}; stdout: {query.stdout!r}; stderr: {query.stderr!r}')
     helper.require(helper.digest(root/'usr/share/pacman/keyrings/omarchy-mac.gpg') ==
                    helper.PUBLIC_KEY_SHA256, 'Installed keyring payload differs')
     helper.require('ALPM-SCRIPTLET' in (task/'pacman.log').read_text() or
@@ -223,11 +223,12 @@ def retained_candidate(candidate):
     os.environ['LC_ALL'] = 'C'
     for tool in ('pacman', 'pacman-key', 'pacman-conf', 'gpg', 'gpgconf', 'bsdtar', 'zstd', 'xz', 'vercmp', 'bash', 'cp'):
         helper.require(shutil.which(tool), 'Missing native tool: '+tool)
-    def command(*args, ok=True):
+    def command(*args, ok=True, separate_stderr=False):
         result = subprocess.run(list(map(str, args)), stdin=subprocess.DEVNULL,
-                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE if separate_stderr else subprocess.STDOUT)
         if ok and result.returncode:
-            raise RuntimeError(result.stdout.decode(errors='replace'))
+            raise RuntimeError((result.stdout + (result.stderr or b'')).decode(errors='replace'))
         return result
     helper.require(command('pacman-conf', 'Architecture').stdout.strip() == b'aarch64', 'pacman architecture differs')
     signing = helper.load_signing_module()
@@ -330,8 +331,11 @@ def retained_candidate(candidate):
                              'SigLevel = PackageRequired DatabaseRequired TrustedOnly\n'
                              'LocalFileSigLevel = Required TrustedOnly\n')
         command('pacman', '--config', bootstrap, '--noconfirm', '-U', package)
-        helper.require(command('pacman', '-Q', package_name).stdout.strip() ==
-                       b'omarchy-mac-keyring 20260914-2', 'Container keyring installation differs')
+        query = command('pacman', '-Q', package_name, ok=False, separate_stderr=True)
+        helper.require(query.returncode == 0 and query.stdout.strip() ==
+                       b'omarchy-mac-keyring 20260914-2',
+                       f'Container keyring installation differs\n'
+                       f'query exit status {query.returncode}; stdout: {query.stdout!r}; stderr: {query.stderr!r}')
         fresh = work/'fresh-populated'
         command('pacman-key', '--gpgdir', fresh, '--init')
         helper.require(helper.PRIMARY_FINGERPRINT.encode() not in command(
