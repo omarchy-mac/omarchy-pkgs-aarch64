@@ -204,6 +204,13 @@ jobs:
           set -euo pipefail
           [[ "$INPUT_SIGNER_IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
 
+      - name: Install input validation tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libarchive-tools
+          bsdtar --version
+
       - name: Authenticate private GHCR pull
         env:
           GHCR_TOKEN: ${{ github.token }}
