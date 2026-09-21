@@ -33,6 +33,7 @@ jobs:
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-capture-handoff.py -v
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-inspect-capture.py -v
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-edge-publishing.py -v
+            PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-sign-quattro-image-inputs.py -v
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-quattro-image-inputs.py -v
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-quattro-image-inputs-detection.py -v
           '

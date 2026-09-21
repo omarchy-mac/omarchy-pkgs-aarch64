@@ -139,7 +139,7 @@ signature are separate mutable assets, so updates can briefly fail closed.
 
 ## Shared quattro image candidates
 
-The [Build quattro image inputs](.github/workflows/build-quattro-image-inputs.yml) workflow builds `omarchy`, `omarchy-settings`, and `omarchy-mac` together from `omacom/omarchy-mac:quattro-upstream`. It checks hourly and after relevant build-input changes, reuses matching successful candidates, and supports manual or PR builds. It replaces the separate add-on candidate builder and retains unsigned CI artifacts only, with no publishing permissions or signing credentials and no delivery through the existing update feeds. See [the build contract and instructions](docs/quattro-image-inputs.md).
+The [Build quattro image inputs](.github/workflows/build-quattro-image-inputs.yml) workflow builds `omarchy`, `omarchy-settings`, and `omarchy-mac` together from `omacom/omarchy-mac:quattro-upstream`. It checks hourly and after relevant build-input changes, reuses matching successful candidates, and supports manual or PR builds. It replaces the separate add-on candidate builder and automatically signs new main-branch candidates from `quattro-upstream` in a separate job, with no publishing permissions or delivery through the existing update feeds. PR builds and manual builds of other source refs remain unsigned. See [the build contract and instructions](docs/quattro-image-inputs.md).
 
 ## Automation
 
@@ -332,3 +332,5 @@ builds natively. Each of these takes well under a minute.
 Everything else comes from the AUR — clone the package and run `makepkg`.
 Packages marked `arch=('any')` need no rebuild at all; the AUR artifact works
 on ARM unchanged.
+
+Main-branch candidate signing reuses the existing credentials in `package-signing-edge` without a per-run approval. Signed outputs remain Actions artifacts and never enter the rolling feed. Hourly checks of `quattro-upstream` reuse only successfully signed sets; failed signing remains retryable.

@@ -14,6 +14,11 @@ BUILD_INPUTS = (
     'pkgbuilds/omarchy-mac',
     'pkgbuilds/omarchy-steam-fex/omarchy-launch-steam',
     'scripts/build-quattro-image-inputs.py',
+    'scripts/sign-quattro-image-inputs.py',
+    'scripts/test-sign-quattro-image-inputs.py',
+    'scripts/package-signing.py',
+    '.github/publisher.Dockerfile',
+    'pkgbuilds/omarchy-mac-keyring',
     'scripts/detect-quattro-image-inputs.py',
     'scripts/test-quattro-image-inputs.py',
     'scripts/test-quattro-image-inputs-detection.py',
@@ -41,11 +46,14 @@ def trusted_artifact(artifact):
             and run.get('head_repository_id') == run.get('repository_id'))
 
 
-def successful_build(run, jobs):
+def successful_build(run, jobs, require_signed=True):
+    required_jobs = ['Build three candidate packages']
+    if require_signed:
+        required_jobs.append('Sign three candidate packages')
     return (run['event'] in ('schedule', 'workflow_dispatch', 'push') and run['conclusion'] == 'success'
             and run['path'] == '.github/workflows/build-quattro-image-inputs.yml'
-            and any(job['name'] == 'Build three candidate packages' and job['conclusion'] == 'success'
-                    for job in jobs))
+            and all(any(job['name'] == name and job['conclusion'] == 'success' for job in jobs)
+                    for name in required_jobs))
 
 
 def main():
@@ -58,9 +66,12 @@ def main():
     assert inputs
     digest = hashlib.sha256(inputs).hexdigest()[:24]
     name = f'quattro-image-inputs-{source}-{digest}'
+    signed_name = 'signed-' + name
+    require_signed = source_ref == 'quattro-upstream'
+    lookup_name = signed_name if require_signed else name
     needed = True
     if os.environ.get('FORCE_BUILD') != 'true':
-        pages = api(f'repos/{repo}/actions/artifacts?name={name}&per_page=100', paginate=True)
+        pages = api(f'repos/{repo}/actions/artifacts?name={lookup_name}&per_page=100', paginate=True)
         for artifact in (a for page in pages for a in page['artifacts']):
             if not trusted_artifact(artifact):
                 continue
@@ -68,10 +79,10 @@ def main():
             run = api(f'repos/{repo}/actions/runs/{run_id}')
             jobs = [j for page in api(f'repos/{repo}/actions/runs/{run_id}/jobs?per_page=100', paginate=True)
                     for j in page['jobs']]
-            if successful_build(run, jobs):
+            if successful_build(run, jobs, require_signed=require_signed):
                 needed = False
                 break
-    result = dict(source_sha=source, recipe_sha=revision, artifact_name=name,
+    result = dict(source_sha=source, recipe_sha=revision, artifact_name=name, signed_artifact_name=signed_name,
                   needs_build=str(needed).lower())
     with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
         for key, value in result.items():
