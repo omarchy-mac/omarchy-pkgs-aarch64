@@ -1,0 +1,108 @@
+name: Retain signed image dependency snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      database_sha256:
+        description: Exact reviewed edge database SHA256 to capture unchanged
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-dependency-snapshot
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    if: github.repository == 'omarchy-mac/omarchy-pkgs-aarch64' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    outputs:
+      capture_sha256: ${{ steps.receipt.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Prepare read-only capture tools
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/image-capture/tmp"
+          docker build --build-arg BASE_IMAGE=archlinux:base-devel -f .github/publisher.Dockerfile -t image-capture .
+      - name: Capture the exact published inventory without rebuilding
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DATABASE_SHA256: ${{ inputs.database_sha256 }}
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD:/source:ro" -v "$RUNNER_TEMP/image-capture:/output" \
+            -e GH_TOKEN -e DATABASE_SHA256 -e TMPDIR=/output/tmp -e PYTHONDONTWRITEBYTECODE=1 \
+            image-capture python3 /source/scripts/image-dependency-snapshot.py capture \
+            --database-sha256 "$DATABASE_SHA256" --output /output/capture
+          sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/image-capture/capture"
+      - name: Record capture identity
+        id: receipt
+        run: echo "sha256=$(sha256sum "$RUNNER_TEMP/image-capture/capture/capture-manifest.json" | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: image-dependency-capture-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/image-capture/capture/
+          retention-days: 90
+          if-no-files-found: error
+
+  sign:
+    needs: capture
+    if: github.repository == 'omarchy-mac/omarchy-pkgs-aarch64' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: package-signing-edge
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: image-dependency-capture-${{ github.run_id }}-${{ github.run_attempt }}
+          path: capture
+      - name: Prepare signing tools without credentials
+        run: |
+          set -euo pipefail
+          case $(findmnt -n -o FSTYPE -T "$RUNNER_TEMP") in ''|tmpfs|ramfs) exit 1;; esac
+          mkdir -m700 "$RUNNER_TEMP/image-signing"
+          mkdir "$RUNNER_TEMP/image-signing/tmp"
+          docker build --build-arg BASE_IMAGE=archlinux:base-devel -f .github/publisher.Dockerfile -t image-signer .
+      - name: Verify and sign copies with no network access
+        env:
+          DATABASE_SHA256: ${{ inputs.database_sha256 }}
+          CAPTURE_SHA256: ${{ needs.capture.outputs.capture_sha256 }}
+          PACMAN_SIGNING_SUBKEY_B64: ${{ secrets.PACMAN_SIGNING_SUBKEY_B64_20260914 }}
+          PACMAN_SIGNING_PASSPHRASE: ${{ secrets.PACMAN_SIGNING_PASSPHRASE_20260914 }}
+          PACMAN_SIGNING_PRIMARY_FPR: ${{ vars.PACMAN_SIGNING_PRIMARY_FPR_20260914 }}
+          PACMAN_SIGNING_SUBKEY_FPR: ${{ vars.PACMAN_SIGNING_SUBKEY_FPR_20260914 }}
+        run: |
+          set -euo pipefail
+          docker run --rm --network none -v "$PWD:/source:ro" -v "$RUNNER_TEMP/image-signing:/output" \
+            -e TMPDIR=/output/tmp -e PYTHONDONTWRITEBYTECODE=1 \
+            -e PACMAN_SIGNING_SUBKEY_B64 -e PACMAN_SIGNING_PASSPHRASE \
+            -e PACMAN_SIGNING_PRIMARY_FPR -e PACMAN_SIGNING_SUBKEY_FPR \
+            image-signer python3 /source/scripts/image-dependency-snapshot.py seal \
+            --input /source/capture --output /output/signed \
+            --capture-sha256 "$CAPTURE_SHA256" --database-sha256 "$DATABASE_SHA256"
+          sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/image-signing/signed"
+          sha256sum "$RUNNER_TEMP/image-signing/signed/manifest.json" >> "$GITHUB_STEP_SUMMARY"
+      - name: Independently verify with the public key only
+        run: |
+          set -euo pipefail
+          manifest_hash=$(sha256sum "$RUNNER_TEMP/image-signing/signed/manifest.json" | cut -d ' ' -f1)
+          docker run --rm --network none -v "$PWD:/source:ro" -v "$RUNNER_TEMP/image-signing:/output" \
+            -e TMPDIR=/output/tmp -e PYTHONDONTWRITEBYTECODE=1 \
+            image-signer python3 /source/scripts/image-dependency-snapshot.py verify \
+            --input /output/signed --manifest-sha256 "$manifest_hash"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: signed-image-dependencies-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/image-signing/signed/
+          retention-days: 90
+          if-no-files-found: error
