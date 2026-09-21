@@ -139,7 +139,7 @@ signature are separate mutable assets, so updates can briefly fail closed.
 
 ## Shared quattro image candidates
 
-The [Build quattro image inputs](.github/workflows/build-quattro-image-inputs.yml) workflow builds `omarchy`, `omarchy-settings`, and `omarchy-mac` together from `omacom/omarchy-mac:quattro-upstream`. It checks hourly and after relevant build-input changes, reuses matching successful candidates, and supports manual or PR builds. It replaces the separate add-on candidate builder and retains unsigned CI artifacts only, with no publishing permissions or signing credentials and no delivery through the existing update feeds. See [the build contract and instructions](docs/quattro-image-inputs.md).
+The [Build quattro image inputs](.github/workflows/build-quattro-image-inputs.yml) workflow builds `omarchy`, `omarchy-settings`, and `omarchy-mac` together from `omacom/omarchy-mac:quattro-upstream`. It checks hourly and after relevant build-input changes, reuses matching successful candidates, and supports manual or PR builds. It replaces the separate add-on candidate builder and automatically signs new main-branch candidates in a separate job, with no publishing permissions or delivery through the existing update feeds. PR builds remain unsigned. See [the build contract and instructions](docs/quattro-image-inputs.md).
 
 ## Automation
 
@@ -333,4 +333,4 @@ Everything else comes from the AUR — clone the package and run `makepkg`.
 Packages marked `arch=('any')` need no rebuild at all; the AUR artifact works
 on ARM unchanged.
 
-Selected development candidates can be signed separately through [Sign quattro image inputs](.github/workflows/sign-quattro-image-inputs.yml), using the existing approval-gated signing environment. Signed outputs remain Actions artifacts and never enter the rolling feed.
+Main-branch candidate signing reuses the existing credentials in `package-signing-edge` without a per-run approval. Signed outputs remain Actions artifacts and never enter the rolling feed. Hourly checks reuse only successfully signed sets; failed signing remains retryable.

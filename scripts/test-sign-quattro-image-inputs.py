@@ -131,21 +131,26 @@ class RealSigningTest(unittest.TestCase):
 
 class WorkflowTest(unittest.TestCase):
     def test_secrets_only_in_approved_offline_job_no_publishing(self):
-        path = Path(__file__).resolve().parents[1] / '.github/workflows/sign-quattro-image-inputs.yml'
+        path = Path(__file__).resolve().parents[1] / '.github/workflows/build-quattro-image-inputs.yml'
         text = path.read_text()
         wf = yaml.load(text, Loader=yaml.BaseLoader)
-        self.assertEqual(set(wf['on']), {'workflow_dispatch'})
-        self.assertEqual(wf['permissions'], {'contents': 'read', 'actions': 'read'})
+        self.assertEqual(set(wf['on']), {'workflow_dispatch', 'schedule', 'push', 'pull_request'})
+        self.assertEqual(wf['permissions'], {'contents': 'read'})
         job = wf['jobs']['sign']
-        self.assertEqual(job['environment'], 'package-signing')
+        self.assertEqual(job['environment'], 'package-signing-edge')
+        self.assertEqual(job['needs'], ['detect', 'build'])
+        self.assertEqual(job['permissions'], {'contents': 'read'})
+        self.assertIn("github.event_name != 'pull_request'", job['if'])
         self.assertIn("github.ref == 'refs/heads/main'", job['if'])
         for forbidden in ('publish.sh', 'gh release', 'repo-add', 'contents: write', 'makepkg'):
             self.assertNotIn(forbidden, text)
         secret_steps = [step for step in job['steps'] if 'secrets.' in str(step)]
         self.assertEqual(len(secret_steps), 1)
         self.assertIn('--network none', secret_steps[0]['run'])
-        self.assertIn('.head_repository.full_name == $repo', text)
-        self.assertIn('Build three candidate packages', text)
+        self.assertIn('${{ needs.build.outputs.manifest_sha256 }}', str(job))
+        self.assertIn('${{ needs.detect.outputs.source_sha }}', str(job))
+        self.assertNotIn('github.token', str(job))
+        self.assertFalse((path.parent / 'sign-quattro-image-inputs.yml').exists())
 
 
 if __name__ == '__main__':

@@ -112,9 +112,9 @@ class DeliveryBoundaryTest(unittest.TestCase):
         self.assertIn('scripts/build-quattro-image-inputs.py', workflow['on']['pull_request']['paths'])
         self.assertEqual(set(workflow['on']['workflow_dispatch']['inputs']), {'source_ref', 'force'})
         self.assertEqual(workflow['permissions'], {'contents': 'read'})
-        self.assertNotIn('secrets.', text)
+        self.assertNotIn('secrets.', str(workflow['jobs']['build']))
         self.assertNotIn('GITHUB_TOKEN', text)
-        self.assertEqual(set(workflow['jobs']), {'detect', 'build'})
+        self.assertEqual(set(workflow['jobs']), {'detect', 'build', 'sign'})
         self.assertEqual(workflow['jobs']['detect']['permissions'], {'contents': 'read', 'actions': 'read'})
         self.assertEqual(workflow['on']['push']['branches'], ['main'])
         self.assertEqual(workflow['concurrency']['cancel-in-progress'], 'false')
@@ -142,7 +142,7 @@ class DeliveryBoundaryTest(unittest.TestCase):
         for event in ('push', 'pull_request'):
             patterns = workflow['on'][event]['paths']
             for path in detector.BUILD_INPUTS:
-                probe = path + '/PKGBUILD' if path == 'pkgbuilds/omarchy-mac' else path
+                probe = path + '/PKGBUILD' if path.startswith('pkgbuilds/') and '.' not in path.rsplit('/', 1)[-1] and path != 'pkgbuilds/omarchy-steam-fex/omarchy-launch-steam' else path
                 self.assertTrue(any(fnmatch.fnmatchcase(probe, pattern) for pattern in patterns), probe)
         steps = workflow['jobs']['build']['steps']
         self.assertEqual(steps[0]['with']['ref'], '${{ needs.detect.outputs.recipe_sha }}')

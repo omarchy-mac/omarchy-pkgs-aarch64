@@ -19,7 +19,8 @@ class CandidateReuseTest(unittest.TestCase):
             'head_branch': 'main', 'head_repository_id': 123, 'repository_id': 123}}
         self.run = {'event': 'schedule', 'path': '.github/workflows/build-quattro-image-inputs.yml',
                     'conclusion': 'success'}
-        self.jobs = [{'name': 'Build three candidate packages', 'conclusion': 'success'}]
+        self.jobs = [{'name': name, 'conclusion': 'success'} for name in
+                     ('Build three candidate packages', 'Sign three candidate packages')]
 
     def test_successful_three_package_set_is_reused(self):
         self.assertTrue(candidate.trusted_artifact(self.artifact))
@@ -49,6 +50,9 @@ class CandidateReuseTest(unittest.TestCase):
         self.run['path'] = '.github/workflows/build-quattro-image-inputs.yml'
         self.assertFalse(candidate.successful_build(self.run, [{'name': 'Self-tests', 'conclusion': 'success'}]))
 
+    def test_unsigned_build_is_not_reusable(self):
+        self.assertFalse(candidate.successful_build(self.run, self.jobs[:1]))
+
     def test_manual_main_build_can_be_reused(self):
         self.run.update(event='workflow_dispatch', path='.github/workflows/build-quattro-image-inputs.yml')
         self.assertTrue(candidate.successful_build(self.run, self.jobs))
@@ -62,7 +66,7 @@ class CandidateReuseTest(unittest.TestCase):
 
 class DetectionTest(unittest.TestCase):
     def detect(self, *, force=False, source='a' * 40, inputs=b'input tree', recipe='b' * 40,
-               artifacts=None, run_status='success', job_status='success'):
+               artifacts=None, run_status='success', job_status='success', sign_status='success'):
         calls = []
         def api(path, paginate=False):
             calls.append(path)
@@ -70,9 +74,11 @@ class DetectionTest(unittest.TestCase):
                 self.assertTrue(path.endswith('feature%2Fimage'))
                 return {'sha': source}
             if '/actions/artifacts?' in path:
+                self.assertIn('name=signed-quattro-image-inputs-', path)
                 return [{'artifacts': artifacts or []}]
             if path.endswith('/jobs?per_page=100'):
-                return [{'jobs': [{'name': 'Build three candidate packages', 'conclusion': job_status}]}]
+                return [{'jobs': [{'name': 'Build three candidate packages', 'conclusion': job_status},
+                                  {'name': 'Sign three candidate packages', 'conclusion': sign_status}]}]
             return {'event': 'schedule', 'path': '.github/workflows/build-quattro-image-inputs.yml',
                     'conclusion': run_status}
         def command(args, **kwargs):
@@ -108,7 +114,8 @@ class DetectionTest(unittest.TestCase):
                     'head_repository_id': 123, 'repository_id': 123}}
         result, _ = self.detect(artifacts=[artifact])
         self.assertEqual(result['needs_build'], 'false')
-        for kwargs in ({'run_status': 'failure'}, {'job_status': 'cancelled'}):
+        for kwargs in ({'run_status': 'failure'}, {'job_status': 'cancelled'},
+                       {'sign_status': 'failure'}, {'sign_status': 'skipped'}, {'sign_status': 'cancelled'}):
             result, _ = self.detect(artifacts=[artifact], **kwargs)
             self.assertEqual(result['needs_build'], 'true')
         artifact['expired'] = True

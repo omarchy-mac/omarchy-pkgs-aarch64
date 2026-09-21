@@ -10,6 +10,11 @@ on:
       - .github/workflows/build-quattro-image-inputs.yml
       - scripts/build-quattro-image-inputs.py
       - scripts/test-quattro-image-inputs.py
+      - scripts/sign-quattro-image-inputs.py
+      - scripts/test-sign-quattro-image-inputs.py
+      - scripts/package-signing.py
+      - .github/publisher.Dockerfile
+      - pkgbuilds/omarchy-mac-keyring/**
       - scripts/detect-quattro-image-inputs.py
       - scripts/test-quattro-image-inputs-detection.py
       - scripts/quattro-image-inputs-*-revision
@@ -25,6 +30,11 @@ on:
       - .github/workflows/build-quattro-image-inputs.yml
       - scripts/build-quattro-image-inputs.py
       - scripts/test-quattro-image-inputs.py
+      - scripts/sign-quattro-image-inputs.py
+      - scripts/test-sign-quattro-image-inputs.py
+      - scripts/package-signing.py
+      - .github/publisher.Dockerfile
+      - pkgbuilds/omarchy-mac-keyring/**
       - scripts/detect-quattro-image-inputs.py
       - scripts/test-quattro-image-inputs-detection.py
       - scripts/quattro-image-inputs-*-revision
@@ -67,6 +77,7 @@ jobs:
       source_sha: ${{ steps.detect.outputs.source_sha }}
       recipe_sha: ${{ steps.detect.outputs.recipe_sha }}
       artifact_name: ${{ steps.detect.outputs.artifact_name }}
+      signed_artifact_name: ${{ steps.detect.outputs.signed_artifact_name }}
       needs_build: ${{ steps.detect.outputs.needs_build }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -88,6 +99,8 @@ jobs:
     if: needs.detect.outputs.needs_build == 'true'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
+    outputs:
+      manifest_sha256: ${{ steps.manifest.outputs.sha256 }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -157,6 +170,9 @@ jobs:
             candidate/logs/
           if-no-files-found: warn
           retention-days: 30
+      - name: Record the exact manifest for signing
+        id: manifest
+        run: echo "sha256=$(sha256sum candidate/artifacts/manifest.json | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
       - name: Retain the complete candidate set
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -166,3 +182,58 @@ jobs:
           overwrite: true
           if-no-files-found: error
           retention-days: 30
+
+  sign:
+    name: Sign three candidate packages
+    needs: [detect, build]
+    if: github.repository == 'omarchy-mac/omarchy-pkgs-aarch64' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: package-signing-edge
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          ref: ${{ needs.detect.outputs.recipe_sha }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ needs.detect.outputs.artifact_name }}
+          path: candidate-input
+      - name: Prepare tools without credentials
+        run: |
+          set -euo pipefail
+          case $(findmnt -n -o FSTYPE -T "$RUNNER_TEMP") in ''|tmpfs|ramfs) exit 1;; esac
+          mkdir -m700 "$RUNNER_TEMP/candidate-signing"
+          mkdir "$RUNNER_TEMP/candidate-signing/tmp"
+          docker build --build-arg BASE_IMAGE=archlinux:base-devel -f .github/publisher.Dockerfile -t candidate-signer .
+      - name: Validate and sign exact candidate bytes without network access
+        env:
+          MANIFEST_SHA256: ${{ needs.build.outputs.manifest_sha256 }}
+          SOURCE_REVISION: ${{ needs.detect.outputs.source_sha }}
+          PACMAN_SIGNING_SUBKEY_B64: ${{ secrets.PACMAN_SIGNING_SUBKEY_B64_20260914 }}
+          PACMAN_SIGNING_PASSPHRASE: ${{ secrets.PACMAN_SIGNING_PASSPHRASE_20260914 }}
+          PACMAN_SIGNING_PRIMARY_FPR: ${{ vars.PACMAN_SIGNING_PRIMARY_FPR_20260914 }}
+          PACMAN_SIGNING_SUBKEY_FPR: ${{ vars.PACMAN_SIGNING_SUBKEY_FPR_20260914 }}
+        run: |
+          set -euo pipefail
+          docker run --rm --network none \
+            -v "$PWD:/source:ro" -v "$RUNNER_TEMP/candidate-signing:/output" \
+            -e TMPDIR=/output/tmp -e PYTHONDONTWRITEBYTECODE=1 \
+            -e PACMAN_SIGNING_SUBKEY_B64 -e PACMAN_SIGNING_PASSPHRASE \
+            -e PACMAN_SIGNING_PRIMARY_FPR -e PACMAN_SIGNING_SUBKEY_FPR \
+            candidate-signer python3 /source/scripts/sign-quattro-image-inputs.py \
+            /source/candidate-input /output/signed \
+            --manifest-sha256 "$MANIFEST_SHA256" --source-revision "$SOURCE_REVISION"
+          sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/candidate-signing/signed"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ needs.detect.outputs.signed_artifact_name }}
+          path: ${{ runner.temp }}/candidate-signing/signed/
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 30
+      - name: Remove temporary signing material
+        if: always()
+        run: sudo rm -rf -- "$RUNNER_TEMP/candidate-signing"
