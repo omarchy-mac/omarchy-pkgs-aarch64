@@ -89,6 +89,45 @@ def seal(root, destination, capture_hash, database_hash):
     return manifest
 
 
+def verify(root, manifest_hash):
+    require(re.fullmatch('[a-f0-9]{64}', manifest_hash), 'Exact signed manifest hash required')
+    require(root.is_dir() and not root.is_symlink(), 'Unsafe snapshot root')
+    for path in root.iterdir():
+        require(path.is_file() and not path.is_symlink(), 'Unsafe snapshot member')
+    metadata = root / 'manifest.json'
+    require(bundle.digest(metadata) == manifest_hash, 'Signed manifest checksum mismatch')
+    ring = bundle.signing.Keyring(secret=False)
+    try:
+        ring.verify(metadata)
+        data = json.loads(metadata.read_text())
+        require(data['schema'] == 1 and data['kind'] == 'omarchy-image-dependencies'
+                and data['publication'] == 'none' and data['source_repository'] == boot.REPO
+                and data['source_lane'] == 'edge' and data['excluded_names'] == sorted(EXCLUDED),
+                'Unexpected snapshot contract')
+        origin = root / 'origin.db'
+        ring.verify(origin)
+        require(bundle.digest(origin) == data['source_database_sha256'], 'Origin database mismatch')
+        records = {}
+        expected_files = {'origin.db', 'manifest.json'}
+        for expected in data['packages']:
+            name, filename = expected['name'], bundle.safe_name(expected['filename'])
+            require(name not in records and name not in EXCLUDED, 'Duplicate or excluded snapshot package')
+            require('.pkg.tar.' in filename and not filename.endswith('.sig'), 'Invalid archive filename')
+            path = root / filename
+            ring.verify(path)
+            actual = bundle.package_record(path)
+            require(actual == expected, 'Snapshot package metadata/hash mismatch')
+            records[name] = (path, actual)
+            expected_files.add(filename)
+        require(records and 'omarchy-nvim' in records, 'Incomplete snapshot')
+        require({p.name for p in root.iterdir()} == expected_files | {n+'.sig' for n in expected_files},
+                'Snapshot file inventory differs')
+        bundle.validate_inventory({n:r for n,r in bundle.database(origin).items() if n not in EXCLUDED}, records)
+        return data
+    finally:
+        ring.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='operation', required=True)
@@ -100,9 +139,15 @@ def main():
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--capture-sha256', required=True)
     p.add_argument('--database-sha256', required=True)
+    p = sub.add_parser('verify')
+    p.add_argument('--input', type=Path, required=True)
+    p.add_argument('--manifest-sha256', required=True)
     args = parser.parse_args()
     if args.operation == 'capture':
         capture(args.output, args.database_sha256)
+    elif args.operation == 'verify':
+        data = verify(args.input, args.manifest_sha256)
+        print(f"Verified {len(data['packages'])} signed image dependencies")
     else:
         seal(args.input, args.output, args.capture_sha256, args.database_sha256)
         print('Signed image dependency snapshot; publication: none')

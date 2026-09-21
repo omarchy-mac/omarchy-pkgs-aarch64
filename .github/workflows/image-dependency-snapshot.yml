@@ -92,6 +92,14 @@ jobs:
             --capture-sha256 "$CAPTURE_SHA256" --database-sha256 "$DATABASE_SHA256"
           sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/image-signing/signed"
           sha256sum "$RUNNER_TEMP/image-signing/signed/manifest.json" >> "$GITHUB_STEP_SUMMARY"
+      - name: Independently verify with the public key only
+        run: |
+          set -euo pipefail
+          manifest_hash=$(sha256sum "$RUNNER_TEMP/image-signing/signed/manifest.json" | cut -d ' ' -f1)
+          docker run --rm --network none -v "$PWD:/source:ro" -v "$RUNNER_TEMP/image-signing:/output" \
+            -e TMPDIR=/output/tmp -e PYTHONDONTWRITEBYTECODE=1 \
+            image-signer python3 /source/scripts/image-dependency-snapshot.py verify \
+            --input /output/signed --manifest-sha256 "$manifest_hash"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: signed-image-dependencies-${{ github.run_id }}-${{ github.run_attempt }}

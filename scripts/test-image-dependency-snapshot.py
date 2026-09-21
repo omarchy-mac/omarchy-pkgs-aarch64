@@ -68,6 +68,9 @@ class SnapshotTest(unittest.TestCase):
             with patch.object(s.bundle.signing, 'Keyring', side_effect=lambda **kw:key_type(fixture.public, fixture.policy, **kw)):
                 output = self.root/'signed'
                 manifest = s.seal(self.capture, output, self.capture_hash, self.database_hash)
+                self.assertEqual(s.verify(output, s.bundle.digest(output/'manifest.json')), manifest)
+                with self.assertRaises(ValueError):
+                    s.verify(output, 'f'*64)
             verifier = key_type(fixture.public, fixture.policy)
             try:
                 for p in output.glob('*.sig'):
