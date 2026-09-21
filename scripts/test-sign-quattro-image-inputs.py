@@ -23,8 +23,8 @@ class CandidateTest(unittest.TestCase):
         self.source = 'a' * 40
         packages = []
         for name in s.build.PACKAGES:
-            deps = {'omarchy': ['omarchy-settings=1.0', 'snapper'], 'omarchy-settings': [], 'omarchy-mac': ['omarchy']}[name]
-            payload = {'.PKGINFO': '\n'.join([f'pkgname = {name}', 'pkgver = 1.0-1', 'arch = aarch64', *[f'depend = {d}' for d in deps]])}
+            deps = {'omarchy': ['omarchy-settings=1.0', 'snapper'], 'omarchy-settings': [], 'omarchy-mac': ['omarchy'], 'avd-fw': [], 'libva-v4l2_request-avd': ['glibc', 'libva']}[name]
+            payload = {'.PKGINFO': '\n'.join([f'pkgname = {name}', 'pkgver = 1.0-1', 'arch = any' if name == 'avd-fw' else 'arch = aarch64', *[f'depend = {d}' for d in deps]])}
             revision = 'usr/share/omarchy-mac/source-revision' if name == 'omarchy-mac' else f'usr/share/doc/{name}/source-revision'
             payload[revision] = self.source + '\n'
             if name == 'omarchy-mac':
@@ -43,7 +43,7 @@ class CandidateTest(unittest.TestCase):
                     archive.addfile(member, io.BytesIO(content))
             packages.append(dict(name=name, version='1.0-1', filename=filename,
                                  sha256=s.build.digest(self.root / filename), dependencies=deps))
-        self.data = dict(schema=1, candidate_only=True, publication='none', signing='none',
+        self.data = dict(schema=2, package_repository_revision=self.source, candidate_only=True, publication='none', signing='none',
                          source_repository='omacom/omarchy-mac', source_revision=self.source, packages=packages)
         self.save()
 
@@ -55,7 +55,7 @@ class CandidateTest(unittest.TestCase):
         return s.validate(self.root, self.digest, self.source)
 
     def test_real_archives_and_embedded_manifests(self):
-        self.assertEqual(len(self.validate()[1]), 6)
+        self.assertEqual(len(self.validate()[1]), 8)
 
     def test_tampering_wrong_source_and_extra_packages(self):
         with self.assertRaises(ValueError):

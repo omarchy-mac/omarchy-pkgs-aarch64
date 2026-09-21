@@ -24,6 +24,8 @@ on:
       - patches/quattro-desktop-test-fixtures.patch
       - pkgbuilds/omarchy-steam-fex/omarchy-launch-steam
       - pkgbuilds/omarchy-mac/**
+      - pkgbuilds/avd-fw/**
+      - pkgbuilds/libva-v4l2_request-avd/**
   push:
     branches: [main]
     paths:
@@ -44,6 +46,8 @@ on:
       - patches/quattro-desktop-test-fixtures.patch
       - pkgbuilds/omarchy-steam-fex/omarchy-launch-steam
       - pkgbuilds/omarchy-mac/**
+      - pkgbuilds/avd-fw/**
+      - pkgbuilds/libva-v4l2_request-avd/**
   workflow_dispatch:
     inputs:
       force:
@@ -52,7 +56,7 @@ on:
         default: false
         type: boolean
       source_ref:
-        description: 'omacom/omarchy-mac ref to resolve once for all three packages'
+        description: 'omacom/omarchy-mac ref to resolve once for the desktop packages'
         required: true
         default: quattro-upstream
         type: string
@@ -94,7 +98,7 @@ jobs:
         run: python3 scripts/detect-quattro-image-inputs.py
 
   build:
-    name: Build three candidate packages
+    name: Build five candidate packages
     needs: detect
     if: needs.detect.outputs.needs_build == 'true'
     runs-on: ubuntu-24.04-arm
@@ -153,7 +157,7 @@ jobs:
               bash scripts/container-bootstrap.sh build
               pacman -S --noconfirm --needed python systemd imagemagick nodejs \
                 lua ffmpeg plocate libxkbcommon xkeyboard-config glib2 openssh pciutils \
-                ripgrep gum desktop-file-utils inetutils
+                ripgrep gum desktop-file-utils inetutils meson clang llvm libdrm libva
               useradd --create-home builder
               chown -R builder:builder /w
               runuser -u builder -- python3 scripts/build-quattro-image-inputs.py \
@@ -184,7 +188,7 @@ jobs:
           retention-days: 30
 
   sign:
-    name: Sign three candidate packages
+    name: Sign five candidate packages
     needs: [detect, build]
     if: github.repository == 'omarchy-mac/omarchy-pkgs-aarch64' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && (inputs.source_ref == '' || inputs.source_ref == 'quattro-upstream')
     runs-on: ubuntu-24.04

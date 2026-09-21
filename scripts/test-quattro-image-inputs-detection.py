@@ -20,7 +20,7 @@ class CandidateReuseTest(unittest.TestCase):
         self.run = {'event': 'schedule', 'path': '.github/workflows/build-quattro-image-inputs.yml',
                     'conclusion': 'success'}
         self.jobs = [{'name': name, 'conclusion': 'success'} for name in
-                     ('Build three candidate packages', 'Sign three candidate packages')]
+                     ('Build five candidate packages', 'Sign five candidate packages')]
 
     def test_successful_three_package_set_is_reused(self):
         self.assertTrue(candidate.trusted_artifact(self.artifact))
@@ -79,8 +79,8 @@ class DetectionTest(unittest.TestCase):
                 self.assertIn('name=' + prefix + 'quattro-image-inputs-', path)
                 return [{'artifacts': artifacts or []}]
             if path.endswith('/jobs?per_page=100'):
-                return [{'jobs': [{'name': 'Build three candidate packages', 'conclusion': job_status},
-                                  {'name': 'Sign three candidate packages', 'conclusion': sign_status}]}]
+                return [{'jobs': [{'name': 'Build five candidate packages', 'conclusion': job_status},
+                                  {'name': 'Sign five candidate packages', 'conclusion': sign_status}]}]
             return {'event': 'schedule', 'path': '.github/workflows/build-quattro-image-inputs.yml',
                     'conclusion': run_status}
         def command(args, **kwargs):

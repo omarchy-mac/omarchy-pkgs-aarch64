@@ -28,11 +28,11 @@ def validate(root, expected_hash, source):
     require(manifest.is_file() and not manifest.is_symlink(), 'unsafe manifest')
     require(build.digest(manifest) == expected_hash, 'manifest checksum mismatch')
     data = json.loads(manifest.read_text())
-    require(data['schema'] == 1 and data['candidate_only'] is True
+    require(data['schema'] == 2 and data['candidate_only'] is True
             and data['publication'] == 'none' and data['signing'] == 'none', 'not an unsigned candidate')
     require(data['source_repository'] == 'omacom/omarchy-mac'
             and data['source_revision'] == source, 'wrong candidate source')
-    require(len(data['packages']) == 3, 'expected three packages')
+    require(len(data['packages']) == 5, 'expected five packages')
     records, versions, files = {}, {}, []
     for item in data['packages']:
         name, filename = item['name'], item['filename']
@@ -45,7 +45,8 @@ def validate(root, expected_hash, source):
         require(records[name][0].get('depend', []) == item['dependencies'], 'dependency metadata mismatch')
         versions[name] = item['version']
         files.append(path)
-    build.verify_packages(records, source, versions)
+    require(re.fullmatch('[a-f0-9]{40}', data['package_repository_revision']), 'invalid recipe revision')
+    build.verify_packages(records, source, versions, data['package_repository_revision'])
     require({p.name for p in root.glob('*.pkg.tar.*')} == {p.name for p in files}, 'unexpected package or signature')
     runtime = next(root / p['filename'] for p in data['packages'] if p['name'] == 'omarchy')
     # These lists are authoritative image inputs: compare them to the archive,
