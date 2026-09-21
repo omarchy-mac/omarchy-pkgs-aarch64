@@ -625,6 +625,14 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertEqual('GUARD_CALLBACK' in result.stdout, not changed)
 
         verify_names = [step.get('name') for step in verify['steps']]
+        tools = next((step for step in verify['steps']
+                      if step.get('name') == 'Install input validation tools'), None)
+        self.assertIsNotNone(tools, 'Input validation requires bsdtar')
+        assert tools is not None
+        self.assertIn('sudo apt-get install -y --no-install-recommends libarchive-tools', tools['run'])
+        self.assertIn('bsdtar --version', tools['run'])
+        self.assertLess(verify_names.index('Install input validation tools'),
+                        verify_names.index('Validate exact immutable inputs without credentials'))
         sign_names = [step.get('name') for step in sign['steps']]
         self.assertIn('Authenticate private GHCR pull', sign_names)
         self.assertIn('Remove private GHCR credentials before protected secrets', sign_names)
