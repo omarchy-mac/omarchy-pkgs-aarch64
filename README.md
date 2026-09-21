@@ -92,7 +92,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `pinta` | 3.1.2-1 | Simple image editor |
 | `tensaku` | 0.29.0-1 | Screenshot annotation for Wayland |
 | `ttf-ia-writer` | 20181225-1 | iA Writer font subset |
-| `ttfx` | 0.3.2-1 | Terminal text effects, static binary |
+| `ttfx` | 0.3.3-1 | Terminal text effects, static binary |
 | `tzupdate` | 3.1.0-1 | Set timezone from IP geolocation |
 | `ufw-docker` | 251123-1 | Fix the Docker/UFW security flaw |
 | `vi` | 1:070224-9 | Original ex/vi text editor |
