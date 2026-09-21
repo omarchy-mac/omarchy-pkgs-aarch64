@@ -568,6 +568,10 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(verify['if'], "github.repository == 'omarchy-mac/omarchy-pkgs-aarch64'")
         self.assertEqual(sign['if'], "github.repository == 'omarchy-mac/omarchy-pkgs-aarch64'")
         for job in (verify, sign):
+            for step in job['steps']:
+                for line in step.get('run', '').splitlines():
+                    if 'docker run ' in line:
+                        self.assertIn('--user "$(id -u):$(id -g)"', line)
             checkout = next(step for step in job['steps'] if str(step.get('uses', '')).startswith('actions/checkout@'))
             self.assertEqual(checkout['with']['ref'], '${{ inputs.reviewed_head_sha }}')
             self.assertFalse(checkout['with']['persist-credentials'])

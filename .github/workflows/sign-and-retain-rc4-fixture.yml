@@ -268,7 +268,7 @@ jobs:
           rm -rf "$RUNNER_TEMP/rc4-sign/preflight-tmp"
           mkdir -p "$RUNNER_TEMP/rc4-sign/preflight-tmp"
           trap 'rm -rf "$RUNNER_TEMP/rc4-sign/preflight-tmp"' EXIT
-          docker run --rm --network none --pull never --read-only --cap-drop ALL --security-opt no-new-privileges \
+          docker run --rm --network none --pull never --user "$(id -u):$(id -g)" --read-only --cap-drop ALL --security-opt no-new-privileges \
             -v "$PWD:/w:ro" -w /w \
             -v "$RUNNER_TEMP/rc4-sign/preflight-tmp:/task/tmp" \
             -e TMPDIR=/task/tmp -e PYTHONDONTWRITEBYTECODE=1 \
@@ -338,7 +338,7 @@ jobs:
           rm -rf "$RUNNER_TEMP/rc4-sign/post-upload-tmp"
           mkdir -p "$RUNNER_TEMP/rc4-sign/post-upload-tmp"
           trap 'rm -rf "$RUNNER_TEMP/rc4-sign/post-upload-tmp"' EXIT
-          docker run --rm --network none --pull never --read-only --cap-drop ALL --security-opt no-new-privileges \
+          docker run --rm --network none --pull never --user "$(id -u):$(id -g)" --read-only --cap-drop ALL --security-opt no-new-privileges \
             -v "$PWD:/w:ro" -w /w \
             -v "$RUNNER_TEMP/rc4-sign/output/candidate:/task/candidate:ro" \
             -v "$RUNNER_TEMP/rc4-sign/post-upload-tmp:/task/tmp" \
