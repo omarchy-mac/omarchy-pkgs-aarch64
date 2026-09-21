@@ -89,6 +89,16 @@ def prepare_extra_recipe(recipe, name, revision, release):
     return recipe
 
 
+def normalize_archive_names(directory):
+    # makepkg includes an epoch colon in the filename; Actions artifacts do
+    # not allow colons. Keep the signed bytes and .PKGINFO version untouched.
+    for path in sorted(directory.glob('*.pkg.tar.*')):
+        if ':' in path.name:
+            target = path.with_name(path.name.replace(':', '.'))
+            require(not target.exists(), 'portable archive filename collision')
+            path.rename(target)
+
+
 def inspect_package(path):
     fields = {}
     for line in output('bsdtar', '-xOf', str(path), '.PKGINFO').splitlines():
@@ -260,6 +270,7 @@ def main():
             if path.is_file() and path.name != '.SRCINFO':
                 shutil.copy2(path, evidence / path.name)
         (evidence / '.SRCINFO').write_text(output('makepkg', '--printsrcinfo', cwd=build, env=package_env) + '\n')
+    normalize_archive_names(artifacts)
     records = {}
     packages = []
     for path in sorted(artifacts.glob('*.pkg.tar.*')):

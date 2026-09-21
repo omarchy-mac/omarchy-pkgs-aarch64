@@ -5,6 +5,7 @@ import fnmatch
 import importlib.util
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 
 import yaml
@@ -87,6 +88,19 @@ class PackageSetTest(unittest.TestCase):
 
 
 class RecipeTest(unittest.TestCase):
+    def test_portable_archive_names_preserve_bytes_and_reject_collisions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / 'asdcontrol-1:0.6.0-2-aarch64.pkg.tar.xz'
+            source.write_bytes(b'unchanged archive')
+            builder.normalize_archive_names(root)
+            target = root / 'asdcontrol-1.0.6.0-2-aarch64.pkg.tar.xz'
+            self.assertEqual(target.read_bytes(), b'unchanged archive')
+            source.write_bytes(b'another archive')
+            with self.assertRaisesRegex(ValueError, 'collision'):
+                builder.normalize_archive_names(root)
+            self.assertEqual(target.read_bytes(), b'unchanged archive')
+
     def test_desktop_tests_use_the_recorded_checkouts_and_neutral_terminal_environment(self):
         original = {'LC_ALL': 'C', 'NO_COLOR': '1', 'WAYLAND_DISPLAY': 'wayland-1', 'OMARCHY_PATH': '/active/desktop'}
         env = builder.test_environment(original, Path('/candidate/source'), Path('/candidate/recipes'), Path('/candidate/iso'), Path('/candidate/test-tools'))
