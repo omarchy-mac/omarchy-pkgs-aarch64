@@ -5,8 +5,53 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      retained_rc4_trust:
+        description: Qualify the fixed retained RC4 fixture (supplemental trust only)
+        type: boolean
+        required: false
+        default: false
 
 jobs:
+  retained-rc4-trust:
+    name: Supplemental retained RC4 native trust (manual only)
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.retained_rc4_trust &&
+      github.repository == 'omarchy-mac/omarchy-pkgs-aarch64' &&
+      github.repository_id == '1327386148' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Acquire only the fixed candidate and receipt
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$(uname -m)" == aarch64 ]] || exit 1
+          for tool in python3 curl docker; do command -v "$tool"; done
+          python3 scripts/test-signature-trust.py --acquire-retained "$RUNNER_TEMP/rc4-retained"
+      - name: Prepare native Arch tools without candidate access
+        run: |
+          set -euo pipefail
+          docker build --build-arg BASE_IMAGE=menci/archlinuxarm:base-devel -f .github/publisher.Dockerfile -t rc4-trust-tools .
+      - name: Verify exact signatures and supplemental bootstrap mechanics
+        run: |
+          set -euo pipefail
+          docker run --rm --network none \
+            -e RC4_DISPOSABLE_CONTAINER=1 -e PYTHONDONTWRITEBYTECODE=1 \
+            -v "$PWD:/w:ro" -v "$RUNNER_TEMP/rc4-retained/candidate:/candidate:ro" \
+            -w /w rc4-trust-tools bash -c '
+              set -euo pipefail
+              [[ "$(uname -m)" == aarch64 ]] || exit 1
+              [[ "$(pacman-conf Architecture)" == aarch64 ]] || exit 1
+              for tool in python3 pacman pacman-key pacman-conf gpg gpgconf bsdtar zstd xz vercmp bash cp; do command -v "$tool"; done
+              python3 scripts/test-signature-trust.py --retained-candidate /candidate
+            '
+
   self-tests:
     name: Self-tests
     runs-on: ubuntu-24.04
@@ -27,6 +72,7 @@ jobs:
             bash scripts/self-test.sh
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-package-signing.py -v
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-signature-trust.py
+            PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-retained-signature-trust.py -v
             NATIVE_VERCMP=1 PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-keyring-eligibility.py -v
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-release-bundle.py -v
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-bootstrap-rc.py -v
