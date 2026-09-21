@@ -1,6 +1,6 @@
 # Quattro image input candidates
 
-`Build quattro image inputs` builds `omarchy`, `omarchy-settings`, and `omarchy-mac` from one recorded commit of `omacom/omarchy-mac`. Its purpose is to provide the first inputs for a development Apple Silicon image built with the shared desktop branch.
+`Build quattro image inputs` builds `omarchy`, `omarchy-settings`, and `omarchy-mac` from one recorded commit of `omacom/omarchy-mac`. It also builds `avd-fw` and `libva-v4l2_request-avd` from the recorded package-repository recipes. Its purpose is to provide the first inputs for a development Apple Silicon image built with the shared desktop branch.
 
 ## Delivery boundary
 

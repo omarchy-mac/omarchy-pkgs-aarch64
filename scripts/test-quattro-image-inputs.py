@@ -107,6 +107,18 @@ class RecipeTest(unittest.TestCase):
         self.assertIn('\n' + COMMIT + '\nREVISION\n', result)
         subprocess.run(['bash', '-n'], input=result, text=True, check=True)
 
+    def test_video_recipes_keep_source_pins_and_record_recipe_revision(self):
+        for name in builder.VIDEO_PACKAGES:
+            recipe = (ROOT / 'pkgbuilds' / name / 'PKGBUILD').read_text()
+            prepared = builder.prepare_video_recipe(recipe, name, COMMIT, '1.90001')
+            self.assertIn('pkgrel=1.90001', prepared)
+            self.assertIn(f'usr/share/doc/{name}/source-revision', prepared)
+            self.assertIn('\n' + COMMIT + '\nREVISION\n', prepared)
+            for line in recipe.splitlines():
+                if line.startswith(('source=', 'sha256sums=')):
+                    self.assertIn(line, prepared)
+            subprocess.run(['bash', '-n'], input=prepared, text=True, check=True)
+
     def test_changed_recipe_shape_fails_instead_of_silently_misbuilding(self):
         with self.assertRaises(ValueError):
             builder.prepare_recipe('pkgver=4.0.2\n', 'omarchy', COMMIT, VERSION, '1.10001')
