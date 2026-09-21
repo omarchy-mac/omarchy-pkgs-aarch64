@@ -5,6 +5,7 @@ import fnmatch
 import importlib.util
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 
 import yaml
@@ -22,9 +23,10 @@ class PackageSetTest(unittest.TestCase):
     def setUp(self):
         self.versions = {'omarchy': VERSION + '-1.10001', 'omarchy-settings': VERSION + '-1.10001',
                          'omarchy-mac': '0.1.0-4.10001', 'avd-fw': '0.1-1.10001', 'libva-v4l2_request-avd': '1.3-1.10001'}
+        self.versions.update({n: '1.0-1.10001' for n in ('asdcontrol', 'tobi-try', 'qemu-user-static', 'qemu-user-static-binfmt')})
         self.records = {}
         for name, version in self.versions.items():
-            self.records[name] = ({'pkgname': [name], 'pkgver': [version], 'arch': ['any' if name == 'avd-fw' else 'aarch64']}, set(), COMMIT)
+            self.records[name] = ({'pkgname': [name], 'pkgver': [version], 'arch': ['any' if name in builder.ANY_PACKAGES else 'aarch64']}, set(), COMMIT)
         self.records['omarchy'][0]['depend'] = ['omarchy-settings=' + VERSION, 'snapper']
         self.records['omarchy'][1].add('usr/bin/omarchy-hw-apple')
         self.records['omarchy-mac'][0]['depend'] = ['omarchy', 'iwd']
@@ -56,7 +58,7 @@ class PackageSetTest(unittest.TestCase):
     def test_partial_and_mixed_revision_sets_are_rejected(self):
         saved = copy.deepcopy(self.records)
         del self.records['omarchy-settings']
-        with self.assertRaisesRegex(ValueError, 'exactly five'):
+        with self.assertRaisesRegex(ValueError, 'exactly nine'):
             self.verify()
         self.records = saved
         fields, paths, _ = self.records['omarchy-settings']
@@ -86,6 +88,19 @@ class PackageSetTest(unittest.TestCase):
 
 
 class RecipeTest(unittest.TestCase):
+    def test_portable_archive_names_preserve_bytes_and_reject_collisions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / 'asdcontrol-1:0.6.0-2-aarch64.pkg.tar.xz'
+            source.write_bytes(b'unchanged archive')
+            builder.normalize_archive_names(root)
+            target = root / 'asdcontrol-1.0.6.0-2-aarch64.pkg.tar.xz'
+            self.assertEqual(target.read_bytes(), b'unchanged archive')
+            source.write_bytes(b'another archive')
+            with self.assertRaisesRegex(ValueError, 'collision'):
+                builder.normalize_archive_names(root)
+            self.assertEqual(target.read_bytes(), b'unchanged archive')
+
     def test_desktop_tests_use_the_recorded_checkouts_and_neutral_terminal_environment(self):
         original = {'LC_ALL': 'C', 'NO_COLOR': '1', 'WAYLAND_DISPLAY': 'wayland-1', 'OMARCHY_PATH': '/active/desktop'}
         env = builder.test_environment(original, Path('/candidate/source'), Path('/candidate/recipes'), Path('/candidate/iso'), Path('/candidate/test-tools'))
@@ -108,11 +123,11 @@ class RecipeTest(unittest.TestCase):
         subprocess.run(['bash', '-n'], input=result, text=True, check=True)
 
     def test_video_recipes_keep_source_pins_and_record_recipe_revision(self):
-        for name in builder.VIDEO_PACKAGES:
+        for name in builder.EXTRA_BASES:
             recipe = (ROOT / 'pkgbuilds' / name / 'PKGBUILD').read_text()
-            prepared = builder.prepare_video_recipe(recipe, name, COMMIT, '1.90001')
+            prepared = builder.prepare_extra_recipe(recipe, name, COMMIT, '1.90001')
             self.assertIn('pkgrel=1.90001', prepared)
-            self.assertIn(f'usr/share/doc/{name}/source-revision', prepared)
+            self.assertIn('usr/share/doc/$pkgname/source-revision', prepared)
             self.assertIn('\n' + COMMIT + '\nREVISION\n', prepared)
             for line in recipe.splitlines():
                 if line.startswith(('source=', 'sha256sums=')):

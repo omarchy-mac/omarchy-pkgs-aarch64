@@ -24,6 +24,9 @@ on:
       - patches/quattro-desktop-test-fixtures.patch
       - pkgbuilds/omarchy-steam-fex/omarchy-launch-steam
       - pkgbuilds/omarchy-mac/**
+      - pkgbuilds/asdcontrol/**
+      - pkgbuilds/tobi-try/**
+      - pkgbuilds/qemu-user-static/**
       - pkgbuilds/avd-fw/**
       - pkgbuilds/libva-v4l2_request-avd/**
   push:
@@ -46,6 +49,9 @@ on:
       - patches/quattro-desktop-test-fixtures.patch
       - pkgbuilds/omarchy-steam-fex/omarchy-launch-steam
       - pkgbuilds/omarchy-mac/**
+      - pkgbuilds/asdcontrol/**
+      - pkgbuilds/tobi-try/**
+      - pkgbuilds/qemu-user-static/**
       - pkgbuilds/avd-fw/**
       - pkgbuilds/libva-v4l2_request-avd/**
   workflow_dispatch:
@@ -98,7 +104,7 @@ jobs:
         run: python3 scripts/detect-quattro-image-inputs.py
 
   build:
-    name: Build five candidate packages
+    name: Build nine candidate packages
     needs: detect
     if: needs.detect.outputs.needs_build == 'true'
     runs-on: ubuntu-24.04-arm
@@ -188,7 +194,7 @@ jobs:
           retention-days: 30
 
   sign:
-    name: Sign five candidate packages
+    name: Sign nine candidate packages
     needs: [detect, build]
     if: github.repository == 'omarchy-mac/omarchy-pkgs-aarch64' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && (inputs.source_ref == '' || inputs.source_ref == 'quattro-upstream')
     runs-on: ubuntu-24.04

@@ -28,11 +28,11 @@ def validate(root, expected_hash, source):
     require(manifest.is_file() and not manifest.is_symlink(), 'unsafe manifest')
     require(build.digest(manifest) == expected_hash, 'manifest checksum mismatch')
     data = json.loads(manifest.read_text())
-    require(data['schema'] == 2 and data['candidate_only'] is True
+    require(data['schema'] == 3 and data['candidate_only'] is True
             and data['publication'] == 'none' and data['signing'] == 'none', 'not an unsigned candidate')
     require(data['source_repository'] == 'omacom/omarchy-mac'
             and data['source_revision'] == source, 'wrong candidate source')
-    require(len(data['packages']) == 5, 'expected five packages')
+    require(len(data['packages']) == 9, 'expected nine packages')
     records, versions, files = {}, {}, []
     for item in data['packages']:
         name, filename = item['name'], item['filename']
