@@ -65,12 +65,12 @@ class RetainedTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('trust', ROOT/'scripts/test-signature-trust.py')
         trust = importlib.util.module_from_spec(spec); spec.loader.exec_module(trust)
         self.assertTrue(hasattr(trust, 'signature_result'), 'signature-specific assertions missing')
-        trust.signature_result('valid', subprocess.CompletedProcess([], 0, b'ok'), True)
+        trust.signature_result('valid', subprocess.CompletedProcess([], 0, b'ok'), True, report=False)
         for text in [b'invalid or corrupted package (PGP signature)', b'required key missing from keyring', b'missing required signature', b'signature from x is unknown trust']:
-            trust.signature_result('negative', subprocess.CompletedProcess([], 1, text), False)
+            trust.signature_result('negative', subprocess.CompletedProcess([], 1, text), False, report=False)
         for text in [b'could not resolve host', b'failed to commit transaction (conflicting files)', b'error loading package', b'checking PGP signatures\nerror: disk full']:
             with self.assertRaises(RuntimeError):
-                trust.signature_result('negative', subprocess.CompletedProcess([], 1, text), False)
+                trust.signature_result('negative', subprocess.CompletedProcess([], 1, text), False, report=False)
         source = (ROOT/'scripts/test-signature-trust.py').read_text()
         for case in ['valid-package-install', 'modified-package', 'missing-package-signature', 'unrelated-package-trust',
                      'valid-database-download', 'modified-database', 'missing-database-signature', 'unrelated-database-trust',
@@ -115,6 +115,85 @@ class RetainedTests(unittest.TestCase):
         source = (ROOT/'scripts/test-signature-trust.py').read_text()
         self.assertIn('if success and result.returncode == 0:', source)
         self.assertIn("shutil.rmtree(root/'etc/pacman.d/gnupg'", source)
+
+    def test_transaction_failure_reports_exit_status(self):
+        import contextlib, io
+        spec = importlib.util.spec_from_file_location('trust', ROOT/'scripts/test-signature-trust.py')
+        trust = importlib.util.module_from_spec(spec); spec.loader.exec_module(trust)
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            with self.assertRaisesRegex(RuntimeError, r'valid-package-install.*exit status 23') as failure:
+                trust.signature_result('valid-package-install', subprocess.CompletedProcess([], 23, b'install failed'), True)
+        self.assertIn('install failed', str(failure.exception))
+        self.assertNotIn('PASS', output.getvalue())
+
+    def test_install_query_mismatch_reports_both_results_without_pass(self):
+        import contextlib, io, tempfile
+        from unittest.mock import Mock
+        spec = importlib.util.spec_from_file_location('trust', ROOT/'scripts/test-signature-trust.py')
+        assert spec and spec.loader
+        trust = importlib.util.module_from_spec(spec); spec.loader.exec_module(trust)
+        self.assertTrue(hasattr(trust, 'installed_package_result'), 'installed-state diagnostic boundary missing')
+        # Synthetic outputs, not captured native evidence. Keep mismatches fail-closed.
+        with tempfile.TemporaryDirectory() as directory:
+            task = Path(directory)
+            install = subprocess.CompletedProcess([], 0, b'Initialize pacman trust\n')
+            query = subprocess.CompletedProcess([], 0, b'warning: query diagnostic\nomarchy-mac-keyring 20260914-2\n')
+            command = Mock(return_value=query)
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output), self.assertRaisesRegex(ValueError, 'Exact package installation not recorded') as failure:
+                trust.installed_package_result('valid-package-install', install, command,
+                                               ['pacman', '--dbpath', task/'db'], 'omarchy-mac-keyring', task/'root', task)
+            detail = str(failure.exception)
+            for expected in ['valid-package-install', 'install exit status 0', 'query exit status 0',
+                             repr(install.stdout), repr(query.stdout), str(task/'db')]:
+                self.assertIn(expected, detail)
+            command.assert_called_once_with('pacman', '--dbpath', task/'db', '-Q', 'omarchy-mac-keyring', ok=False)
+            self.assertNotIn('PASS', output.getvalue())
+
+    def test_installation_pass_requires_transaction_query_payload_and_scriptlet(self):
+        import contextlib, io, shutil, tempfile
+        from unittest.mock import Mock
+        spec = importlib.util.spec_from_file_location('trust', ROOT/'scripts/test-signature-trust.py')
+        assert spec and spec.loader
+        trust = importlib.util.module_from_spec(spec); spec.loader.exec_module(trust)
+        with tempfile.TemporaryDirectory() as directory:
+            task = Path(directory); root = task/'root'
+            payload = root/'usr/share/pacman/keyrings/omarchy-mac.gpg'
+            payload.parent.mkdir(parents=True)
+            public = ROOT/'pkgbuilds/omarchy-mac-keyring/omarchy-mac.gpg'
+            cases = [
+                ('nonzero-install', 7, b'failed', 0, b'omarchy-mac-keyring 20260914-2', True, True, RuntimeError),
+                ('zero-exit-scriptlet-error', 0, b'error: command failed to execute correctly', 0, b'omarchy-mac-keyring 20260914-2', True, True, RuntimeError),
+                ('query-nonzero', 0, b'ok', 1, b'omarchy-mac-keyring 20260914-2', True, True, ValueError),
+                ('query-empty', 0, b'ok', 0, b'', True, True, ValueError),
+                ('wrong-version', 0, b'ok', 0, b'omarchy-mac-keyring 20260914-1', True, True, ValueError),
+                ('wrong-payload', 0, b'ok', 0, b'omarchy-mac-keyring 20260914-2', False, True, ValueError),
+                ('missing-scriptlet', 0, b'ok', 0, b'omarchy-mac-keyring 20260914-2', True, False, ValueError),
+                ('complete-install', 0, b'ok', 0, b'omarchy-mac-keyring 20260914-2\n', True, True, None),
+                ('scriptlet-message', 0, b'Initialize pacman trust', 0, b'omarchy-mac-keyring 20260914-2\n', True, False, None),
+            ]
+            for name, install_rc, install_text, query_rc, query_text, valid_payload, scriptlet, error in cases:
+                with self.subTest(case=name):
+                    shutil.copyfile(public, payload)
+                    if not valid_payload: payload.write_bytes(b'wrong')
+                    (task/'pacman.log').write_text('[ALPM-SCRIPTLET] populated\n' if scriptlet else '')
+                    command = Mock(return_value=subprocess.CompletedProcess([], query_rc, query_text))
+                    output = io.StringIO()
+                    with contextlib.redirect_stdout(output):
+                        if error:
+                            with self.assertRaises(error):
+                                trust.installed_package_result(name, subprocess.CompletedProcess([], install_rc, install_text),
+                                                               command, ['pacman'], 'omarchy-mac-keyring', root, task)
+                        else:
+                            trust.installed_package_result(name, subprocess.CompletedProcess([], install_rc, install_text),
+                                                           command, ['pacman'], 'omarchy-mac-keyring', root, task)
+                    if error:
+                        self.assertNotIn('PASS', output.getvalue())
+                    else:
+                        self.assertEqual(output.getvalue(), 'PASS supplemental native trust: '+name+'\n')
+                    if name in ('nonzero-install', 'zero-exit-scriptlet-error'):
+                        command.assert_not_called()
 
     def test_default_cli_routes_only_to_fixture(self):
         from unittest.mock import patch
