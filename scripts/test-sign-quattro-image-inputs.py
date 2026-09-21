@@ -142,6 +142,8 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(job['permissions'], {'contents': 'read'})
         self.assertIn("github.event_name != 'pull_request'", job['if'])
         self.assertIn("github.ref == 'refs/heads/main'", job['if'])
+        self.assertIn("(inputs.source_ref == '' || inputs.source_ref == 'quattro-upstream')", job['if'])
+        self.assertNotIn('inputs.force', job['if'])
         for forbidden in ('publish.sh', 'gh release', 'repo-add', 'contents: write', 'makepkg'):
             self.assertNotIn(forbidden, text)
         secret_steps = [step for step in job['steps'] if 'secrets.' in str(step)]

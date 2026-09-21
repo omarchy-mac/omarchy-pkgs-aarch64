@@ -186,7 +186,7 @@ jobs:
   sign:
     name: Sign three candidate packages
     needs: [detect, build]
-    if: github.repository == 'omarchy-mac/omarchy-pkgs-aarch64' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.repository == 'omarchy-mac/omarchy-pkgs-aarch64' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && (inputs.source_ref == '' || inputs.source_ref == 'quattro-upstream')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: package-signing-edge
