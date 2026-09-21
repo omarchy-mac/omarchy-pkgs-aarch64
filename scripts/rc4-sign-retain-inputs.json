@@ -1,0 +1,569 @@
+{
+  "classification": "nonpublishing signed RC4 exact-byte qualification fixture only",
+  "expected_counts": {
+    "database_and_files": 4,
+    "evidence": 1,
+    "packages": 52
+  },
+  "inputs": [
+    {
+      "architecture": "aarch64",
+      "asset_id": 576675749,
+      "filename": "1password-8.12.36-2-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "1password",
+      "sha256": "d72a5e9167fca25b907651de9692b21e372a30eb934867fb2db6d8b43a0b5e00",
+      "size": 142528688,
+      "version": "8.12.36-2"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576675183,
+      "filename": "1password-cli-2.39.0-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "1password-cli",
+      "sha256": "d9ee791d48e7ac79dd370921b09437f4d486e9f6ac239cfe09df0a78598c4396",
+      "size": 9467212,
+      "version": "2.39.0-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576676442,
+      "filename": "aether-4.29.9-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "aether",
+      "sha256": "73874fb286d1d993200d32552941b2a32efb5dae11dcc41d14c793105febb1f6",
+      "size": 11403512,
+      "version": "4.29.9-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576674845,
+      "filename": "aspnet-runtime-bin-10.0.12.sdk401-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "aspnet-runtime-bin",
+      "sha256": "21e9d1a9113673469fc386131cd3a1da9d502e14eb191875f84cc2bb10b2f125",
+      "size": 7835180,
+      "version": "10.0.12.sdk401-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576675554,
+      "filename": "aspnet-targeting-pack-bin-10.0.12.sdk401-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "aspnet-targeting-pack-bin",
+      "sha256": "c82b4ffce0b24fb1fdbfe9a3059882754b424b9153dda0de38808e4a1791ab73",
+      "size": 3857308,
+      "version": "10.0.12.sdk401-1"
+    },
+    {
+      "architecture": "any",
+      "asset_id": 576675601,
+      "filename": "avd-fw-0.1-1-any.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "avd-fw",
+      "sha256": "1e45a05995f7114b342c4e562108a06998a5bbfdb889ac4eee46f00895cd4f16",
+      "size": 9652,
+      "version": "0.1-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576674125,
+      "filename": "brave-origin-bin-1.1.95.104-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "brave-origin-bin",
+      "sha256": "390aaca2635df7d0a79344f4bac41594354018319b695c4e9510e73f97beb4cc",
+      "size": 130893576,
+      "version": "1:1.95.104-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576674422,
+      "filename": "cliamp-2.2.0-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "cliamp",
+      "sha256": "315da783bb2fff0410cf2ccf594d842be24b9620993c543c97da7de3ba81627e",
+      "size": 8576680,
+      "version": "2.2.0-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576676034,
+      "filename": "cursor-bin-3.20.17-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "cursor-bin",
+      "sha256": "ea4a6ad5f27cf18755b6f0dbf8670e414da6427899bc29f4b0d708cc3713dc2e",
+      "size": 300874308,
+      "version": "3.20.17-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576676350,
+      "filename": "dotnet-host-bin-10.0.12.sdk401-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "dotnet-host-bin",
+      "sha256": "5e82e8f32b3cd9ab00694f3c6c79171e7ff957eeeb55601828695207eb9436a9",
+      "size": 132660,
+      "version": "10.0.12.sdk401-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576676503,
+      "filename": "dotnet-runtime-2.1-2.1.30.sdk818-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "dotnet-runtime-2.1",
+      "sha256": "9d68333805337c7709d622884ac6876a62f38f4504ec32bf7e07c03488e5c1e2",
+      "size": 16927256,
+      "version": "2.1.30.sdk818-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576674336,
+      "filename": "dotnet-runtime-bin-10.0.12.sdk401-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "dotnet-runtime-bin",
+      "sha256": "4657373dca079b9ab93d63c7f8add975d853cbc25a393ec681ada36bba9fec22",
+      "size": 22914160,
+      "version": "10.0.12.sdk401-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576674377,
+      "filename": "dotnet-sdk-2.1-2.1.30.sdk818-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "dotnet-sdk-2.1",
+      "sha256": "da80e72104de32e57f7183d201aba62b7dbf5d8aad0496500b33e51cb9adbfae",
+      "size": 25897556,
+      "version": "2.1.30.sdk818-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576675069,
+      "filename": "dotnet-sdk-bin-10.0.12.sdk401-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "dotnet-sdk-bin",
+      "sha256": "bb0f0a6d8918ec18f85c1b5c40b5ee2a83981cf944fa1a22b3fa06b4ebf4c3b6",
+      "size": 101487708,
+      "version": "10.0.12.sdk401-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576674563,
+      "filename": "dotnet-targeting-pack-bin-10.0.12.sdk401-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "dotnet-targeting-pack-bin",
+      "sha256": "9b1bcc285fdee4befacf25a50202017e15842e45bb56c5836d8e45a6283417a3",
+      "size": 6696820,
+      "version": "10.0.12.sdk401-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576674092,
+      "filename": "ghostty-1.3.1-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "ghostty",
+      "sha256": "a56ec3df0173c8f4d2778853909737bc2421bc2d1047b83470b86be31bd65647",
+      "size": 15961936,
+      "version": "1.3.1-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576675586,
+      "filename": "ghostty-nautilus-1.3.1-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "ghostty-nautilus",
+      "sha256": "a6f1bcf22053ab351fc3eac68764cc4deccb965d4aa41aba2cf1806b259a8f86",
+      "size": 5964,
+      "version": "1.3.1-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576675690,
+      "filename": "ghostty-shell-integration-1.3.1-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "ghostty-shell-integration",
+      "sha256": "8acd562d036b0dac69e0a4d6995f1929478f776e5e82b0474aa871df726e5d00",
+      "size": 23536,
+      "version": "1.3.1-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576674319,
+      "filename": "ghostty-terminfo-1.3.1-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "ghostty-terminfo",
+      "sha256": "874356491e9c4a930f2aa33b3b72d28128ddbd9390ae75e0ccf6d64038182b87",
+      "size": 6456,
+      "version": "1.3.1-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576674589,
+      "filename": "grok-bot-0.47.0-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "grok-bot",
+      "sha256": "ba43b5916aa2bb9f92ee8c9eec0b8159dfcf52c38af02cab8b3ef5201ae447b2",
+      "size": 89153960,
+      "version": "0.47.0-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576674290,
+      "filename": "herdr-0.9.1-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "herdr",
+      "sha256": "07e6f20d2079e8726a2fb9ed353bf1d020ec40cdf794ef17277fb4ba558f1bc7",
+      "size": 5029220,
+      "version": "0.9.1-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576674491,
+      "filename": "hermes-desktop-2026.9.7-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "hermes-desktop",
+      "sha256": "163bcf6b30f8fde24179cecbc5eec3dc72710b8108806c19b6c2110d26b084e1",
+      "size": 100226252,
+      "version": "2026.9.7-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576674047,
+      "filename": "hypa-ttfx-bin-0.3.1-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "hypa-ttfx-bin",
+      "sha256": "e81f8e3d0d1c1333b206fac5cad1005cecc070ec6254b2cf06a7ab06535f1bfb",
+      "size": 979160,
+      "version": "0.3.1-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576674861,
+      "filename": "hyprland-preview-share-picker-0.2.1-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "hyprland-preview-share-picker",
+      "sha256": "e6e4540ff2e69d6dc49c74ca3cdc3c2cd939e1084e0abd59673cc3d1b9b8af56",
+      "size": 1575508,
+      "version": "0.2.1-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576674973,
+      "filename": "libva-v4l2_request-avd-1.3-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "libva-v4l2_request-avd",
+      "sha256": "95954647e1f3fb818e9ee1d90d23fc2d2f88c6b70be14cd3462a2aa801179199",
+      "size": 85284,
+      "version": "1.3-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576674458,
+      "filename": "localsend-1.18.2-2-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "localsend",
+      "sha256": "2653e9e3453bfc61693e848ecb93d8ab32c234f42914fce5b8a1109e2360d7c4",
+      "size": 17659700,
+      "version": "1.18.2-2"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576676374,
+      "filename": "mise-bin-2026.9.11-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "mise-bin",
+      "sha256": "7f0b7c239b0b792c8865fdd09d746b80f8ae201c69e02fca60c0690b61321955",
+      "size": 24946860,
+      "version": "2026.9.11-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576675918,
+      "filename": "obs-studio-32.2.2-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "obs-studio",
+      "sha256": "f83e5109da622f773c9a4a1a7a3a162bd48545177651aab865c4445a65e1b1e9",
+      "size": 6279808,
+      "version": "32.2.2-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576673920,
+      "filename": "obsidian-appimage-1.13.7-2-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "obsidian-appimage",
+      "sha256": "5766e841b072dec13b5c4765a65ebf395314f87e9463fa714b647ab7118adc09",
+      "size": 134784728,
+      "version": "1.13.7-2"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576674780,
+      "filename": "omacalc-0.2.2-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "omacalc",
+      "sha256": "7c9fc3fff7a0368eb95eb3bdbb1d085fbf1e803134ea01ed088a2a46c2521610",
+      "size": 106068,
+      "version": "0.2.2-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576674764,
+      "filename": "omacut-0.4.0-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "omacut",
+      "sha256": "b3c0a3d544df4c28110c48c929af4a188f97736bc01391d59956633b269d708f",
+      "size": 73664,
+      "version": "0.4.0-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576676265,
+      "filename": "omarchy-4.0.3rc4-2-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "omarchy",
+      "sha256": "14c618f8e937fab46aa7db7d1023d8f48039cd1d996f0804a172b1b3873a66f3",
+      "size": 65776212,
+      "version": "4.0.3rc4-2"
+    },
+    {
+      "architecture": "any",
+      "asset_id": 576675245,
+      "filename": "omarchy-emacs-1.10.1-1-any.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "omarchy-emacs",
+      "sha256": "f8e29fa98182f7916dd9bee632a87985de59fc6f788090b04b5c1d119ddf725b",
+      "size": 22404,
+      "version": "1.10.1-1"
+    },
+    {
+      "architecture": "any",
+      "asset_id": 570813961,
+      "filename": "omarchy-keyring-20251027-1-any.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "omarchy-keyring",
+      "sha256": "948e49a1d82e325b3931336551fdc236994ae2bafd4336886de6489bc4155cac",
+      "size": 9740,
+      "version": "20251027-1"
+    },
+    {
+      "architecture": "any",
+      "asset_id": 570814012,
+      "filename": "omarchy-mac-keyring-20260914-2-any.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "omarchy-mac-keyring",
+      "sha256": "8ca587d9c24d36cd2e67237ca69b3eeac1b3726e691228131d6d062d258cdfb7",
+      "size": 9740,
+      "version": "20260914-2"
+    },
+    {
+      "architecture": "any",
+      "asset_id": 576674876,
+      "filename": "omarchy-nvim-2026.8.13-1-any.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "omarchy-nvim",
+      "sha256": "062c6fa546b39763c9025f76ced50fcb6a4301701b24f03ab0db7e84d969c6c2",
+      "size": 31384580,
+      "version": "2026.8.13-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576675640,
+      "filename": "omarchy-settings-4.0.3rc4-2-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "omarchy-settings",
+      "sha256": "c15940615004ea7d61cb6d7d0f7dee1af335688aa32f4ab8602eaa8923ad347e",
+      "size": 706188,
+      "version": "4.0.3rc4-2"
+    },
+    {
+      "architecture": "any",
+      "asset_id": 576674063,
+      "filename": "omarchy-webapp-theme-0.3.7-1-any.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "omarchy-webapp-theme",
+      "sha256": "81efc55da31345013266be6b40e08012a252a78b1daee5db55421477a47c9655",
+      "size": 93912,
+      "version": "0.3.7-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576675714,
+      "filename": "omawrite-0.5.0-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "omawrite",
+      "sha256": "38ba1699b3b0b7e729814f2511efd37473a729460cbf3da903a3a3375e418f87",
+      "size": 186160,
+      "version": "0.5.0-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576675270,
+      "filename": "openai-codex-desktop-26.915.31029-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "openai-codex-desktop",
+      "sha256": "d61c07850203fbf2656fa2c5cfc8e3e37a6c44cf18161aaacee12a49350e03df",
+      "size": 396364712,
+      "version": "26.915.31029-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576674943,
+      "filename": "pinta-3.1.2-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "pinta",
+      "sha256": "da433c8484978beee372a2bfbb341ac59ec38d3ae9b19eee4f6ee167ff5f4a83",
+      "size": 5169556,
+      "version": "3.1.2-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576673895,
+      "filename": "tensaku-0.29.0-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "tensaku",
+      "sha256": "ab372e70de73b226cea5bc0f2725ed4ed9b3dd071daafc16b3a87b06c7e4b2fb",
+      "size": 2310480,
+      "version": "0.29.0-1"
+    },
+    {
+      "architecture": "any",
+      "asset_id": 576675966,
+      "filename": "ttf-ia-writer-20181225-1-any.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "ttf-ia-writer",
+      "sha256": "884268a79cafffba6bfa4f3f02f0c0f60013b9bde52e45c327c3c6148b129d81",
+      "size": 318512,
+      "version": "20181225-1"
+    },
+    {
+      "architecture": "any",
+      "asset_id": 570066291,
+      "filename": "ttf-jetbrains-mono-nerd-basic-3.5.1-1-any.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "ttf-jetbrains-mono-nerd-basic",
+      "sha256": "3935523e507663796ac156db0d53024b1e011f17714c7f9a65d4e77fb7898378",
+      "size": 1355000,
+      "version": "3.5.1-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576675230,
+      "filename": "ttfx-0.3.2-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "ttfx",
+      "sha256": "164943bb9dc23894279c7ba0f6d25ec9dee86aaa42151b8e0f3f84934f1a085c",
+      "size": 604756,
+      "version": "0.3.2-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576674919,
+      "filename": "tzupdate-3.1.0-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "tzupdate",
+      "sha256": "dfef2dac67204a9ae29a6b51e9a4f41b22a8214f31c66e37dca7f5581d001e9e",
+      "size": 880668,
+      "version": "3.1.0-1"
+    },
+    {
+      "architecture": "any",
+      "asset_id": 576676493,
+      "filename": "ufw-docker-251123-1-any.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "ufw-docker",
+      "sha256": "3fa7f3067c229beac61bb173766b58f1c409aa690d333ce8ae0f42b415f278fc",
+      "size": 27516,
+      "version": "251123-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576674808,
+      "filename": "vi-1.070224-9-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "vi",
+      "sha256": "89bf470fc21a2288157834c58f1a74182d20e21f68e0e17127790b08f7bb6c17",
+      "size": 123212,
+      "version": "1:070224-9"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576675984,
+      "filename": "voxtype-bin-1.0.1-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "voxtype-bin",
+      "sha256": "aeac2727e49dabbac4ce0911a89705e61fe0e6333ee762e29cbc4a3c12d772ad",
+      "size": 17846708,
+      "version": "1.0.1-1"
+    },
+    {
+      "architecture": "any",
+      "asset_id": 576674262,
+      "filename": "xdg-terminal-exec-0.14.3-1-any.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "xdg-terminal-exec",
+      "sha256": "b6b2de41a0f51d4c8d1abd1ff6621ec6eef16783d8a8f00d824683920cc9bdcd",
+      "size": 18464,
+      "version": "0.14.3-1"
+    },
+    {
+      "architecture": "any",
+      "asset_id": 576675001,
+      "filename": "yaru-icon-theme-26.04.5.1ubuntu-1-any.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "yaru-icon-theme",
+      "sha256": "a1323149a6dfcb9b2971f03354dd8d82bfd8d0477e9a8bc31b647f2138226f67",
+      "size": 42823356,
+      "version": "26.04.5.1ubuntu-1"
+    },
+    {
+      "architecture": "aarch64",
+      "asset_id": 576675054,
+      "filename": "yay-13.0.1-1-aarch64.pkg.tar.xz",
+      "kind": "package",
+      "package_name": "yay",
+      "sha256": "a4b3fc67a3c4cb9295b726fcd03157db3ae8310114ceeaed2cb16cc045d0c954",
+      "size": 3177456,
+      "version": "13.0.1-1"
+    },
+    {
+      "asset_id": 576678948,
+      "filename": "omarchy-aarch64.db",
+      "kind": "database",
+      "sha256": "ed79361ccd972119c692712360bfc460aadd96698120c79c41662cbdbd57db49",
+      "size": 12359
+    },
+    {
+      "asset_id": 576678860,
+      "filename": "omarchy-aarch64.db.tar.zst",
+      "kind": "database",
+      "sha256": "ed79361ccd972119c692712360bfc460aadd96698120c79c41662cbdbd57db49",
+      "size": 12359
+    },
+    {
+      "asset_id": 576678768,
+      "filename": "omarchy-aarch64.files",
+      "kind": "files",
+      "sha256": "504325f7e544647acf10e5413ffe414e6e310a4ea049738f3422760f7551cb0a",
+      "size": 274658
+    },
+    {
+      "asset_id": 576678715,
+      "filename": "omarchy-aarch64.files.tar.zst",
+      "kind": "files",
+      "sha256": "504325f7e544647acf10e5413ffe414e6e310a4ea049738f3422760f7551cb0a",
+      "size": 274658
+    },
+    {
+      "asset_id": 570066361,
+      "filename": "build-inputs.txt",
+      "kind": "evidence",
+      "sha256": "3b7e33eb078cc6e3a28d1a88ea17d80c461fe908ad2cdf0ebd7e8ec91fe8d148",
+      "size": 54018
+    }
+  ],
+  "release_id": 390634001,
+  "repository": "omarchy-mac/omarchy-pkgs-aarch64",
+  "repository_id": 1327386148,
+  "schema": 1
+}

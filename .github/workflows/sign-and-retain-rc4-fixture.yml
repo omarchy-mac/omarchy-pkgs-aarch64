@@ -1,0 +1,368 @@
+name: Retain signed RC4 exact-byte qualification fixture
+
+on:
+  workflow_dispatch:
+    inputs:
+      immutable_inputs_sha256:
+        description: 'Reviewed exact SHA-256 of scripts/rc4-sign-retain-inputs.json'
+        type: string
+        required: true
+      reviewed_head_sha:
+        description: 'Reviewed 40-hex commit that must equal the dispatched workflow head'
+        type: string
+        required: true
+      workflow_blob_sha:
+        description: 'Reviewed git blob SHA of this workflow'
+        type: string
+        required: true
+      helper_blob_sha:
+        description: 'Reviewed git blob SHA of scripts/rc4-sign-retain.py'
+        type: string
+        required: true
+      signer_blob_sha:
+        description: 'Reviewed git blob SHA of scripts/package-signing.py'
+        type: string
+        required: true
+      feeder_blob_sha:
+        description: 'Reviewed git blob SHA of scripts/rc4-signing-secret-feeder.py'
+        type: string
+        required: true
+      policy_blob_sha:
+        description: 'Reviewed git blob SHA of pkgbuilds/omarchy-mac-keyring/signing-policy.json'
+        type: string
+        required: true
+      public_key_blob_sha:
+        description: 'Reviewed git blob SHA of pkgbuilds/omarchy-mac-keyring/omarchy-mac.gpg'
+        type: string
+        required: true
+      image_provenance:
+        description: 'Required JSON with exactly dockerfile_blob_sha (40 hex) and base_image_digest (sha256 digest); reviewed claims, not reproducibility proof'
+        type: string
+        required: true
+      signer_image_digest:
+        description: 'REQUIRED reviewed digest of prebuilt immutable RC4 fixture signer image'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rc4-sign-and-retain-fixture
+  cancel-in-progress: false
+
+env:
+  FIXTURE_CLASSIFICATION: nonpublishing signed RC4 exact-byte qualification fixture only
+  IDENTITY_PATH: scripts/rc4-sign-retain-inputs.json
+
+jobs:
+  verify-inputs:
+    name: Acquire and verify exact RC4 fixture inputs
+    if: github.repository == 'omarchy-mac/omarchy-pkgs-aarch64'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      artifact-id: ${{ steps.retain-inputs.outputs.artifact-id }}
+      artifact-digest: ${{ steps.retain-inputs.outputs.artifact-digest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.reviewed_head_sha }}
+          persist-credentials: false
+
+      - name: Validate reviewed executable and immutable identities
+        env:
+          OBSERVED_REPOSITORY_ID: ${{ github.repository_id }}
+          INPUT_IMAGE_PROVENANCE: ${{ inputs.image_provenance }}
+          INPUT_IDENTITY_SHA256: ${{ inputs.immutable_inputs_sha256 }}
+          INPUT_REVIEWED_HEAD_SHA: ${{ inputs.reviewed_head_sha }}
+          INPUT_WORKFLOW_BLOB_SHA: ${{ inputs.workflow_blob_sha }}
+          INPUT_HELPER_BLOB_SHA: ${{ inputs.helper_blob_sha }}
+          INPUT_SIGNER_BLOB_SHA: ${{ inputs.signer_blob_sha }}
+          INPUT_FEEDER_BLOB_SHA: ${{ inputs.feeder_blob_sha }}
+          INPUT_POLICY_BLOB_SHA: ${{ inputs.policy_blob_sha }}
+          INPUT_PUBLIC_KEY_BLOB_SHA: ${{ inputs.public_key_blob_sha }}
+          INPUT_SIGNER_IMAGE_DIGEST: ${{ inputs.signer_image_digest }}
+          INPUT_DOCKERFILE_BLOB_SHA: ${{ fromJSON(inputs.image_provenance).dockerfile_blob_sha }}
+          INPUT_BASE_IMAGE_DIGEST: ${{ fromJSON(inputs.image_provenance).base_image_digest }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]
+          [[ "$GITHUB_REPOSITORY" == omarchy-mac/omarchy-pkgs-aarch64 ]] || exit 1
+          [[ "$OBSERVED_REPOSITORY_ID" == 1327386148 ]] || exit 1
+          [[ "$GITHUB_RUN_ATTEMPT" == 1 ]] || exit 1
+          [[ "$INPUT_IDENTITY_SHA256" =~ ^[a-f0-9]{64}$ ]]
+          for value in "$INPUT_REVIEWED_HEAD_SHA" "$INPUT_WORKFLOW_BLOB_SHA" "$INPUT_HELPER_BLOB_SHA" "$INPUT_SIGNER_BLOB_SHA" "$INPUT_FEEDER_BLOB_SHA" "$INPUT_POLICY_BLOB_SHA" "$INPUT_PUBLIC_KEY_BLOB_SHA"; do
+            [[ "$value" =~ ^[a-f0-9]{40}$ ]]
+          done
+          [[ "$INPUT_SIGNER_IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          jq -e 'type == "object" and keys == ["base_image_digest", "dockerfile_blob_sha"] and (.dockerfile_blob_sha | type == "string" and test("^[a-f0-9]{40}$")) and (.base_image_digest | type == "string" and test("^sha256:[a-f0-9]{64}$"))' <<<"$INPUT_IMAGE_PROVENANCE" > /dev/null
+          [[ "$(git hash-object .github/rc4-fixture-signer.Dockerfile)" == "$INPUT_DOCKERFILE_BLOB_SHA" ]]
+          [[ "$GITHUB_SHA" == "$INPUT_REVIEWED_HEAD_SHA" ]]
+          [[ "$(git rev-parse HEAD)" == "$INPUT_REVIEWED_HEAD_SHA" ]]
+          actual=$(sha256sum "$IDENTITY_PATH"); actual=${actual%% *}; [[ "$actual" == "$INPUT_IDENTITY_SHA256" ]]
+          [[ "$(git hash-object .github/workflows/sign-and-retain-rc4-fixture.yml)" == "$INPUT_WORKFLOW_BLOB_SHA" ]]
+          [[ "$(git hash-object scripts/rc4-sign-retain.py)" == "$INPUT_HELPER_BLOB_SHA" ]]
+          [[ "$(git hash-object scripts/package-signing.py)" == "$INPUT_SIGNER_BLOB_SHA" ]]
+          [[ "$(git hash-object scripts/rc4-signing-secret-feeder.py)" == "$INPUT_FEEDER_BLOB_SHA" ]]
+          [[ "$(git hash-object pkgbuilds/omarchy-mac-keyring/signing-policy.json)" == "$INPUT_POLICY_BLOB_SHA" ]]
+          [[ "$(git hash-object pkgbuilds/omarchy-mac-keyring/omarchy-mac.gpg)" == "$INPUT_PUBLIC_KEY_BLOB_SHA" ]]
+          rm -rf "$RUNNER_TEMP/rc4-verify"
+          mkdir -p "$RUNNER_TEMP/rc4-verify"
+
+      - name: Acquire exact numeric release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_IDENTITY_SHA256: ${{ inputs.immutable_inputs_sha256 }}
+        run: |
+          set -euo pipefail
+          PYTHONDONTWRITEBYTECODE=1 python3 scripts/rc4-sign-retain.py acquire \
+            --identity "$IDENTITY_PATH" --identity-sha256 "$INPUT_IDENTITY_SHA256" \
+            --output "$RUNNER_TEMP/rc4-verify/input" \
+            --metadata "$RUNNER_TEMP/rc4-verify/release-metadata.json"
+
+      - name: Validate exact immutable inputs without credentials
+        env:
+          INPUT_IDENTITY_SHA256: ${{ inputs.immutable_inputs_sha256 }}
+        run: |
+          set -euo pipefail
+          PYTHONDONTWRITEBYTECODE=1 python3 scripts/rc4-sign-retain.py validate-inputs \
+            --identity "$IDENTITY_PATH" --identity-sha256 "$INPUT_IDENTITY_SHA256" \
+            --metadata "$RUNNER_TEMP/rc4-verify/release-metadata.json" \
+            --input "$RUNNER_TEMP/rc4-verify/input" \
+            --output "$RUNNER_TEMP/rc4-verify/unsigned-input-manifest.json"
+
+      - name: Retain exact verified unsigned inputs for protected job
+        id: retain-inputs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: verified-rc4-fixture-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/rc4-verify/input/
+            ${{ runner.temp }}/rc4-verify/release-metadata.json
+            ${{ runner.temp }}/rc4-verify/unsigned-input-manifest.json
+          if-no-files-found: error
+          retention-days: 1
+
+  sign-and-retain:
+    name: Protected nonpublishing sign and retain only
+    needs: verify-inputs
+    if: github.repository == 'omarchy-mac/omarchy-pkgs-aarch64'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    environment: package-signing
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.reviewed_head_sha }}
+          persist-credentials: false
+
+      - name: Recover exact verified unsigned inputs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          artifact-ids: ${{ needs.verify-inputs.outputs.artifact-id }}
+          path: ${{ runner.temp }}/rc4-sign/verified
+          merge-multiple: true
+
+      - name: Verify exact retained-input artifact transport before protected secrets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_ARTIFACT_ID: ${{ needs.verify-inputs.outputs.artifact-id }}
+          EXPECTED_INPUT_ARTIFACT_DIGEST: ${{ needs.verify-inputs.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          [[ "$INPUT_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$INPUT_ARTIFACT_ID" \
+            > "$RUNNER_TEMP/rc4-sign/input-artifact-metadata.json"
+          PYTHONDONTWRITEBYTECODE=1 python3 scripts/rc4-sign-retain.py validate-artifact-transport \
+            --metadata "$RUNNER_TEMP/rc4-sign/input-artifact-metadata.json" \
+            --artifact-id "$INPUT_ARTIFACT_ID" \
+            --expected-digest "$EXPECTED_INPUT_ARTIFACT_DIGEST" \
+            --expected-name "verified-rc4-fixture-inputs-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+
+      - name: Require reviewed prebuilt signer image digest
+        env:
+          INPUT_SIGNER_IMAGE_DIGEST: ${{ inputs.signer_image_digest }}
+          INPUT_DOCKERFILE_BLOB_SHA: ${{ fromJSON(inputs.image_provenance).dockerfile_blob_sha }}
+          INPUT_BASE_IMAGE_DIGEST: ${{ fromJSON(inputs.image_provenance).base_image_digest }}
+        run: |
+          set -euo pipefail
+          [[ "$INPUT_SIGNER_IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+
+      - name: Revalidate exact eligibility before protected secrets
+        env:
+          OBSERVED_REPOSITORY_ID: ${{ github.repository_id }}
+          INPUT_IMAGE_PROVENANCE: ${{ inputs.image_provenance }}
+          INPUT_IDENTITY_SHA256: ${{ inputs.immutable_inputs_sha256 }}
+          INPUT_REVIEWED_HEAD_SHA: ${{ inputs.reviewed_head_sha }}
+          INPUT_WORKFLOW_BLOB_SHA: ${{ inputs.workflow_blob_sha }}
+          INPUT_HELPER_BLOB_SHA: ${{ inputs.helper_blob_sha }}
+          INPUT_SIGNER_BLOB_SHA: ${{ inputs.signer_blob_sha }}
+          INPUT_FEEDER_BLOB_SHA: ${{ inputs.feeder_blob_sha }}
+          INPUT_POLICY_BLOB_SHA: ${{ inputs.policy_blob_sha }}
+          INPUT_PUBLIC_KEY_BLOB_SHA: ${{ inputs.public_key_blob_sha }}
+          INPUT_SIGNER_IMAGE_DIGEST: ${{ inputs.signer_image_digest }}
+          INPUT_DOCKERFILE_BLOB_SHA: ${{ fromJSON(inputs.image_provenance).dockerfile_blob_sha }}
+          INPUT_BASE_IMAGE_DIGEST: ${{ fromJSON(inputs.image_provenance).base_image_digest }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == omarchy-mac/omarchy-pkgs-aarch64 ]] || exit 1
+          [[ "$OBSERVED_REPOSITORY_ID" == 1327386148 ]] || exit 1
+          [[ "$GITHUB_RUN_ATTEMPT" == 1 ]] || exit 1
+          jq -e 'type == "object" and keys == ["base_image_digest", "dockerfile_blob_sha"] and (.dockerfile_blob_sha | type == "string" and test("^[a-f0-9]{40}$")) and (.base_image_digest | type == "string" and test("^sha256:[a-f0-9]{64}$"))' <<<"$INPUT_IMAGE_PROVENANCE" > /dev/null
+          [[ "$(git hash-object .github/rc4-fixture-signer.Dockerfile)" == "$INPUT_DOCKERFILE_BLOB_SHA" ]]
+          [[ "$GITHUB_SHA" == "$INPUT_REVIEWED_HEAD_SHA" ]]
+          [[ "$(git rev-parse HEAD)" == "$INPUT_REVIEWED_HEAD_SHA" ]]
+          [[ "$(git hash-object .github/workflows/sign-and-retain-rc4-fixture.yml)" == "$INPUT_WORKFLOW_BLOB_SHA" ]]
+          [[ "$(git hash-object scripts/rc4-sign-retain.py)" == "$INPUT_HELPER_BLOB_SHA" ]]
+          [[ "$(git hash-object scripts/package-signing.py)" == "$INPUT_SIGNER_BLOB_SHA" ]]
+          [[ "$(git hash-object scripts/rc4-signing-secret-feeder.py)" == "$INPUT_FEEDER_BLOB_SHA" ]]
+          [[ "$(git hash-object pkgbuilds/omarchy-mac-keyring/signing-policy.json)" == "$INPUT_POLICY_BLOB_SHA" ]]
+          [[ "$(git hash-object pkgbuilds/omarchy-mac-keyring/omarchy-mac.gpg)" == "$INPUT_PUBLIC_KEY_BLOB_SHA" ]]
+          actual=$(sha256sum "$IDENTITY_PATH"); actual=${actual%% *}; [[ "$actual" == "$INPUT_IDENTITY_SHA256" ]]
+          PYTHONDONTWRITEBYTECODE=1 python3 scripts/rc4-sign-retain.py validate-inputs \
+            --identity "$IDENTITY_PATH" --identity-sha256 "$INPUT_IDENTITY_SHA256" \
+            --metadata "$RUNNER_TEMP/rc4-sign/verified/release-metadata.json" \
+            --input "$RUNNER_TEMP/rc4-sign/verified/input" \
+            --output "$RUNNER_TEMP/rc4-sign/revalidated-input-manifest.json"
+          cmp "$RUNNER_TEMP/rc4-sign/revalidated-input-manifest.json" \
+              "$RUNNER_TEMP/rc4-sign/verified/unsigned-input-manifest.json"
+          # Pull only the independently reviewed complete signer digest before secret access.
+          # Labels bind reviewed recipe/base claims; they do not prove reproducibility.
+          signer_image="ghcr.io/omarchy-mac/omarchy-pkgs-aarch64/rc4-fixture-signer@$INPUT_SIGNER_IMAGE_DIGEST"
+          docker pull "$signer_image"
+          docker image inspect "$signer_image" > "$RUNNER_TEMP/rc4-sign/signer-image.json"
+          jq -e --arg recipe "$INPUT_DOCKERFILE_BLOB_SHA" --arg base "$INPUT_BASE_IMAGE_DIGEST" \
+            'length == 1 and .[0].Config.Labels["org.omarchy.rc4.dockerfile-blob-sha"] == $recipe and .[0].Config.Labels["org.omarchy.rc4.base-image-digest"] == $base' \
+            "$RUNNER_TEMP/rc4-sign/signer-image.json" > /dev/null
+          rm -rf "$RUNNER_TEMP/rc4-sign/preflight-tmp"
+          mkdir -p "$RUNNER_TEMP/rc4-sign/preflight-tmp"
+          trap 'rm -rf "$RUNNER_TEMP/rc4-sign/preflight-tmp"' EXIT
+          docker run --rm --network none --pull never --read-only --cap-drop ALL --security-opt no-new-privileges \
+            -v "$PWD:/w:ro" -w /w \
+            -v "$RUNNER_TEMP/rc4-sign/preflight-tmp:/task/tmp" \
+            -e TMPDIR=/task/tmp -e PYTHONDONTWRITEBYTECODE=1 \
+            "ghcr.io/omarchy-mac/omarchy-pkgs-aarch64/rc4-fixture-signer@$INPUT_SIGNER_IMAGE_DIGEST" \
+            python3 scripts/rc4-sign-retain.py preflight-signing \
+              --signer-image-digest "$INPUT_SIGNER_IMAGE_DIGEST"
+          rm -rf "$RUNNER_TEMP/rc4-sign/preflight-tmp"
+          trap - EXIT
+
+      - name: Isolated signing process receives secret only on stdin
+        env:
+          RC4_SIGNING_SUBKEY_B64: ${{ secrets.PACMAN_SIGNING_SUBKEY_B64_20260914 }}
+          RC4_SIGNING_PASSPHRASE: ${{ secrets.PACMAN_SIGNING_PASSPHRASE_20260914 }}
+          OBSERVED_REPOSITORY_ID: ${{ github.repository_id }}
+          EXPECTED_REPOSITORY_ID: '1327386148'
+          INPUT_IMAGE_PROVENANCE: ${{ inputs.image_provenance }}
+          INPUT_IDENTITY_SHA256: ${{ inputs.immutable_inputs_sha256 }}
+          INPUT_REVIEWED_HEAD_SHA: ${{ inputs.reviewed_head_sha }}
+          INPUT_WORKFLOW_BLOB_SHA: ${{ inputs.workflow_blob_sha }}
+          INPUT_HELPER_BLOB_SHA: ${{ inputs.helper_blob_sha }}
+          INPUT_SIGNER_BLOB_SHA: ${{ inputs.signer_blob_sha }}
+          INPUT_FEEDER_BLOB_SHA: ${{ inputs.feeder_blob_sha }}
+          INPUT_POLICY_BLOB_SHA: ${{ inputs.policy_blob_sha }}
+          INPUT_PUBLIC_KEY_BLOB_SHA: ${{ inputs.public_key_blob_sha }}
+          INPUT_SIGNER_IMAGE_DIGEST: ${{ inputs.signer_image_digest }}
+          INPUT_DOCKERFILE_BLOB_SHA: ${{ fromJSON(inputs.image_provenance).dockerfile_blob_sha }}
+          INPUT_BASE_IMAGE_DIGEST: ${{ fromJSON(inputs.image_provenance).base_image_digest }}
+        shell: python {0}
+        run: |
+          import runpy
+          runpy.run_path('scripts/rc4-signing-secret-feeder.py', run_name='__main__')
+
+      - name: Freeze candidate manifest SHA-256 before upload
+        id: candidate-identity
+        run: |
+          set -euo pipefail
+          candidate_manifest="$RUNNER_TEMP/rc4-sign/output/candidate/candidate-manifest.json"
+          test -f "$candidate_manifest"
+          sha256=$(sha256sum "$candidate_manifest"); sha256=${sha256%% *}
+          [[ "$sha256" =~ ^[a-f0-9]{64}$ ]]
+          printf 'sha256=%s\n' "$sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Retain frozen candidate without publication capability
+        id: candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: signed-rc4-exact-byte-qualification-fixture-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/rc4-sign/output/candidate/repository/
+            ${{ runner.temp }}/rc4-sign/output/candidate/evidence/
+            ${{ runner.temp }}/rc4-sign/output/candidate/candidate-manifest.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Revalidate frozen candidate after upload
+        env:
+          PRE_UPLOAD_CANDIDATE_MANIFEST_SHA256: ${{ steps.candidate-identity.outputs.sha256 }}
+          INPUT_SIGNER_IMAGE_DIGEST: ${{ inputs.signer_image_digest }}
+          INPUT_DOCKERFILE_BLOB_SHA: ${{ fromJSON(inputs.image_provenance).dockerfile_blob_sha }}
+          INPUT_BASE_IMAGE_DIGEST: ${{ fromJSON(inputs.image_provenance).base_image_digest }}
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/rc4-sign/post-upload-tmp"
+          mkdir -p "$RUNNER_TEMP/rc4-sign/post-upload-tmp"
+          trap 'rm -rf "$RUNNER_TEMP/rc4-sign/post-upload-tmp"' EXIT
+          docker run --rm --network none --pull never --read-only --cap-drop ALL --security-opt no-new-privileges \
+            -v "$PWD:/w:ro" -w /w \
+            -v "$RUNNER_TEMP/rc4-sign/output/candidate:/task/candidate:ro" \
+            -v "$RUNNER_TEMP/rc4-sign/post-upload-tmp:/task/tmp" \
+            -e TMPDIR=/task/tmp -e PYTHONDONTWRITEBYTECODE=1 \
+            "ghcr.io/omarchy-mac/omarchy-pkgs-aarch64/rc4-fixture-signer@$INPUT_SIGNER_IMAGE_DIGEST" \
+            python3 scripts/rc4-sign-retain.py validate-candidate \
+              --candidate /task/candidate \
+              --candidate-manifest /task/candidate/candidate-manifest.json \
+              --candidate-manifest-sha256 "$PRE_UPLOAD_CANDIDATE_MANIFEST_SHA256"
+          rm -rf "$RUNNER_TEMP/rc4-sign/post-upload-tmp"
+          trap - EXIT
+
+      - name: Write separate post-upload transport receipt
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_WORKFLOW_BLOB_SHA: ${{ inputs.workflow_blob_sha }}
+          PRE_UPLOAD_CANDIDATE_MANIFEST_SHA256: ${{ steps.candidate-identity.outputs.sha256 }}
+          CANDIDATE_ARTIFACT_ID: ${{ steps.candidate.outputs.artifact-id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.candidate.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          candidate_manifest="$RUNNER_TEMP/rc4-sign/output/candidate/candidate-manifest.json"
+          candidate_manifest_sha256=$(sha256sum "$candidate_manifest"); candidate_manifest_sha256=${candidate_manifest_sha256%% *}
+          [[ "$candidate_manifest_sha256" == "$PRE_UPLOAD_CANDIDATE_MANIFEST_SHA256" ]]
+          [[ "$CANDIDATE_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]
+          expected_artifact_name="signed-rc4-exact-byte-qualification-fixture-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$CANDIDATE_ARTIFACT_ID" \
+            > "$RUNNER_TEMP/rc4-sign/candidate-artifact-metadata.json"
+          artifact_json=$(PYTHONDONTWRITEBYTECODE=1 python3 scripts/rc4-sign-retain.py validate-artifact-transport \
+            --metadata "$RUNNER_TEMP/rc4-sign/candidate-artifact-metadata.json" \
+            --artifact-id "$CANDIDATE_ARTIFACT_ID" --expected-digest "$CANDIDATE_ARTIFACT_DIGEST" \
+            --expected-name "$expected_artifact_name")
+          artifact_size=$(jq -er '.size_in_bytes' <<<"$artifact_json")
+          artifact_digest=$(jq -er '.artifact_zip_sha256' <<<"$artifact_json")
+          artifact_created_at=$(jq -er '.created_at' <<<"$artifact_json")
+          PYTHONDONTWRITEBYTECODE=1 python3 scripts/rc4-sign-retain.py write-receipt \
+            --candidate-manifest "$candidate_manifest" \
+            --candidate-manifest-sha256 "$candidate_manifest_sha256" \
+            --output "$RUNNER_TEMP/rc4-sign/output/transport-receipt.json" \
+            --repository-id "${{ github.repository_id }}" --workflow-run-id "$GITHUB_RUN_ID" \
+            --workflow-run-attempt "$GITHUB_RUN_ATTEMPT" --head-sha "$GITHUB_SHA" \
+            --workflow-blob-sha "$INPUT_WORKFLOW_BLOB_SHA" \
+            --artifact-id "$CANDIDATE_ARTIFACT_ID" \
+            --artifact-name "$expected_artifact_name" --created-at "$artifact_created_at" \
+            --size-in-bytes "$artifact_size" --artifact-zip-sha256 "$artifact_digest" \
+            --expected-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"
+
+      - name: Retain separate transport receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: signed-rc4-fixture-transport-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rc4-sign/output/transport-receipt.json
+          if-no-files-found: error
+          retention-days: 90
