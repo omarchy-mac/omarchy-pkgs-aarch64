@@ -6,6 +6,11 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      publisher_readiness:
+        description: Build publisher tools and test isolated disposable-key seal/check (no publication)
+        type: boolean
+        required: false
+        default: false
       retained_rc4_trust:
         description: Qualify the fixed retained RC4 fixture (supplemental trust only)
         type: boolean
@@ -13,6 +18,54 @@ on:
         default: false
 
 jobs:
+  publisher-readiness:
+    name: Isolated publisher readiness (disposable keys, manual only)
+    if: github.event_name == 'workflow_dispatch' && inputs.publisher_readiness
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build once and exercise the exact image without production secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(uname -m)" == aarch64 && "$(id -u)" != 0 ]] || exit 1
+          umask 077
+          work="$RUNNER_TEMP/publisher-readiness"
+          mkdir -p "$work"/{scratch,inputs,fixture-secrets,output}
+          # Registry manifest + config verified as linux/arm64; no mutable tag resolution.
+          base=menci/archlinuxarm@sha256:d114341f1d343655963104d05554b4df73bae77a0d4c09c47a1b2f69f45886d2
+          docker build --platform linux/arm64 --build-arg "BASE_IMAGE=$base" \
+            --iidfile "$work/image-id" -f .github/publisher.Dockerfile .
+          image="$(<"$work/image-id")"
+          [[ "$image" =~ ^sha256:[a-f0-9]{64}$ ]] || exit 1
+          [[ "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$image")" == linux/arm64 ]] || exit 1
+          docker image inspect "$image" > "$work/image-inspect.json"
+          {
+            printf '### Publisher readiness image (job-local, not published)\n\n'
+            printf 'Source: `%s`\n\nBase manifest: `%s`\n\nImage config ID: `%s`\n\n' "$(git rev-parse HEAD)" "$base" "$image"
+            sha256sum .github/publisher.Dockerfile scripts/container-bootstrap.sh
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          cat "$work/image-inspect.json"
+          isolated=(docker run --rm --network none --pull never --read-only --cap-drop ALL
+            --security-opt no-new-privileges --user "$(id -u):$(id -g)"
+            --mount "type=bind,source=$PWD,target=/w,readonly"
+            --mount "type=bind,source=$work/scratch,target=/tmp"
+            --mount "type=bind,source=$work/fixture-secrets,target=/fixture-secrets"
+            -e TMPDIR=/tmp -e HOME=/tmp -e PYTHONDONTWRITEBYTECODE=1 -w /w)
+          # Only synthetic package archives and disposable keys are generated here.
+          "${isolated[@]}" --mount "type=bind,source=$work/inputs,target=/inputs" \
+            "$image" python3 scripts/test-publisher-readiness.py --prepare
+          # Same image, numeric owner and restrictions; now unsigned inputs are read-only.
+          "${isolated[@]}" --mount "type=bind,source=$work/inputs,target=/inputs,readonly" \
+            --mount "type=bind,source=$work/output,target=/output" \
+            "$image" python3 scripts/test-publisher-readiness.py --native
+          printf '\nPASS: native public preflight and disposable private-pipe seal/check; not production qualification.\n' >> "$GITHUB_STEP_SUMMARY"
+
   retained-rc4-trust:
     name: Supplemental retained RC4 native trust (manual only)
     if: >-
@@ -75,6 +128,7 @@ jobs:
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-retained-signature-trust.py -v
             NATIVE_VERCMP=1 PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-keyring-eligibility.py -v
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-release-bundle.py -v
+            PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-publisher-readiness.py -v
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-bootstrap-rc.py -v
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-capture-handoff.py -v
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-capture-catalog.py -v

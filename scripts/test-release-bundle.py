@@ -1,6 +1,9 @@
 #!/usr/bin/python3
 """Offline native libalpm archive/database fixtures. gh is always a read-only recorder."""
+import argparse
 import importlib.util
+import sys
+from unittest.mock import patch
 import json
 import os
 from pathlib import Path
@@ -13,6 +16,164 @@ MODULE = Path(__file__).with_name('release-bundle.py')
 spec = importlib.util.spec_from_file_location('bundle', MODULE)
 bundle = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bundle)
+
+
+def seal_fixture_from_pipe(stream, args):
+    """Test-only integration; no RC4 identity bypass or production launcher."""
+    parser_spec = importlib.util.spec_from_file_location('rc4_frame', MODULE.with_name('rc4-sign-retain.py'))
+    parser = importlib.util.module_from_spec(parser_spec)
+    parser_spec.loader.exec_module(parser)
+    return parser.with_signing_secret(
+        stream, lambda: bundle.check(args.bundle),
+        lambda validated, key, password: bundle.seal(args, secret_material=(key, password)))
+
+
+def launch_fixture_signer(argv, credentials):
+    feeder_spec = importlib.util.spec_from_file_location('fixture_feeder', MODULE.with_name('rc4-signing-secret-feeder.py'))
+    feeder = importlib.util.module_from_spec(feeder_spec)
+    feeder_spec.loader.exec_module(feeder)
+    try:
+        feeder.launch_isolated_signer(os.environ, argv, credentials)
+    finally:
+        for value in credentials:
+            feeder.zero(value)
+
+
+class BundleIsolationTests(unittest.TestCase):
+    """Portable process-IO tests; no native signing claims."""
+
+    def test_tools_cannot_consume_inherited_private_stdin(self):
+        script = f'''
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location('bundle', {str(MODULE)!r})
+bundle = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(bundle)
+sys.stdout.buffer.write(bundle.run(sys.executable, '-c',
+    'import sys; sys.stdout.buffer.write(sys.stdin.buffer.read())'))
+'''
+        result = subprocess.run([sys.executable, '-c', script], input=b'private frame',
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        self.assertEqual(result.stdout, b'', 'Archive/tool subprocess inherited signing stdin')
+
+    def test_seal_forwards_private_buffers_without_environment(self):
+        # Only native archive/GnuPG boundaries are replaced; seal's ordering,
+        # copy/staging cleanup and credential handoff execute normally.
+        material = (bytearray(b'fixture key'), bytearray(b'fixture passphrase'))
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / 'unsigned'
+            (source / 'rollback').mkdir(parents=True)
+            (source / 'rollback' / (bundle.DB + '.db')).write_bytes(b'baseline')
+            public = root / 'public.gpg'
+            public.write_bytes(b'fixture public key')
+            args = argparse.Namespace(bundle=source, output=root / 'signed',
+                                      public_key=public, trust_policy=root / 'policy.json')
+            manifest = dict(signature_policy='optional-existing-signatures; no signer authority asserted',
+                            candidates=sorted(bundle.CANDIDATES), packages=[
+                                dict(name='omarchy', depends=['omarchy-mac-keyring']),
+                                dict(name='omarchy-mac-keyring', version='20260914-2')])
+
+            def copy(source, target):
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source, target)
+
+            with patch.object(bundle, 'check', return_value=manifest), \
+                 patch.object(bundle, 'copy_file', side_effect=copy), \
+                 patch.object(bundle.signing, 'policy', return_value={'public_key_sha256': bundle.digest(public)}), \
+                 patch.object(bundle.signing, 'Keyring', side_effect=RuntimeError('keyring reached')) as keyring:
+                for explicit in (True, False):
+                    with self.subTest(explicit=explicit):
+                        try:
+                            with self.assertRaisesRegex(RuntimeError, 'keyring reached'):
+                                bundle.seal(args, **({'secret_material': material} if explicit else {}))
+                        except TypeError as error:
+                            self.fail(f'Seal cannot receive private credentials: {error}')
+                        self.assertIs(keyring.call_args.kwargs.get('secret_material'),
+                                      material if explicit else None)
+                        self.assertTrue(keyring.call_args.kwargs['secret'])
+                        self.assertFalse(args.output.exists())
+                        self.assertEqual(list(root.glob('.signed-bundle-*')), [])
+
+    def test_private_pipe_reaches_seal_as_mutable_buffers(self):
+        import threading
+        feeder_spec = importlib.util.spec_from_file_location('feeder', MODULE.with_name('rc4-signing-secret-feeder.py'))
+        feeder = importlib.util.module_from_spec(feeder_spec)
+        feeder_spec.loader.exec_module(feeder)
+        read_fd, write_fd = os.pipe()
+        def write():
+            try:
+                feeder.write_fd_part(write_fd, bytearray(b'fixture key'))
+                feeder.write_fd_part(write_fd, bytearray(b'fixture passphrase'))
+            finally:
+                os.close(write_fd)
+        writer = threading.Thread(target=write)
+        writer.start()
+        observed = []
+        def seal(args, *, secret_material):
+            self.assertTrue(all(isinstance(x, bytearray) for x in secret_material))
+            self.assertEqual(secret_material, (b'fixture key', b'fixture passphrase'))
+            observed.extend(secret_material)
+        args = argparse.Namespace(bundle=Path('unsigned'))
+        try:
+            with os.fdopen(read_fd, 'rb') as stream, \
+                 patch.object(bundle, 'check', return_value={}) as check, \
+                 patch.object(bundle, 'seal', side_effect=seal):
+                entry = globals().get('seal_fixture_from_pipe')
+                self.assertIsNotNone(entry, 'Fixture has no private-pipe seal entry point')
+                entry(stream, args)
+                check.assert_called_once_with(args.bundle)
+        finally:
+            writer.join()
+        self.assertEqual(len(observed), 2)
+        self.assertTrue(all(not any(x) for x in observed))
+
+    def test_private_frame_rejection_never_seals(self):
+        import io
+        import struct
+        args = argparse.Namespace(bundle=Path('unsigned'))
+        frames = [b'', struct.pack('>I', 1024 * 1024 + 1),
+                  struct.pack('>I', 3) + b'ab',
+                  struct.pack('>I', 1) + b'k' + struct.pack('>I', 1) + b'p' + b'extra']
+        with patch.object(bundle, 'check', return_value={}), patch.object(bundle, 'seal') as seal:
+            for frame in frames:
+                with self.subTest(frame=frame), self.assertRaises(ValueError):
+                    seal_fixture_from_pipe(io.BytesIO(frame), args)
+            seal.assert_not_called()
+
+    def test_fixture_launcher_uses_real_sanitized_child_pipe(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            key, password = bytearray(b'fixture key'), bytearray(b'fixture passphrase')
+            marker = root / 'child.json'
+            child = '''import json, os, struct, sys
+stream = sys.stdin.buffer
+parts = [stream.read(struct.unpack('>I', stream.read(4))[0]) for _ in range(2)]
+assert stream.read(1) == b''
+assert parts == [b'fixture key', b'fixture passphrase']
+assert not any('SIGNING' in name for name in os.environ)
+open(sys.argv[1], 'w').write(json.dumps({'pipe': True}))
+'''
+            entry = globals().get('launch_fixture_signer')
+            self.assertIsNotNone(entry, 'Fixture does not launch existing private feeder')
+            entry([sys.executable, '-c', child, str(marker)], (key, password))
+            self.assertEqual(json.loads(marker.read_text()), {'pipe': True})
+            self.assertFalse(any(key))
+            self.assertFalse(any(password))
+
+    def test_explicit_subprocess_input_is_preserved(self):
+        result = bundle.run(sys.executable, '-c',
+                            'import sys; sys.stdout.buffer.write(sys.stdin.buffer.read())',
+                            input=b'explicit input')
+        self.assertEqual(result, b'explicit input')
+
+    def test_explicit_subprocess_stdin_is_preserved(self):
+        with tempfile.TemporaryFile() as stream:
+            stream.write(b'explicit stream')
+            stream.seek(0)
+            result = bundle.run(sys.executable, '-c',
+                                'import sys; sys.stdout.buffer.write(sys.stdin.buffer.read())',
+                                stdin=stream)
+        self.assertEqual(result, b'explicit stream')
 
 
 class ReleaseBundleTests(unittest.TestCase):
@@ -157,6 +318,29 @@ print(open(os.environ['GH_FIXTURE']).read())
         self.assertEqual(bundle.digest(self.rc / 'provenance/captured-baseline.db'), bundle.digest(self.base_db))
         self.assertEqual(set(bundle.database(self.rc / 'assets/omarchy-aarch64.files')), set(bundle.database(self.base_db)) | {'omarchy-mac-keyring'})
 
+    def test_private_material_seal_and_independent_check(self):
+        # Native hosted fixture: no production key and no secret environment in seal.
+        import base64
+        unsigned = Path(str(self.rc) + '.unsigned')
+        before = {p.relative_to(unsigned): bundle.digest(p)
+                  for p in unsigned.rglob('*') if p.is_file()}
+        key = bytearray(base64.b64decode(os.environ['PACMAN_SIGNING_SUBKEY_B64']))
+        password = bytearray(os.environ['PACMAN_SIGNING_PASSPHRASE'].encode())
+        clean = {k: v for k, v in os.environ.items() if k not in bundle.signing.SECRET_ENV}
+        output = self.root / 'private-material-bundle'
+        with patch.dict(os.environ, clean, clear=True):
+            launch_fixture_signer([
+                sys.executable, '-B', str(Path(__file__).resolve()), '--private-fixture-child',
+                str(unsigned), str(output), str(self.keys.public), str(self.keys.policy),
+                os.environ['TMPDIR']], (key, password))
+            manifest = bundle.check(output, self.keys.policy)
+        self.assertEqual(manifest['signature_policy'], bundle.STRICT_POLICY)
+        self.assertEqual(manifest['unsigned_manifest_sha256'], bundle.digest(unsigned / 'manifest.json'))
+        self.assertEqual(before, {p.relative_to(unsigned): bundle.digest(p)
+                                  for p in unsigned.rglob('*') if p.is_file()})
+        self.assertFalse(any(key))
+        self.assertFalse(any(password))
+
     def test_versioned_keyring_stage_seal_and_strict_check(self):
         # Hosted-only native archive/vercmp/signing fixture, matching the builder.
         candidates = self.root / 'versioned-keyring-candidates'
@@ -288,4 +472,13 @@ print(open(os.environ['GH_FIXTURE']).read())
 
 
 if __name__ == '__main__':
-    unittest.main()
+    if len(sys.argv) > 1 and sys.argv[1] == '--private-fixture-child':
+        parser = argparse.ArgumentParser(description='Disposable fixture only; not a production signer')
+        for name in ('bundle', 'output', 'public_key', 'trust_policy', 'scratch'):
+            parser.add_argument(name, type=Path)
+        args = parser.parse_args(sys.argv[2:])
+        os.environ['TMPDIR'] = str(args.scratch)
+        tempfile.tempdir = str(args.scratch)
+        seal_fixture_from_pipe(sys.stdin.buffer, args)
+    else:
+        unittest.main()

@@ -30,6 +30,9 @@ def require(condition, message):
 
 
 def run(*args, **kwargs):
+    # Archive inspections and tool probes must not consume a private secret frame.
+    if 'input' not in kwargs and 'stdin' not in kwargs:
+        kwargs['stdin'] = subprocess.DEVNULL
     return subprocess.run([str(x) for x in args], check=True, stdout=subprocess.PIPE,
                           stderr=subprocess.PIPE, **kwargs).stdout
 
@@ -411,8 +414,8 @@ def check(bundle, trust_policy=SIGNING_POLICY):
 
 
 
-def seal(args):
-    """Derive a signed bundle; keep the qualified unsigned input unchanged."""
+def seal(args, *, secret_material=None):
+    """Derive a signed bundle; optional private buffers avoid secret environment IO."""
     original = check(args.bundle, args.trust_policy)
     require(original['signature_policy'] != STRICT_POLICY, 'Already sealed; reuse its exact signatures')
     signing_eligibility(original)
@@ -426,7 +429,8 @@ def seal(args):
                 copy_file(path, staging / path.relative_to(args.bundle))
         copy_file(args.bundle / 'rollback' / f'{DB}.db', staging / 'provenance/captured-baseline.db')
         copy_file(args.public_key, staging / 'provenance/signing-public.gpg')
-        ring = signing.Keyring(args.public_key, args.trust_policy, secret=True)
+        ring = signing.Keyring(args.public_key, args.trust_policy, secret=True,
+                               secret_material=secret_material)
         try:
             for directory in ['assets', 'rollback']:
                 base = staging / directory
