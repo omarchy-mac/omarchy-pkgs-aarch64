@@ -529,6 +529,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertTrue(all(value.get('required') is True and value.get('type') == 'string' and
                             'default' not in value for value in inputs.values()))
         readonly = {'contents': 'read', 'actions': 'read'}
+        signer_readonly = {**readonly, 'packages': 'read'}
         self.assertEqual(workflow['permissions'], readonly)
         self.assertEqual(workflow['concurrency'], {'group': 'rc4-sign-and-retain-fixture',
                                                    'cancel-in-progress': False})
@@ -537,7 +538,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertNotIn('environment', verify)
         self.assertEqual(sign['environment'], 'package-signing')
         self.assertEqual(verify['permissions'], readonly)
-        self.assertEqual(sign['permissions'], readonly)
+        self.assertEqual(sign['permissions'], signer_readonly)
         self.assertEqual(sign['needs'], 'verify-inputs')
         self.assertEqual(verify['if'], "github.repository == 'omarchy-mac/omarchy-pkgs-aarch64'")
         self.assertEqual(sign['if'], "github.repository == 'omarchy-mac/omarchy-pkgs-aarch64'")
@@ -600,6 +601,23 @@ class WorkflowContractTests(unittest.TestCase):
 
         verify_names = [step.get('name') for step in verify['steps']]
         sign_names = [step.get('name') for step in sign['steps']]
+        self.assertIn('Authenticate private GHCR pull', sign_names)
+        self.assertIn('Remove private GHCR credentials before protected secrets', sign_names)
+        login_step = next(step for step in sign['steps'] if step.get('name') == 'Authenticate private GHCR pull')
+        self.assertEqual(login_step['env']['GHCR_TOKEN'], '${{ github.token }}')
+        self.assertEqual(login_step['env']['GHCR_USERNAME'], '${{ github.actor }}')
+        self.assertIn('docker login ghcr.io', login_step['run'])
+        self.assertIn('--password-stdin', login_step['run'])
+        logout_step = next(step for step in sign['steps']
+                           if step.get('name') == 'Remove private GHCR credentials before protected secrets')
+        self.assertEqual(logout_step['if'], '${{ always() }}')
+        self.assertEqual(logout_step['run'].strip(), 'docker logout ghcr.io')
+        self.assertLess(sign_names.index('Authenticate private GHCR pull'),
+                        sign_names.index('Revalidate exact eligibility before protected secrets'))
+        self.assertLess(sign_names.index('Revalidate exact eligibility before protected secrets'),
+                        sign_names.index('Remove private GHCR credentials before protected secrets'))
+        self.assertLess(sign_names.index('Remove private GHCR credentials before protected secrets'),
+                        sign_names.index('Isolated signing process receives secret only on stdin'))
         self.assertLess(verify_names.index('Acquire exact numeric release assets'),
                         verify_names.index('Validate exact immutable inputs without credentials'))
         self.assertLess(sign_names.index('Recover exact verified unsigned inputs'),

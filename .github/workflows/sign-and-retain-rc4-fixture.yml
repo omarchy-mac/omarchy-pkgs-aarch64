@@ -158,6 +158,7 @@ jobs:
     permissions:
       contents: read
       actions: read
+      packages: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -195,6 +196,14 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$INPUT_SIGNER_IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+
+      - name: Authenticate private GHCR pull
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+          GHCR_USERNAME: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USERNAME" --password-stdin
 
       - name: Revalidate exact eligibility before protected secrets
         env:
@@ -254,6 +263,10 @@ jobs:
               --signer-image-digest "$INPUT_SIGNER_IMAGE_DIGEST"
           rm -rf "$RUNNER_TEMP/rc4-sign/preflight-tmp"
           trap - EXIT
+
+      - name: Remove private GHCR credentials before protected secrets
+        if: ${{ always() }}
+        run: docker logout ghcr.io
 
       - name: Isolated signing process receives secret only on stdin
         env:
