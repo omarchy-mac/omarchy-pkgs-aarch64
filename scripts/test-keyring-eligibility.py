@@ -86,7 +86,8 @@ class EligibilityTests(unittest.TestCase):
                 command.return_value.stdout = b'0'
                 bundle.signing_eligibility(metadata([KEYRING + '=' + version], version))
                 command.assert_called_once_with(['vercmp', version, version], check=True,
-                                               stdout=bundle.subprocess.PIPE, stderr=bundle.subprocess.PIPE)
+                                               stdout=bundle.subprocess.PIPE, stderr=bundle.subprocess.PIPE,
+                                               stdin=bundle.subprocess.DEVNULL)
 
     def test_malformed_constraints_cannot_hide_behind_bare_dependency(self):
         for suffix in ['>=', '=', '==1', '!=1', '=>1', '><1', '>= 1', '>=1 2',

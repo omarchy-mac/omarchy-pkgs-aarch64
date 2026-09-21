@@ -27,6 +27,18 @@ Never rebuild an existing filename with different bytes. For unchanged font/keyr
 
 `stage` preserves an unsigned qualification bundle without asserting signer authority. `seal` imports only the protected signing subkey, verifies the pinned primary and subkey fingerprints, signs every package and both database aliases, rebuilds the databases with embedded signatures, and verifies the result using only the pinned public key. It also signs the rollback inventory; unsigned rollback cannot satisfy the strict client policy.
 
+## Publisher readiness (manual, disposable keys only)
+
+After source review and separate execution authorization, select **Tests → Run workflow**, choose the reviewed ref, enable `publisher_readiness`, and leave `retained_rc4_trust` false. The normal self-tests still run. No production signing environment, production secret reference, image push, or release publication is part of this job.
+
+The ARM job builds the existing `.github/publisher.Dockerfile` once, with the pinned `menci/archlinuxarm` linux/arm64 manifest `sha256:d114341f1d343655963104d05554b4df73bae77a0d4c09c47a1b2f69f45886d2`. The pin was verified through Docker Hub's read-only registry API: the response body SHA256 matched the manifest digest and its config blob (`sha256:478a857709a16f54ada4fde5cc2ff3f2f2050aeb46369ba618174d668982e61d`) verified `linux/arm64`. Bootstrap still installs current repository tools; this is not a reproducible-build claim. The job logs the actual image inspect output and records its config ID, source commit, base manifest and recipe/bootstrap hashes in its summary. Both fixture containers run by that exact job-local image ID, not by a mutable tag.
+
+Preparation reuses the existing release-bundle native fixture to generate synthetic package/database inputs and disposable keys, then removes the primary key home. The second container mounts those unsigned inputs and code read-only, with numeric non-root UID/GID, no network, read-only root, dropped capabilities, no-new-privileges, and runner-owned disk-backed scratch/output. It verifies the runtime restrictions and calls the real `package-signing.preflight` with the checked-out public production policy (no production private key). It then uses the unchanged RC4 feeder's private-pipe framing and parser primitives to pass the disposable subkey to mutable buffers in the test-only child, calls `seal`, and independently checks every output signature. Input bytes must remain unchanged and deliberately corrupted output must be rejected.
+
+This is a test fixture, not an RC5 production launcher. It does not bypass or change the RC4 hardcoded repository, inventory, image or provenance contracts. Disposable fixture credentials briefly occupy mode-0600 files on runner disk, are deleted before the child starts, and are neither logged nor uploaded. Child output remains suppressed by the existing feeder. No image archive or signed candidate is retained: the job-local image identity is **not** an immutable cross-job production handoff. Production acquisition, key delivery, retained artifact binding, client trust/install qualification and publication still need their separately approved paths.
+
+Portable checks: `python3 scripts/test-release-bundle.py BundleIsolationTests -v` and `python3 scripts/test-publisher-readiness.py -v` (PyYAML required). The latter checks workflow structure only. Native GnuPG/archive/container readiness is established only by a successful authorized hosted run, not by these local tests or source review.
+
 ## Qualification receipt and read-only plans
 
 After the actual tests and review pass, record their report in a JSON receipt. This is an explicit local attestation bound to exact files, not a test runner or cryptographic signer:
