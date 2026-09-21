@@ -84,4 +84,5 @@ jobs:
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-sign-quattro-image-inputs.py -v
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-quattro-image-inputs.py -v
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-quattro-image-inputs-detection.py -v
+            PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-image-dependency-snapshot.py -v
           '
