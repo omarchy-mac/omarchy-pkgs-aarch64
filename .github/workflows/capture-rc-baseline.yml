@@ -24,6 +24,15 @@ on:
         type: string
         required: false
 
+      catalog_commit:
+        description: 'Optional exact repository commit for historical packages.json; requires catalog_sha256'
+        type: string
+        required: false
+      catalog_sha256:
+        description: 'Approved SHA256 of historical packages.json; requires catalog_commit'
+        type: string
+        required: false
+
 permissions:
   contents: read
 
@@ -55,11 +64,26 @@ jobs:
           fi
           case $(findmnt -n -o FSTYPE -T "$RUNNER_TEMP") in ''|tmpfs|ramfs) exit 1;; esac
           mkdir -p "$RUNNER_TEMP/rc-capture-task"/{tmp,logs}
+      - name: Resolve approved catalog from exact repository commit
+        env:
+          CATALOG_COMMIT: ${{ inputs.catalog_commit }}
+          CATALOG_HASH: ${{ inputs.catalog_sha256 }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/rc-catalog"
+          if [[ -n "$CATALOG_COMMIT" || -n "$CATALOG_HASH" ]]; then
+            [[ "$CATALOG_COMMIT" =~ ^[a-f0-9]{40}$ && "$CATALOG_HASH" =~ ^[a-f0-9]{64}$ ]] || exit 1
+            git fetch --no-tags --depth=1 origin "$CATALOG_COMMIT"
+            [[ "$(git cat-file -t "$CATALOG_COMMIT")" == commit ]] || exit 1
+            git show "$CATALOG_COMMIT:packages.json" > "$RUNNER_TEMP/rc-catalog/catalog.json"
+            printf '%s  %s\n' "$CATALOG_HASH" "$RUNNER_TEMP/rc-catalog/catalog.json" | sha256sum --check --status
+          fi
       - name: Prepare capture tools without signing credentials
         run: docker build --build-arg BASE_IMAGE=menci/archlinuxarm:base-devel -f .github/publisher.Dockerfile -t omarchy-capture .
       - name: Capture exact approved remote bytes without remote writes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CATALOG_HASH: ${{ inputs.catalog_sha256 }}
           BASE_HASH: ${{ inputs.baseline_database_sha256 }}
           BASE_LANE: ${{ inputs.baseline_lane }}
           OVERLAY_LANE: ${{ inputs.overlay_lane }}
@@ -67,11 +91,13 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm -v "$PWD:/w:ro" -w /w -v "$RUNNER_TEMP/rc-capture-task:/task" \
+            -v "$RUNNER_TEMP/rc-catalog:/catalog:ro" -e CATALOG_HASH \
             -e GH_TOKEN -e BASE_HASH -e BASE_LANE -e OVERLAY_HASH -e OVERLAY_LANE \
             -e TMPDIR=/task/tmp -e TMP=/task/tmp -e TEMP=/task/tmp -e PYTHONDONTWRITEBYTECODE=1 \
             omarchy-capture bash -euo pipefail -c '
               args=(--lane "$BASE_LANE" --database-sha256 "$BASE_HASH" --output /task/capture)
               if [[ "$OVERLAY_LANE" != none ]]; then args+=(--overlay-lane "$OVERLAY_LANE" --overlay-database-sha256 "$OVERLAY_HASH"); fi
+              if [[ -n "$CATALOG_HASH" ]]; then args+=(--catalog /catalog/catalog.json --catalog-sha256 "$CATALOG_HASH"); fi
               python3 scripts/bootstrap-rc.py capture "${args[@]}"
             ' 2>&1 | tee "$RUNNER_TEMP/rc-capture-task/logs/capture.log"
           sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/rc-capture-task/capture"

@@ -59,6 +59,54 @@ class HandoffTests(unittest.TestCase):
         self.assertEqual(artifact['with']['if-no-files-found'],'error')
         self.assertIn('github.run_attempt',artifact['with']['name'])
 
+    def test_pinned_catalog_workflow_handoff(self):
+        data = self.workflow('capture-rc-baseline.yml')
+        inputs = data.get('on', data.get(True))['workflow_dispatch']['inputs']
+        self.assertTrue({'catalog_commit', 'catalog_sha256'} <= set(inputs))
+        self.assertLessEqual(len(inputs), 10)
+        steps = data['jobs']['capture']['steps']
+        resolver = next(s for s in steps if s.get('name') == 'Resolve approved catalog from exact repository commit')
+        self.assertIn('git show "$CATALOG_COMMIT:packages.json"', resolver['run'])
+        self.assertIn('sha256sum --check', resolver['run'])
+        capture = next(s for s in steps if 'bootstrap-rc.py capture ' in s.get('run', ''))
+        self.assertIn('-v "$RUNNER_TEMP/rc-catalog:/catalog:ro"', capture['run'])
+        self.assertIn('--catalog /catalog/catalog.json --catalog-sha256 "$CATALOG_HASH"', capture['run'])
+        self.assertEqual(capture['env']['CATALOG_HASH'], '${{ inputs.catalog_sha256 }}')
+        self.assertIn('PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-capture-catalog.py -v',
+                      (ROOT / '.github/workflows/test.yml').read_text())
+
+    def test_catalog_resolver_executes_exact_commit_and_rejects_unsafe_inputs(self):
+        import hashlib
+        import os
+        import tempfile
+        steps = self.workflow('capture-rc-baseline.yml')['jobs']['capture']['steps']
+        script = next(s['run'] for s in steps if s.get('name') == 'Resolve approved catalog from exact repository commit')
+        # CI runs this suite as container root over a runner-owned checkout.
+        # Trust only that exact read-only Git source, without global config edits.
+        git_env = dict(os.environ, GIT_CONFIG_COUNT='1', GIT_CONFIG_KEY_0='safe.directory',
+                       GIT_CONFIG_VALUE_0=str(ROOT))
+        commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, env=git_env, text=True).strip()
+        content = subprocess.check_output(['git', 'show', commit + ':packages.json'], cwd=ROOT, env=git_env)
+        checksum = hashlib.sha256(content).hexdigest()
+        cases = [('', '', True), (commit, checksum, True), (commit, '0' * 64, False),
+                 (commit, '', False), ('', checksum, False), ('main', checksum, False),
+                 (commit[:12], checksum, False), ('../escape', checksum, False),
+                 (commit + ':../packages.json', checksum, False)]
+        for selected, digest, accepted in cases:
+            with self.subTest(selected=selected, digest=digest), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                subprocess.run(['git', 'init', '-q', str(root)], check=True)
+                subprocess.run(['git', 'remote', 'add', 'origin', str(ROOT)], cwd=root, check=True)
+                env = dict(git_env, RUNNER_TEMP=str(root), CATALOG_COMMIT=selected, CATALOG_HASH=digest)
+                result = subprocess.run(['/bin/bash', '--noprofile', '--norc', '-e', '-u', '-o', 'pipefail'],
+                                        input=script, text=True, cwd=root, env=env, capture_output=True)
+                self.assertEqual(result.returncode == 0, accepted, result.stderr)
+                catalog = root / 'rc-catalog/catalog.json'
+                if accepted and selected:
+                    self.assertEqual(catalog.read_bytes(), content)
+                elif not selected or selected != commit:
+                    self.assertFalse(catalog.exists())
+
     def test_all_run_blocks_parse_and_actions_are_pinned(self):
         for name in ('capture-rc-baseline.yml','prepare-rc-baseline.yml'):
             path=ROOT/'.github/workflows'/name

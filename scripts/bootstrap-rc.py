@@ -435,6 +435,15 @@ def publish_checked(args, manifest, transport, *, old_trust_transition=False, ed
 
 
 def capture(args, trust_policy=bundle.SIGNING_POLICY):
+    catalog_path = getattr(args, 'catalog', None)
+    catalog_hash = getattr(args, 'catalog_sha256', None)
+    require((catalog_path is None) == (catalog_hash is None), 'Catalog path and SHA256 must be supplied together')
+    if catalog_path is not None:
+        require(re.fullmatch('[a-f0-9]{64}', catalog_hash), 'Exact catalog SHA256 required')
+        catalog = catalog_path.read_bytes()
+        require(hashlib.sha256(catalog).hexdigest() == catalog_hash, 'Selected catalog differs from approved SHA256')
+    else:
+        catalog = (ROOT / 'packages.json').read_text().encode()
     lane = getattr(args, 'lane', 'edge')
     require(lane in ('edge', 'rc'), 'Capture lane must be edge or rc')
     require(re.fullmatch('[a-f0-9]{64}', args.database_sha256), 'Approved baseline database SHA256 required')
@@ -451,8 +460,7 @@ def capture(args, trust_policy=bundle.SIGNING_POLICY):
     transport.read(release, path.name, destination=path)
     require(bundle.digest(path) == args.database_sha256, 'Baseline database changed from approved capture')
     records = bundle.database(path)
-    catalog = (ROOT / 'packages.json').read_text()
-    (args.output / 'catalog.json').write_text(catalog)
+    (args.output / 'catalog.json').write_bytes(catalog)
     inventory = {p['name'] for p in json.loads(catalog)['packages']}
     sources = args.output / 'sources'; sources.mkdir()
     bundle.copy_file(path, sources / f'{lane}.db')
@@ -794,6 +802,8 @@ def main():
     capture_parser.add_argument('--lane', choices=['edge', 'rc'], default='edge')
     capture_parser.add_argument('--overlay-lane', choices=['edge', 'rc'])
     capture_parser.add_argument('--overlay-database-sha256')
+    capture_parser.add_argument('--catalog', type=Path, help='Explicit retained catalog; requires --catalog-sha256')
+    capture_parser.add_argument('--catalog-sha256')
     capture_parser.add_argument('--output', type=Path, required=True)
     check_parser = commands.add_parser('check-capture')
     check_parser.add_argument('--capture', type=Path, required=True)
