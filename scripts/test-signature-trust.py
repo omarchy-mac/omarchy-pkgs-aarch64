@@ -182,7 +182,7 @@ def acquire_retained(output):
     print('PASS retained ZIP, receipt, run and manifest identity (native signatures not yet tested)')
 
 
-def signature_result(name, result, success):
+def signature_result(name, result, success, *, report=True):
     import re
     text = result.stdout.decode(errors='replace')
     signature_error = re.search(
@@ -190,7 +190,27 @@ def signature_result(name, result, success):
         r'missing (?:required|PGP) signature|required key missing from keyring|'
         r'signature from .*(?:unknown trust|marginal trust|invalid)|invalid signature', text, re.I)
     if (success and (result.returncode != 0 or 'error:' in text.lower())) or (not success and (result.returncode == 0 or not signature_error)):
-        raise RuntimeError(name+' unexpected result\n'+text)
+        raise RuntimeError(f'{name} unexpected result (exit status {result.returncode})\n'+text)
+    if report:
+        print('PASS supplemental native trust:', name, flush=True)
+
+
+def installed_package_result(name, result, command, cmd, package_name, root, task):
+    # Validate the transaction before querying; scriptlet errors can exit zero.
+    signature_result(name, result, True, report=False)
+    query = command(*cmd, '-Q', package_name, ok=False)
+    helper = rc4()
+    helper.require(query.returncode == 0 and query.stdout.strip() ==
+                   b'omarchy-mac-keyring 20260914-2',
+                   f'{name}: Exact package installation not recorded\n'
+                   f'install exit status {result.returncode}; combined output: {result.stdout!r}\n'
+                   f'query command: {list(map(str, cmd)) + ["-Q", package_name]!r}\n'
+                   f'query exit status {query.returncode}; combined output: {query.stdout!r}')
+    helper.require(helper.digest(root/'usr/share/pacman/keyrings/omarchy-mac.gpg') ==
+                   helper.PUBLIC_KEY_SHA256, 'Installed keyring payload differs')
+    helper.require('ALPM-SCRIPTLET' in (task/'pacman.log').read_text() or
+                   b'Initialize pacman trust' in result.stdout,
+                   'Keyring scriptlet execution not observed')
     print('PASS supplemental native trust:', name, flush=True)
 
 
@@ -285,15 +305,10 @@ def retained_candidate(candidate):
                 else:
                     # -U uses the detached signature; embedded DB signatures cannot mask absence.
                     result = command(*cmd, '-Udd', repo/filename, ok=False)
-                    signature_result(name, result, success)
                     if success:
-                        helper.require(command(*cmd, '-Q', package_name).stdout.strip() ==
-                                       b'omarchy-mac-keyring 20260914-2', 'Exact package installation not recorded')
-                        helper.require(helper.digest(root/'usr/share/pacman/keyrings/omarchy-mac.gpg') ==
-                                       helper.PUBLIC_KEY_SHA256, 'Installed keyring payload differs')
-                        helper.require('ALPM-SCRIPTLET' in (task/'pacman.log').read_text() or
-                                       b'Initialize pacman trust' in result.stdout,
-                                       'Keyring scriptlet execution not observed')
+                        installed_package_result(name, result, command, cmd, package_name, root, task)
+                    else:
+                        signature_result(name, result, False)
 
         attempt('untrusted-before-bootstrap', False, ring=trusted)
         # Only independently pinned checkout public material bootstraps this ring.
