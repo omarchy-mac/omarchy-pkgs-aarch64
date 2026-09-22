@@ -208,7 +208,7 @@
       "pkgbase": "libva-v4l2_request-avd",
       "source": "local",
       "category": "compile",
-      "note": "AVD is a stateless decoder and ffmpeg's v4l2m2m decoders are stateful, so the firmware alone gets you a /dev/video node nothing can drive. The AUR has megi's libva-v4l2_request 1.2 without the AVD fixes; this is sofus13's fork at 1.3. Installs an asahi_drv_video.so alias, which is the name libva looks for on Apple Silicon, so VA-API apps need no environment variable."
+      "note": "AVD is a stateless decoder and ffmpeg's v4l2m2m decoders are stateful, so the firmware alone gets you a /dev/video node nothing can drive. The AUR has megi's libva-v4l2_request 1.2 without the AVD fixes; this is iconidentify's fork pinned to a commit (sofus13's 1.3 plus the early-export fix that Chromium-family browsers need, and later HEVC/H.264/VP9 fixes). Installs an asahi_drv_video.so alias, which is the name libva looks for on Apple Silicon, so VA-API apps need no environment variable."
     },
     {
       "name": "localsend",
