@@ -28,7 +28,8 @@ optdepends=(
   'b3sum: Fast Blake3 hash function to prevent duplication.'
   'xxhash: Fast hashing utility for deduplication with shorter hashes.'
 )
-makedepends=('git')
+# GraalVM native-image links zlib; the compiler and glibc headers come from base-devel.
+makedepends=('git' 'zlib')
 backup=(etc/limine-snapper-sync.conf)
 conflicts=('limine-snapper-sync-git')
 sha256sums=(

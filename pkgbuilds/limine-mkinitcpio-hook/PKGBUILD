@@ -29,7 +29,8 @@ optdepends=(
   'sbctl: Signs UEFI boot files for Secure Boot when enabled'
   'journalctl-desktop-notification: Sends desktop notifications when errors occur'
 )
-makedepends=('git')
+# GraalVM native-image links zlib; the compiler and glibc headers come from base-devel.
+makedepends=('git' 'zlib')
 backup=(etc/limine-entry-tool.conf)
 conflicts=('limine-entry-tool')
 sha256sums=(

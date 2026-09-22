@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import yaml
 
@@ -17,6 +18,21 @@ builder = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(builder)
 COMMIT = 'a' * 40
 VERSION = '4.0.0.alpha.quattro.r1790000000.gaaaaaaaaaaaa'
+
+
+class BootBuildDependenciesTest(unittest.TestCase):
+    def test_build_dependencies_are_checked_without_installing_runtime_packages(self):
+        metadata = "pkgbase = fixture\n\tmakedepends = git\n\tmakedepends_aarch64 = zlib\n\tdepends = limine\n"
+        with patch.object(builder, 'output', return_value=metadata), patch.object(builder.subprocess, 'run') as run:
+            run.return_value = subprocess.CompletedProcess([], 127, 'zlib\n', '')
+            with self.assertRaisesRegex(ValueError, 'disposable builder: zlib'):
+                builder.check_boot_build_dependencies(Path('/recipes'))
+            self.assertEqual(run.call_args.args[0], ['pacman', '-T', 'git', 'zlib'])
+            run.return_value = subprocess.CompletedProcess([], 0, '', '')
+            builder.check_boot_build_dependencies(Path('/recipes'))
+            run.return_value = subprocess.CompletedProcess([], 1, '', 'broken database')
+            with self.assertRaisesRegex(ValueError, 'cannot query'):
+                builder.check_boot_build_dependencies(Path('/recipes'))
 
 
 class PackageSetTest(unittest.TestCase):

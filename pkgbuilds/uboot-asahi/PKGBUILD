@@ -18,7 +18,8 @@ _srcname=u-boot-${_commit_id}
 arch=('aarch64')
 url='http://asahilinux.org'
 license=('MIT' 'GPL2')
-makedepends=( bc imagemagick )
+# pylibfdt and the signed EFI host tools are built even for apple_m1_defconfig.
+makedepends=('bc' 'imagemagick' 'python' 'python-setuptools' 'swig' 'openssl' 'gnutls')
 source=(
   "u-boot-${_commit_id}.tar.gz::https://github.com/AsahiLinux/u-boot/archive/${_commit_id}.tar.gz"
   'disable-VBE-by-default.patch'

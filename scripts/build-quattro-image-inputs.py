@@ -175,6 +175,21 @@ def test_environment(env, source, recipes, iso, test_tools):
     return env
 
 
+def check_boot_build_dependencies(recipes):
+    dependencies = set()
+    for name in BOOT_PACKAGES:
+        metadata = output('makepkg', '--printsrcinfo', cwd=recipes / 'pkgbuilds' / name)
+        for line in metadata.splitlines():
+            key, separator, value = line.strip().partition(' = ')
+            if separator and key in ('makedepends', 'makedepends_aarch64'):
+                dependencies.add(value)
+    result = subprocess.run(['pacman', '-T', *sorted(dependencies)],
+                            text=True, capture_output=True, check=False)
+    require(result.returncode in (0, 127), 'cannot query native boot build dependencies: ' + result.stderr.strip())
+    require(result.returncode == 0, 'install native boot build dependencies in the disposable builder: ' +
+            ', '.join(result.stdout.splitlines()))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('source', type=Path)
@@ -264,6 +279,8 @@ def main():
             versions['qemu-user-static-binfmt'] = versions[name]
     env = dict(os.environ, LC_ALL='C.UTF-8', PYTHONDONTWRITEBYTECODE='1',
                PKGDEST=str(artifacts), SOURCE_DATE_EPOCH=stamp)
+    if schema == 4:
+        check_boot_build_dependencies(recipes)
     print('Running the headless desktop aggregate suite...', flush=True)
     with (logs / 'desktop-tests.log').open('w') as log:
         subprocess.run(['bash', 'test/all'], cwd=source, env=test_environment(env, source, recipes, iso, test_tools), stdout=log,
