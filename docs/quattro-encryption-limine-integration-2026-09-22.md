@@ -1,0 +1,15 @@
+# Package encryption/Limine integration preparation
+
+Base: tested nine-package recipe source `5b41ff12fbf97c7fc86a161e58763ebc97e4e2d9`. Upstream destination main was `78bf4a2d659187c10c722d8d0e8c41dd9e5e3726` at inventory time; compare its later changes separately before an eventual merge. Existing package worktrees are untouched.
+
+Prepare a separate boot package from pinned `omarchy-mac-boot 20260921-9`, plus ARM64 `limine-mkinitcpio-hook 1.36.0-3`, `limine-snapper-sync 1.30.1-1`, `uboot-asahi 2026.07.asahi2-3`, and ARM64 settings-menu retention. The central inventory records source commits #155/#170/#182/#185/#186/#190. Resolve ALARM Limine and the full authenticated binary closure before admitting a build.
+
+Keep `omarchy-mac` kernel-neutral. The proposed boot package owns conversion, vendor firmware/HID ordering, first-boot services and boot hooks, and replaces `omarchy-apple-boot`/`omarchy-first-boot`. Review every installed path and removal hook across the complete transaction, including the existing add-on/settings/runtime. The upstream first-boot script imports and locally signs Marcelo's key `C81AC3E2A99556F9B21D5FEA3DD49BC9F8360BDC`; exclude that key and adapt the lifecycle without changing target repository policy or installing candidate trust.
+
+Extend `scripts/build-quattro-image-inputs.py`, signing/verification and the explicit candidate schema together with the image importer. Preserve source attribution, nine-package receipts, disjoint dependency snapshots, paired desktop/settings and immutable manifests. Boot tests to port are `test/omarchy-mac-boot`, `test/omarchy-mac-encrypt`, `test/omarchy-mac-first-boot`, and `test/omarchy-mac-hid-initramfs`; image activation checks belong to the image builder. Run focused fixture tests and `scripts/self-test.sh` after implementation, then validate ownership in a disposable full transaction. Do not alter edge publishing workflows or production trust.
+
+This branch is a local source-preparation branch. No functional port or new build has been performed. The complete dependency inventory and 168-file disposition map are in the desktop repository, branch `integrate/quattro-encryption-limine`, under `docs/quattro-encryption-limine-{integration,sources,files}-2026-09-22.{md,json,json}` (three separate files). The local desktop worktree is `/home/scott/code/omarchy-worktrees/quattro-encryption-limine`.
+
+The proposed runtime source ceiling is `maralcbr/omarchy-mx-mac` open PR #220 at `d418ab7f95e8ba447df4fb368ddd838a5ffc7943`, including merged #219 at `5e7a409fae1ddc17433d9408e15153b4fe813f7b`. The package/image reference is open `maralcbr/omarchy-pkgs` PR #194 at `68a61cef1aba768c6aae20a0feda2a42e19de6e8`. These heads were verified with GitHub API on September 22. Preserve pins and original attribution; neither open PR is a qualified downloadable candidate.
+
+Keep candidate packages/images private and signed under the existing build-input policy. Preserve the active desktop, unrelated dirty worktrees, installed-user feed and repository trust. No publication, remote update, physical disk operation or boot-policy change is part of this preparation.
