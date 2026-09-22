@@ -91,8 +91,10 @@ grep -Fq 'update-grub' "$SCRIPT" && grep -Fq '/usr/bin/mkinitcpio -P' "$SCRIPT" 
 grep -Fq 'limine.enabled' "$SCRIPT" && grep -Fq 'omarchy-mac-boot-update' "$SCRIPT" ||
   fail "the script rebuilds the Limine UKI on a Limine Mac (limine.enabled + omarchy-mac-boot-update)"
 GATE_HOOK=$FILES/etc/boot/hooks/pre.d/05-omarchy-mac-limine-gate
-[[ -x $GATE_HOOK ]] && grep -Fq 'exit 100' "$GATE_HOOK" && grep -Fq 'limine.enabled' "$GATE_HOOK" && grep -Fq '/etc/default/limine' "$GATE_HOOK" ||
-  fail "the package keeps limine-mkinitcpio-hook idle until Limine is active (pre hook exit 100)"
+GATE_HELPER=$FILES/usr/lib/omarchy/mac-boot/limine-ready
+[[ -x $GATE_HOOK && -x $GATE_HELPER ]] && grep -Fq '/usr/lib/omarchy/mac-boot/limine-ready' "$GATE_HOOK" &&
+  grep -Fq 'exit 100' "$GATE_HELPER" && grep -Fq 'limine.enabled' "$GATE_HELPER" && grep -Fq '/etc/default/limine' "$GATE_HELPER" ||
+  fail "the pre hook shares the early package activation gate"
 grep -Fq 'rd.luks.key=' "$SCRIPT" && grep -Fq "UUID=$BOOT_UUID" "$SCRIPT" &&
   grep -Fq 'rd.luks.name=' "$SCRIPT" && ! grep -Fq 'root=/dev/mapper/root' "$SCRIPT" ||
   fail "the GRUB cmdline names the mapper, the LUKS UUID and the Boot-partition key"

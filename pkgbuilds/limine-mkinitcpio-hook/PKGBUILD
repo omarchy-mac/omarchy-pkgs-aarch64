@@ -10,6 +10,7 @@ url="https://gitlab.com/Zesko/limine-entry-tool"
 source=(
   "${_pkgname}::git+${url}.git#tag=${pkgver}"
   "0001-allow-aarch64-uki-and-efi-entries.patch"
+  "0002-honor-apple-activation-before-pacman-hooks.patch"
   "gradle-${_gradle_version}-bin.zip::https://services.gradle.org/distributions/gradle-${_gradle_version}-bin.zip")
 source_x86_64=("https://github.com/graalvm/graalvm-ce-builds/releases/download/jdk-25.0.2/graalvm-community-jdk-25.0.2_linux-x64_bin.tar.gz")
 source_aarch64=("https://github.com/graalvm/graalvm-ce-builds/releases/download/jdk-25.0.2/graalvm-community-jdk-25.0.2_linux-aarch64_bin.tar.gz")
@@ -37,6 +38,7 @@ conflicts=('limine-entry-tool')
 sha256sums=(
   'e389e36765acc9185499f764c6105ca02b11531d8665a67487816a24b518fecb'
   '8f6c1af2f9a7cf96d72e60bd2a80f4cce5dbafe2b9830a04ab822a76600905ed'
+  'a7a30e6c500e847fbfbd8667e1e50847d69a5da223d1328e2c6a81f9952903b0'
   '84fbba45c7f4c64abc77460e1c00f541e9f960e3c7ed2538f1ede19eacd873ae')
 sha256sums_x86_64=('e0be791c8fda4d03b6b0a0cb824fef3149736170057b3a515252b44419606af0')
 sha256sums_aarch64=('b4580d9f223d0a4b3a1757e58b18ff4c1db950e67e105fc5cb741457d2384a71')
@@ -45,6 +47,7 @@ prepare() {
   # Apple Silicon Macs boot Limine under U-Boot's UEFI; the tool only
   # refused UKI and EFI entries there by architecture name.
   patch -d "$srcdir/${_pkgname}" -p1 <"$srcdir/0001-allow-aarch64-uki-and-efi-entries.patch"
+  patch -d "$srcdir/${_pkgname}" -p1 <"$srcdir/0002-honor-apple-activation-before-pacman-hooks.patch"
   [[ -d "${_graalvm_version}" ]] && rm -rf "${_graalvm_version}"
   mv graalvm-community-openjdk-*/ "${_graalvm_version}"
   if ! command -v "${_graalvm_version}"/bin/javac >/dev/null 2>&1; then
