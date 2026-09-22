@@ -136,14 +136,20 @@ def publish(transport, baseline, selected):
                 'live baseline bytes differ: ' + name)
     snapshot(transport, baseline)  # immediately before the first write
     expected = [r for r in baseline if r['name'] not in ORDER]
+    failure_detail = None
+    mutation = None
     try:
         for name in ORDER:
             if name in by_name:
+                mutation = ('delete', name, 'DELETE')
                 transport.api(f"releases/assets/{by_name[name]['id']}", method='DELETE')
+                mutation = None
             from urllib.parse import quote
             endpoint = (f'https://uploads.github.com/repos/{dry.REPO}/releases/'
                         f'{dry.EDGE_RELEASE}/assets?name={quote(name, safe="")}')
+            mutation = ('upload', name, 'POST')
             row = transport.api(endpoint, method='POST', data=selected[name])
+            mutation = None  # Validation/readback failures are not failed uploads.
             require(row['name'] == name and row['size'] == len(selected[name]) and
                     row['digest'] == 'sha256:' + dry.digest(selected[name]), 'upload identity mismatch')
             expected.append({k: row[k] for k in ('id', 'name', 'size', 'digest', 'updated_at')})
@@ -151,10 +157,30 @@ def publish(transport, baseline, selected):
         for name in ORDER:
             require(transport.public(name) == selected[name], 'public byte readback mismatch: ' + name)
         snapshot(transport, expected)
-    except Exception:
-        raise RuntimeError('PARTIAL PUBLICATION POSSIBLE: stop; no retry or automatic rollback. '
-                           'Inspect the complete edge inventory before any separately approved recovery.') from None
+    except Exception as error:
+        failure_detail = ''
+        if mutation is not None:
+            operation, asset, method = mutation  # Only fixed operation/name values from ORDER.
+            status = error.status if type(error) is RequestFailure else 'unavailable'
+            code = error.exit_code if type(error) is RequestFailure else 'unavailable'
+            failure_detail = (f'operation={operation} asset={asset} method={method} '
+                              f'http_status={status} exit_code={code}. ')
+    # Do not retain arbitrary exceptions in a hidden cause/context chain.
+    if failure_detail is not None:
+        raise RuntimeError(failure_detail +
+                           'PARTIAL PUBLICATION POSSIBLE: stop; no retry or automatic rollback. '
+                           'Inspect the complete edge inventory before any separately approved recovery.')
     return expected
+
+
+class RequestFailure(RuntimeError):
+    """Only numeric transport diagnostics; never retain the original error."""
+    def __init__(self, method, status=None, exit_code=None):
+        self.status = status if type(status) is int and 100 <= status <= 599 else 'unavailable'
+        self.exit_code = exit_code if type(exit_code) is int else 'unavailable'
+        method = method if method in ('GET', 'POST', 'DELETE') else 'request'
+        super().__init__(f'GitHub {method} request failed (no retry): '
+                         f'http_status={self.status} exit_code={self.exit_code}')
 
 
 class GitHub:
@@ -170,7 +196,11 @@ class GitHub:
         else:
             kwargs['stdin'] = subprocess.DEVNULL
         result = subprocess.run(args, **kwargs)
-        require(result.returncode == 0, f'GitHub {method} request failed (no retry)')
+        if result.returncode != 0:
+            # Recognize only gh's numeric HTTP marker, never relay stderr text.
+            statuses = re.findall(rb'\(HTTP ([1-5][0-9]{2})\)', result.stderr or b'')
+            status = int(statuses[0]) if len(statuses) == 1 else None
+            raise RequestFailure(method, status, result.returncode)
         if raw:
             return result.stdout
         return json.loads(result.stdout) if result.stdout.strip() else None
