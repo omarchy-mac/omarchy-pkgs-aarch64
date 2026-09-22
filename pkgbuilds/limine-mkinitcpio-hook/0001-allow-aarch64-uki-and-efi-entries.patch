@@ -1,0 +1,46 @@
+diff --git a/src/main/java/org/limine/entry/tool/Main.java b/src/main/java/org/limine/entry/tool/Main.java
+index 434de01..91c5976 100644
+--- a/src/main/java/org/limine/entry/tool/Main.java
++++ b/src/main/java/org/limine/entry/tool/Main.java
+@@ -280,8 +280,8 @@ public class Main {
+     }
+ 
+     private static void addUki(String kernelName, String comment, EntryOptions kernelEntryOptions, String ukiFilePath) throws IOException {
+-        if (!Utility.isSystemAmd64()) {
+-            exitWithError("Your system is not using x86_64 architecture");
++        if (!Utility.isSystemUefiCapable()) {
++            exitWithError("Your system is not using x86_64 or aarch64 architecture");
+         }
+         if (!Utility.isSystemEfi()) {
+             exitWithError("Your system is not using EFI mode");
+@@ -311,8 +311,8 @@ public class Main {
+     }
+ 
+     private static void addEfi(String efiName, String comment, EntryOptions kernelEntryOptions, String efiFilePath, boolean shouldCheckDevice) throws IOException {
+-        if (shouldCheckDevice && !Utility.isSystemAmd64()) {
+-            exitWithError("Your system is not using x86_64 architecture");
++        if (shouldCheckDevice && !Utility.isSystemUefiCapable()) {
++            exitWithError("Your system is not using x86_64 or aarch64 architecture");
+             return;
+         }
+         if (shouldCheckDevice && !Utility.isSystemEfi()) {
+diff --git a/src/main/java/org/limine/entry/tool/processes/Utility.java b/src/main/java/org/limine/entry/tool/processes/Utility.java
+index d89f674..2394038 100644
+--- a/src/main/java/org/limine/entry/tool/processes/Utility.java
++++ b/src/main/java/org/limine/entry/tool/processes/Utility.java
+@@ -592,6 +592,15 @@ public class Utility {
+         return arch.equals("x86_64") || arch.equals("amd64");
+     }
+ 
++    /**
++     * Architectures whose UKI and EFI entries this tool writes: x86_64 and
++     * aarch64 (UEFI provided by U-Boot on Apple Silicon).
++     */
++    public static boolean isSystemUefiCapable() {
++        String arch = System.getProperty("os.arch").toLowerCase();
++        return isSystemAmd64() || arch.equals("aarch64");
++    }
++
+ 
+     /**
+      * Validates if the given path is a valid boot partition using FAT32.
