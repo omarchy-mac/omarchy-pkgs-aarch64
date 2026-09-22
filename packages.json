@@ -49,13 +49,6 @@
       "note": "split pkgbase; managed-only payload with no native ELF"
     },
     {
-      "name": "avd-fw",
-      "pkgbase": "avd-fw",
-      "source": "local",
-      "category": "any",
-      "note": "In no repository at all -- not ALARM, not [extra], not the AUR. Without it the in-tree apple-avd driver fails to probe on every boot with 'Direct firmware load for apple/avd-fw-v2-t0.bin failed with error -2', so the video decoder sits idle. arch=('any'): the images are raw Cortex-M3 firmware, identical whatever host builds them. One build covers M1 through M4."
-    },
-    {
       "name": "brave-origin-bin",
       "pkgbase": "brave-origin-bin",
       "source": "aur",

@@ -13,7 +13,8 @@ boot = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(boot)
 bundle = boot.bundle
 require = bundle.require
-# These names must come from the separately verified quattro candidate set.
+# Desktop and VA-API packages come from the verified quattro candidate set.
+# avd-fw comes from Asahi ALARM; never retain an old Omarchy firmware copy.
 EXCLUDED = {'omarchy', 'omarchy-settings', 'omarchy-mac', 'avd-fw', 'libva-v4l2_request-avd'}
 
 
@@ -48,7 +49,7 @@ def validate_capture(root, capture_hash, database_hash):
             'Capture does not match selected edge database')
     all_packages = bundle.archives(root / 'packages')
     # No catalog filtering: the signed dependency inventory derives from the
-    # complete frozen DB, minus only the five explicit candidate overrides.
+    # complete frozen DB, minus the candidate overrides and Asahi firmware.
     bundle.validate_inventory(bundle.database(root / 'sources/edge.db'), all_packages)
     packages = {n: p for n, p in all_packages.items() if n not in EXCLUDED}
     require(packages and 'omarchy-nvim' in packages, 'Image dependency set is incomplete')

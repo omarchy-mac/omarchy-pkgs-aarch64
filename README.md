@@ -41,8 +41,9 @@ small, checked packaging patch described below. Packages come from four places:
   repacks the vendor linux-arm64 `.deb` that the x86_64-only omarchy-pkgs
   recipe never reaches for. `zed` is the vendor linux aarch64 release; Arch's `zed`
   is x86_64-only and the Omarchy installer asks for that exact name.
-  `avd-fw` and `libva-v4l2_request-avd` are in no repository at all,
-  and together turn on hardware video decode on Apple Silicon.
+  `libva-v4l2_request-avd` supplies the VA-API bridge for Apple Silicon video
+  decoding. Its firmware dependency, `avd-fw`, is maintained and published by
+  [Asahi ALARM](https://github.com/asahi-alarm/PKGBUILDs/tree/main/avd-fw).
 
 ## Packages
 
@@ -53,7 +54,6 @@ small, checked packaging patch described below. Packages come from four places:
 | `aether` | 4.30.0-1 | Wallpaper-driven desktop theming |
 | `aspnet-runtime-bin` | 10.0.12.sdk401-1 | ASP.NET Core runtime |
 | `aspnet-targeting-pack-bin` | 10.0.12.sdk401-1 | ASP.NET Core targeting pack |
-| `avd-fw` | 0.1-1 | Apple Video Decoder firmware — H.264/HEVC/VP9 hardware decode |
 | `brave-origin-bin` | 1:1.95.104-1 | Minimalist browser from the Brave team |
 | `cliamp` | 2.2.0-1 | Retro terminal music player |
 | `cursor-bin` | 3.20.17-1 | Cursor editor (vendor linux-arm64 AppImage) |
@@ -302,6 +302,12 @@ gh workflow run update-packages.yml -f packages=mise-bin   # one package
 gh workflow run update-packages.yml -f dry_run=true        # build, verify, publish nothing
 gh workflow run update-omarchy-mac.yml -f release_tag=v4.0.2-1 -f dry_run=true
 ```
+
+### AVD firmware handoff
+
+`avd-fw` is now supplied by Asahi ALARM. Omarchy's installer keeps requesting it by name, alongside this repository's `libva-v4l2_request-avd`. Existing firmware installations need no uninstall or migration.
+
+Removing the recipe and `packages.json` entry stops future builds but does not remove an already-published package from edge. The regular publisher preserves existing database entries and refuses to shrink the inventory. To finish the handoff, coordinate with both updater workflows, use `repo-remove` on a downloaded copy of the edge database to remove `avd-fw`, and republish the database and file-list assets with `.db` last. Preserve the current signing policy and regenerate database signatures if edge is signed. Only after the updated database is live should the retired firmware archive and its signature be deleted. No package build is needed. Historical RC inventories and retained snapshots remain unchanged.
 
 [`scripts/self-test.sh`](scripts/self-test.sh) covers the parts that would fail
 quietly rather than loudly — epoch filename handling, reading a package's name

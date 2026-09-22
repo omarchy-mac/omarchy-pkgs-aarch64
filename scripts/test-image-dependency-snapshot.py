@@ -30,7 +30,7 @@ class SnapshotTest(unittest.TestCase):
         self.root = Path(self.tmp.name)
         base = self.root / 'base'
         base.mkdir()
-        for name in ['omarchy-nvim', 'omarchy-steam-fex', *sorted(s.EXCLUDED)]:
+        for name in ['omarchy-nvim', 'omarchy-steam-fex', 'avd-fw', *sorted(s.EXCLUDED - {'avd-fw'})]:
             path = base / f'{name}-1-1-any.pkg.tar.xz'
             with tarfile.open(path, 'w:xz') as tar:
                 data = f'pkgname = {name}\npkgver = 1-1\narch = any\npkgdesc = fixture\n'.encode()
@@ -46,7 +46,7 @@ class SnapshotTest(unittest.TestCase):
             s.capture(self.capture, self.database_hash)
         self.capture_hash = s.bundle.digest(self.capture / 'capture-manifest.json')
 
-    def test_exact_capture_includes_extra_packages_and_excludes_candidates_only_at_sealing(self):
+    def test_exact_capture_excludes_candidates_and_retired_firmware_at_sealing(self):
         packages = s.validate_capture(self.capture, self.capture_hash, self.database_hash)
         self.assertEqual(set(packages), {'omarchy-nvim', 'omarchy-steam-fex'})
         self.assertTrue(all(event[0] in ('view','read') for event in self.remote.events))
