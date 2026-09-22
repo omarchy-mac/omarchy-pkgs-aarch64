@@ -208,7 +208,9 @@ fi
 # Hand the new db to the caller so the README table can be rebuilt from it.
 if [[ -n "${DB_OUT:-}" ]]; then
   mkdir -p "$DB_OUT"
-  cp "$work/$DB_NAME.db.tar.zst" "$DB_OUT/"
+  for asset in "${database_assets[@]}"; do
+    cp "$work/$asset" "$DB_OUT/"
+  done
   mkdir -p "$DB_OUT/smoke-packages"
   for name in "${staged[@]}"; do
     cp --reflink=auto "$work/$name" "$DB_OUT/smoke-packages/$name"
