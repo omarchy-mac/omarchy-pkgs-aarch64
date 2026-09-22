@@ -1,0 +1,10 @@
+#!/bin/bash
+# limine-mkinitcpio-hook runs its kernel hook on every kernel and initramfs
+# transaction. Until Omarchy has activated Limine on this Mac (the gate
+# /var/lib/omarchy/limine.enabled and the defaults /etc/default/limine that
+# install/hardware/apple/limine-boot.sh writes), the tool has no
+# configuration and would copy kernels under /boot; a pre hook exit status
+# of 100 or more makes it skip the rebuild instead.
+[[ -e /var/lib/omarchy/limine.enabled && -f /etc/default/limine ]] && exit 0
+echo "Limine is not active on this Mac; skipping the Limine kernel rebuild" >&2
+exit 100
