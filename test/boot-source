@@ -4,6 +4,6 @@ set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 export OMARCHY_DISPOSABLE_BOOT_TESTS=0
 unset IN_OMARCHY_MAC_HID_TEST OMARCHY_MAC_ENCRYPT_TEST_INNER
-for name in boot encrypt first-boot hid-initramfs; do
+for name in boot encrypt encrypt-boot-update first-boot hid-initramfs; do
   bash "$ROOT/test/omarchy-mac-$name"
 done

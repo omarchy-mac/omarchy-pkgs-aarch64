@@ -598,13 +598,21 @@ omarchy_mac_encrypt_set_grub_cmdline() {
 }
 
 omarchy_mac_encrypt_finish() {
-    local uuid dest
+    local uuid dest limine=0
     uuid=$(cryptsetup luksUUID "$ROOT_DEV") || omarchy_mac_encrypt_fail "could not read the LUKS UUID"
     LUKS_UUID=$uuid
     omarchy_mac_encrypt_write_state encrypted
     omarchy_mac_encrypt_open
     omarchy_mac_encrypt_resize_luks
     omarchy_mac_encrypt_mount_opened
+
+    # A Limine image must have its complete boot-update path before anything
+    # rewrites the ESP. Missing runtime/defaults are an incomplete image.
+    if [[ -e $ROOT_MNT/var/lib/omarchy/limine.enabled ]]; then
+        [[ -f $ROOT_MNT/etc/default/limine && -x $ROOT_MNT/usr/bin/omarchy-mac-boot-update ]] ||
+            omarchy_mac_encrypt_fail "Limine is enabled but its defaults or boot updater are missing"
+        limine=1
+    fi
 
     dest=$ROOT_MNT$PROVISIONING_DIR/luks-key
     install -d -m 0755 "$ROOT_MNT$PROVISIONING_DIR"
@@ -625,8 +633,7 @@ omarchy_mac_encrypt_finish() {
     chroot "$ROOT_MNT" /usr/bin/mkinitcpio -P </dev/null || omarchy_mac_encrypt_fail "mkinitcpio -P failed"
     # A Limine Mac (omarchy-mx-mac install/hardware/apple/limine-boot.sh) boots
     # a UKI whose command line is derived from GRUB's defaults: rebuild it.
-    if [[ -e $ROOT_MNT/var/lib/omarchy/limine.enabled && -f $ROOT_MNT/etc/default/limine &&
-          -x $ROOT_MNT/usr/bin/omarchy-mac-boot-update ]]; then
+    if (( limine )); then
         omarchy_mac_encrypt_say "rebuilding the Limine UKI and entries"
         chroot "$ROOT_MNT" omarchy-mac-boot-update || omarchy_mac_encrypt_fail "omarchy-mac-boot-update failed"
     fi
