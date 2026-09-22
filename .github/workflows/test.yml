@@ -6,6 +6,16 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      edge_keyring_publish:
+        description: Publish ONLY the fixed tested keyring bootstrap bytes (protected live edge write)
+        type: boolean
+        required: false
+        default: false
+      edge_keyring_publish_sha:
+        description: Full reviewed execution commit SHA; required only for the exact-byte live publication
+        type: string
+        required: false
+        default: ''
       edge_keyring_dryrun:
         description: Exact retained keyring, native preservation only (no package builds, secrets or publication)
         type: boolean
@@ -22,11 +32,55 @@ on:
         required: false
         default: false
 
+permissions:
+  contents: read
+
 jobs:
+  edge-keyring-publish:
+    name: Exact retained keyring bootstrap (LIVE edge only)
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.edge_keyring_publish &&
+      !inputs.edge_keyring_dryrun && !inputs.publisher_readiness && !inputs.retained_rc4_trust &&
+      github.repository == 'omarchy-mac/omarchy-pkgs-aarch64' &&
+      github.repository_id == '1327386148' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: package-signing-edge
+    permissions:
+      contents: write
+      actions: read
+    concurrency:
+      group: edge-publish
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Check lightweight verification tools (no image or package builds)
+        run: |
+          set -euo pipefail
+          for tool in python3 gh zstd git; do command -v "$tool"; done
+      - name: Acquire pinned artifact, recheck baseline, publish exact bytes and verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPROVED_SHA: ${{ inputs.edge_keyring_publish_sha }}
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          set -euo pipefail
+          python3 scripts/edge-keyring-publish.py --publish "$RUNNER_TEMP/keyring-publication"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: edge-keyring-publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/keyring-publication
+          if-no-files-found: warn
+          retention-days: 14
+
   edge-keyring-dryrun:
     name: Exact retained keyring preservation (no builds or publication)
     if: >-
-      github.event_name == 'workflow_dispatch' && inputs.edge_keyring_dryrun &&
+      github.event_name == 'workflow_dispatch' && inputs.edge_keyring_dryrun && !inputs.edge_keyring_publish &&
       github.repository == 'omarchy-mac/omarchy-pkgs-aarch64' && github.repository_id == '1327386148'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
@@ -86,7 +140,7 @@ jobs:
 
   publisher-readiness:
     name: Isolated publisher readiness (disposable keys, manual only)
-    if: github.event_name == 'workflow_dispatch' && inputs.publisher_readiness
+    if: github.event_name == 'workflow_dispatch' && inputs.publisher_readiness && !inputs.edge_keyring_publish
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     permissions:
@@ -135,7 +189,7 @@ jobs:
   retained-rc4-trust:
     name: Supplemental retained RC4 native trust (manual only)
     if: >-
-      github.event_name == 'workflow_dispatch' && inputs.retained_rc4_trust &&
+      github.event_name == 'workflow_dispatch' && inputs.retained_rc4_trust && !inputs.edge_keyring_publish &&
       github.repository == 'omarchy-mac/omarchy-pkgs-aarch64' &&
       github.repository_id == '1327386148' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04-arm
@@ -172,6 +226,7 @@ jobs:
             '
 
   self-tests:
+    if: ${{ !inputs.edge_keyring_publish }}
     name: Self-tests
     runs-on: ubuntu-24.04
     steps:
@@ -201,6 +256,7 @@ jobs:
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-inspect-capture.py -v
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-rc4-sign-retain.py -v
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-edge-keyring-dryrun.py -v
+            PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-edge-keyring-publish.py -v
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-edge-publishing.py -v
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-sign-quattro-image-inputs.py -v
             PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-quattro-image-inputs.py -v
