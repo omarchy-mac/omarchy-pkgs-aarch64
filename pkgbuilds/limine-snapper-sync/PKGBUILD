@@ -16,6 +16,7 @@ options=(!debug !strip)
 _graalvm_version=graalvm_ce_jdk25
 depends=(
   'bash'
+  'zlib'
   'limine'
   'snapper'
   'btrfs-progs'
