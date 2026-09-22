@@ -118,6 +118,52 @@ class Publication(unittest.TestCase):
             p.publish(t, t.old, {name: b'new' for name in p.ORDER})
         self.assertEqual(len(t.writes), 9)
 
+    def test_mutation_failure_reports_safe_context_and_exact_write_prefix(self):
+        import subprocess
+        import traceback
+        from unittest.mock import patch
+        p = load()
+        secret = 'private-token-header-body-url'
+        selected = {name: b'new' for name in p.ORDER}
+        successful = Transport(p)
+        p.publish(successful, successful.old, selected)
+        mutations = [('upload', p.ORDER[0])] + [
+            (op, name) for name in p.ORDER[1:] for op in ('delete', 'upload')]
+        for failure, (operation, asset) in enumerate(mutations, 1):
+            with self.subTest(operation=operation, asset=asset):
+                t = Transport(p)
+                original_api = t.api
+                stopped = False
+
+                def api(endpoint, **kw):
+                    nonlocal stopped
+                    self.assertFalse(stopped, 'request after failure')
+                    if kw.get('method', 'GET') != 'GET' and len(t.writes) + 1 == failure:
+                        t.writes.append((kw['method'], endpoint, kw.get('data')))
+                        stopped = True
+                        result = subprocess.CompletedProcess([], 1, secret.encode(),
+                            (secret + ' (HTTP 422)\nAuthorization: ' + secret).encode())
+                        with patch.object(p.subprocess, 'run', return_value=result):
+                            return p.GitHub().api(endpoint, **kw)
+                    return original_api(endpoint, **kw)
+
+                with patch.object(t, 'api', side_effect=api), patch.object(t, 'public') as public:
+                    try:
+                        p.publish(t, t.old, selected)
+                    except RuntimeError as error:
+                        rendered = ''.join(traceback.format_exception(error))
+                        self.assertNotIn(secret, rendered)
+                        self.assertIsNone(error.__cause__)
+                        self.assertIsNone(error.__context__)
+                        self.assertIn('PARTIAL PUBLICATION POSSIBLE', str(error))
+                        method = 'POST' if operation == 'upload' else 'DELETE'
+                        self.assertIn(f'operation={operation} asset={asset} method={method} '
+                                      'http_status=422 exit_code=1', str(error))
+                    else:
+                        self.fail('failure accepted')
+                    public.assert_not_called()
+                self.assertEqual(t.writes, successful.writes[:failure])
+
     def test_complete_inventory_paginates_and_rejects_duplicates(self):
         p = load()
         from unittest.mock import patch
@@ -158,6 +204,33 @@ class Workflow(unittest.TestCase):
 
 
 class Runtime(unittest.TestCase):
+    def test_api_failure_retains_only_numeric_diagnostics(self):
+        import subprocess
+        import traceback
+        from unittest.mock import patch
+        p = load()
+        secret = 'credential-must-not-escape'
+        cases = [
+            (subprocess.CompletedProcess([], 1, secret.encode(),
+                ('gh: ' + secret + ' (HTTP 422)\nAuthorization: ' + secret).encode()), '422', '1'),
+            (subprocess.CompletedProcess([], 7, secret.encode(), secret.encode()), 'unavailable', '7'),
+        ]
+        for result, status, code in cases:
+            with self.subTest(status=status, code=code):
+                with patch.object(p.subprocess, 'run', return_value=result) as run:
+                    try:
+                        p.GitHub().api('releases/assets/1', method='DELETE')
+                    except Exception as error:
+                        rendered = ''.join(traceback.format_exception(error))
+                        self.assertNotIn(secret, rendered)
+                        self.assertIsNone(error.__cause__)
+                        self.assertIsNone(error.__context__)
+                        self.assertEqual(str(error), 'GitHub DELETE request failed (no retry): '
+                                         f'http_status={status} exit_code={code}')
+                    else:
+                        self.fail('request failure accepted')
+                    self.assertEqual(run.call_count, 1)
+
     def test_transport_sends_exact_bytes_and_reads_public_without_auth(self):
         p = load()
         self.assertTrue(hasattr(p, 'GitHub'), 'missing real transport')
