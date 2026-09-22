@@ -7,6 +7,10 @@ import io
 import tarfile
 import tempfile
 import copy
+import base64
+import json
+import subprocess
+from unittest.mock import patch
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -191,6 +195,115 @@ class Contracts(unittest.TestCase):
                     info.size = len(data)
                     tar.addfile(info, io.BytesIO(data))
             self.assertEqual(dry.records(archive), before)
+
+
+class Acquisition(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('dryrun', ROOT / 'scripts/edge-keyring-dryrun.py')
+        self.dry = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.dry)
+        self.payloads = {'omarchy-mac.gpg': b'\x99\xff\x00\x80public certificate\r\n',
+                         'omarchy-mac-trusted': b'fingerprint:4:\n',
+                         'omarchy-mac-revoked': b''}
+        self.responses = {name: {'encoding': 'base64', 'content': base64.encodebytes(data).decode('ascii')}
+                          for name, data in self.payloads.items()}
+        self.source_calls = []
+
+    def acquire(self, public_sha=None):
+        dry = self.dry
+        package = io.BytesIO()
+        with tarfile.open(fileobj=package, mode='w:xz') as archive:
+            files = {'.PKGINFO': b'pkgname = omarchy-mac-keyring\npkgver = 20260914-2\narch = any\n'}
+            files.update({'usr/share/pacman/keyrings/' + name: data for name, data in self.payloads.items()})
+            for name, data in files.items():
+                member = tarfile.TarInfo(name)
+                member.size = len(data)
+                archive.addfile(member, io.BytesIO(data))
+        self.assertLess(len(package.getvalue()), 9740)
+        package_bytes = package.getvalue().ljust(9740, b'\x00')
+        downloads = {570814012: package_bytes}
+        rows = []
+        for i, suffix in enumerate(dry.SUFFIXES, 1):
+            downloads[i] = b'database fixture'
+            rows.append(dict(id=i, name=dry.DB + '.' + suffix, size=len(downloads[i]),
+                             digest='sha256:' + dry.digest(downloads[i]), updated_at='fixed'))
+        rc_row = dict(id=570814012, name=dry.KEYRING, size=9740,
+                      digest='sha256:' + dry.digest(package_bytes), updated_at='fixed')
+
+        def gh(args, stdin):
+            self.assertEqual(stdin, subprocess.DEVNULL)
+            self.assertEqual(args[:4], ['gh', 'api', '--method', 'GET'])
+            prefix = 'repos/' + dry.REPO + '/'
+            self.assertTrue(args[4].startswith(prefix))
+            endpoint = args[4][len(prefix):]
+            if endpoint.startswith('contents/'):
+                name = endpoint.split('/')[-1].split('?')[0]
+                self.assertEqual(endpoint, 'contents/pkgbuilds/omarchy-mac-keyring/' + name +
+                                 '?ref=fec792c8784a8bfd48d401a6d3c0bff5ec896860')
+                self.source_calls.append(name)
+                # Reproduce the hosted failure if binary data uses raw+json.
+                if 'Accept: application/vnd.github.raw+json' in args:
+                    raise subprocess.CalledProcessError(1, args, stderr=b'invalid UTF-8 string')
+                response = self.responses[name]
+                return response if isinstance(response, bytes) else json.dumps(response).encode()
+            if endpoint.startswith('releases/assets/'):
+                self.assertEqual(args[5:], ['-H', 'Accept: application/octet-stream'])
+                return downloads[int(endpoint.split('/')[-1])]
+            result = {'releases/tags/edge': {'id': dry.EDGE_RELEASE},
+                      'releases/tags/rc': {'id': dry.RC_RELEASE},
+                      f'releases/{dry.EDGE_RELEASE}/assets?per_page=100&page=1': rows,
+                      f'releases/{dry.RC_RELEASE}/assets?per_page=100&page=1': [rc_row]}[endpoint]
+            return json.dumps(result).encode()
+
+        # Synthetic IO only; retain real acquisition, archive and digest guards.
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(dry.subprocess, 'check_output', side_effect=gh), \
+             patch.object(dry, 'KEYRING_SHA', dry.digest(package_bytes)), \
+             patch.object(dry, 'PUBLIC_SHA', public_sha or dry.digest(self.payloads['omarchy-mac.gpg'])):
+            dry.acquire(Path(tmp))
+            self.assertEqual((Path(tmp) / dry.KEYRING).read_bytes(), package_bytes)
+
+    def test_contents_requires_base64_encoding(self):
+        for encoding in ('none', 'utf-8', None):
+            with self.subTest(encoding=encoding):
+                self.responses['omarchy-mac.gpg']['encoding'] = encoding
+                with self.assertRaisesRegex(ValueError, 'invalid public keyring contents'):
+                    self.acquire()
+
+    def test_contents_rejects_invalid_base64(self):
+        encoded = self.responses['omarchy-mac.gpg']['content']
+        for invalid in ('!' + encoded, encoded.rstrip() + '!', 'A', 'é'):
+            with self.subTest(content=invalid):
+                self.responses['omarchy-mac.gpg']['content'] = invalid
+                with self.assertRaises(ValueError):
+                    self.acquire()
+
+    def test_contents_rejects_malformed_json_or_shape(self):
+        for response in (b'{', None, [], {}, {'content': ''}, {'encoding': 'base64'},
+                         {'encoding': 'base64', 'content': None},
+                         {'encoding': 'base64', 'content': 123}):
+            with self.subTest(response=response):
+                self.responses['omarchy-mac.gpg'] = response
+                with self.assertRaises(ValueError):
+                    self.acquire()
+
+    def test_decoded_contents_must_match_every_package_payload(self):
+        for name in self.payloads:
+            with self.subTest(name=name):
+                original = self.responses[name]['content']
+                self.responses[name]['content'] = base64.b64encode(b'wrong payload').decode('ascii')
+                with self.assertRaisesRegex(ValueError, 'public keyring payload differs: ' + name):
+                    self.acquire()
+                self.responses[name]['content'] = original
+
+    def test_matching_payload_still_requires_public_certificate_digest(self):
+        with self.assertRaisesRegex(ValueError, 'wrong public certificate'):
+            self.acquire(public_sha='0' * 64)
+
+    def test_binary_public_payloads_from_json_contents(self):
+        self.assertEqual(self.dry.PUBLIC_SHA, '118b1a5b48a74a2dd993860c4dc3f9d477d5c47c3b1422ea40e8e91f3c7e73d1')
+        self.acquire()
+        self.assertEqual(self.source_calls, list(self.payloads))
 
 
 if __name__ == '__main__':

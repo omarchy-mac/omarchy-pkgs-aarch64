@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Bounded retained-keyring experiment. Never publishes or uses signing keys."""
 import argparse
+import base64
 import hashlib
 import io
 import json
@@ -101,9 +102,10 @@ def acquire(directory):
             require(line in info.splitlines(), 'wrong keyring package metadata')
         for name in ('omarchy-mac.gpg', 'omarchy-mac-trusted', 'omarchy-mac-revoked'):
             endpoint = f'contents/pkgbuilds/omarchy-mac-keyring/{name}?ref={SOURCE}'
-            source = subprocess.check_output(['gh', 'api', '--method', 'GET',
-                f'repos/{REPO}/{endpoint}', '-H', 'Accept: application/vnd.github.raw+json'],
-                stdin=subprocess.DEVNULL)
+            content = api(endpoint)
+            require(isinstance(content, dict) and content.get('encoding') == 'base64' and
+                    isinstance(content.get('content'), str), 'invalid public keyring contents: ' + name)
+            source = base64.b64decode(content['content'].replace('\n', ''), validate=True)
             payload = archive.extractfile('usr/share/pacman/keyrings/' + name).read()
             require(payload == source, 'public keyring payload differs: ' + name)
             if name.endswith('.gpg'):
