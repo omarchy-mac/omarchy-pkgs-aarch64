@@ -15,6 +15,29 @@ bundle = boot.bundle
 require = bundle.require
 # These names must come from the separately verified quattro candidate set.
 EXCLUDED = {'omarchy', 'omarchy-settings', 'omarchy-mac', 'avd-fw', 'libva-v4l2_request-avd'}
+LIMINE_EXCLUDED = EXCLUDED | {
+    'asdcontrol', 'tobi-try', 'qemu-user-static', 'qemu-user-static-binfmt',
+    'omarchy-mac-boot', 'limine-mkinitcpio-hook', 'limine-snapper-sync', 'uboot-asahi',
+    'omarchy-apple-boot', 'omarchy-first-boot',
+}
+
+
+def contract(boot_profile):
+    require(boot_profile in ('grub', 'limine'), 'Unknown dependency boot profile')
+    if boot_profile == 'limine':
+        return {'schema': 2, 'boot_profile': 'limine', 'candidate_schema': 4,
+                'excluded_names': sorted(LIMINE_EXCLUDED)}
+    # Preserve the original manifest contract for existing signed snapshots.
+    return {'schema': 1, 'excluded_names': sorted(EXCLUDED)}
+
+
+def check_contract(data, boot_profile):
+    expected = contract(boot_profile)
+    require(all(data.get(k) == v for k, v in expected.items()), 'Unexpected snapshot contract')
+    if boot_profile == 'grub':
+        require('boot_profile' not in data and 'candidate_schema' not in data,
+                'Unexpected snapshot profile')
+    return set(expected['excluded_names'])
 
 
 def capture(output, database_hash):
@@ -38,7 +61,8 @@ def capture(output, database_hash):
             overlay_lane=None, overlay_database_sha256=None))
 
 
-def validate_capture(root, capture_hash, database_hash):
+def validate_capture(root, capture_hash, database_hash, boot_profile='grub'):
+    excluded = set(contract(boot_profile)['excluded_names'])
     boot.check_capture(root, capture_hash)
     require(re.fullmatch('[a-f0-9]{64}', database_hash), 'Invalid origin database hash')
     evidence = json.loads((root / 'capture.json').read_text())
@@ -48,15 +72,17 @@ def validate_capture(root, capture_hash, database_hash):
             'Capture does not match selected edge database')
     all_packages = bundle.archives(root / 'packages')
     # No catalog filtering: the signed dependency inventory derives from the
-    # complete frozen DB, minus only the five explicit candidate overrides.
+    # complete frozen DB, minus the explicitly selected profile overrides.
     bundle.validate_inventory(bundle.database(root / 'sources/edge.db'), all_packages)
-    packages = {n: p for n, p in all_packages.items() if n not in EXCLUDED}
+    packages = {n: p for n, p in all_packages.items() if n not in excluded}
     require(packages and 'omarchy-nvim' in packages, 'Image dependency set is incomplete')
     return packages
 
 
-def seal(root, destination, capture_hash, database_hash):
-    packages = validate_capture(root, capture_hash, database_hash)
+def seal(root, destination, capture_hash, database_hash, boot_profile='grub'):
+    selected = contract(boot_profile)
+    excluded = set(selected['excluded_names'])
+    packages = validate_capture(root, capture_hash, database_hash, boot_profile)
     require(not destination.exists(), 'Snapshot destination already exists')
     destination.mkdir(mode=0o700)
     for path, record in packages.values():
@@ -65,10 +91,10 @@ def seal(root, destination, capture_hash, database_hash):
     bundle.copy_file(root / 'sources/edge.db', origin)
     records = [r for _, r in packages.values()]
     manifest = {
-        'schema': 1, 'kind': 'omarchy-image-dependencies', 'publication': 'none',
+        **selected, 'kind': 'omarchy-image-dependencies', 'publication': 'none',
         'source_repository': boot.REPO, 'source_lane': 'edge',
         'source_database_sha256': database_hash, 'capture_manifest_sha256': capture_hash,
-        'excluded_names': sorted(EXCLUDED), 'packages': sorted(records, key=lambda r:r['name']),
+        'packages': sorted(records, key=lambda r:r['name']),
         'provenance': 'Exact published bytes; signatures do not establish reproducible builds or boot qualification.',
     }
     # Recheck private package copies and the complete origin before credentials.
@@ -76,7 +102,7 @@ def seal(root, destination, capture_hash, database_hash):
     copied = {n: (destination / r['filename'], r) for n, (_, r) in packages.items()}
     for path, expected in copied.values():
         require(bundle.package_record(path) == expected, 'Copied package differs')
-    bundle.validate_inventory({n:r for n,r in bundle.database(origin).items() if n not in EXCLUDED}, copied)
+    bundle.validate_inventory({n:r for n,r in bundle.database(origin).items() if n not in excluded}, copied)
     metadata = destination / 'manifest.json'
     bundle.write_json(metadata, manifest)
     ring = bundle.signing.Keyring(secret=True)
@@ -89,7 +115,8 @@ def seal(root, destination, capture_hash, database_hash):
     return manifest
 
 
-def verify(root, manifest_hash):
+def verify(root, manifest_hash, boot_profile='grub'):
+    contract(boot_profile)
     require(re.fullmatch('[a-f0-9]{64}', manifest_hash), 'Exact signed manifest hash required')
     require(root.is_dir() and not root.is_symlink(), 'Unsafe snapshot root')
     for path in root.iterdir():
@@ -100,9 +127,10 @@ def verify(root, manifest_hash):
     try:
         ring.verify(metadata)
         data = json.loads(metadata.read_text())
-        require(data['schema'] == 1 and data['kind'] == 'omarchy-image-dependencies'
+        excluded = check_contract(data, boot_profile)
+        require(data['kind'] == 'omarchy-image-dependencies'
                 and data['publication'] == 'none' and data['source_repository'] == boot.REPO
-                and data['source_lane'] == 'edge' and data['excluded_names'] == sorted(EXCLUDED),
+                and data['source_lane'] == 'edge',
                 'Unexpected snapshot contract')
         origin = root / 'origin.db'
         ring.verify(origin)
@@ -111,7 +139,7 @@ def verify(root, manifest_hash):
         expected_files = {'origin.db', 'manifest.json'}
         for expected in data['packages']:
             name, filename = expected['name'], bundle.safe_name(expected['filename'])
-            require(name not in records and name not in EXCLUDED, 'Duplicate or excluded snapshot package')
+            require(name not in records and name not in excluded, 'Duplicate or excluded snapshot package')
             require('.pkg.tar.' in filename and not filename.endswith('.sig'), 'Invalid archive filename')
             path = root / filename
             ring.verify(path)
@@ -122,7 +150,7 @@ def verify(root, manifest_hash):
         require(records and 'omarchy-nvim' in records, 'Incomplete snapshot')
         require({p.name for p in root.iterdir()} == expected_files | {n+'.sig' for n in expected_files},
                 'Snapshot file inventory differs')
-        bundle.validate_inventory({n:r for n,r in bundle.database(origin).items() if n not in EXCLUDED}, records)
+        bundle.validate_inventory({n:r for n,r in bundle.database(origin).items() if n not in excluded}, records)
         return data
     finally:
         ring.close()
@@ -137,19 +165,21 @@ def main():
     p = sub.add_parser('seal')
     p.add_argument('--input', type=Path, required=True)
     p.add_argument('--output', type=Path, required=True)
+    p.add_argument('--boot-profile', choices=('grub', 'limine'), default='grub')
     p.add_argument('--capture-sha256', required=True)
     p.add_argument('--database-sha256', required=True)
     p = sub.add_parser('verify')
     p.add_argument('--input', type=Path, required=True)
     p.add_argument('--manifest-sha256', required=True)
+    p.add_argument('--boot-profile', choices=('grub', 'limine'), default='grub')
     args = parser.parse_args()
     if args.operation == 'capture':
         capture(args.output, args.database_sha256)
     elif args.operation == 'verify':
-        data = verify(args.input, args.manifest_sha256)
+        data = verify(args.input, args.manifest_sha256, args.boot_profile)
         print(f"Verified {len(data['packages'])} signed image dependencies")
     else:
-        seal(args.input, args.output, args.capture_sha256, args.database_sha256)
+        seal(args.input, args.output, args.capture_sha256, args.database_sha256, args.boot_profile)
         print('Signed image dependency snapshot; publication: none')
 
 

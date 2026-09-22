@@ -14,3 +14,9 @@ Retained outputs last 90 days:
 - `signed-image-dependencies-<run>-<attempt>`: selected package archives and detached signatures, original repository database and signature, signed manifest.
 
 An image consumer must pin the manifest checksum, authenticate its signature against the independently pinned public key, verify every archive's hash and signature, and reject candidate-name substitutions or missing/extra packages. It must combine this set with the separately verified five-package candidate and pinned Arch Linux ARM/Asahi inputs, then resolve and test the complete dependency transaction. A successful capture/sign run alone does not establish a complete or bootable image. Do not upload these signatures to live edge as a shortcut: `Optional TrustAll` clients still need the signing public key, and live edge has a separate coordinated trust transition.
+
+## Experimental Limine profile
+
+Local `seal` and `verify` accept `--boot-profile limine` for the coordinated schema-4 candidate. This writes dependency schema 2 with `boot_profile: limine` and `candidate_schema: 4`. Its fixed exclusion set is the complete thirteen-package candidate plus the replaced `omarchy-apple-boot` and `omarchy-first-boot` packages. Capture still freezes every original database member; filtering occurs only after validating the complete capture. Callers cannot supply arbitrary exclusion names.
+
+The default remains schema 1 with the original five exclusions, and the existing workflow still selects that default. A schema-2 snapshot requires explicit profile selection for verification. The image consumer must also match the independently authenticated candidate profile, reject candidate/dependency/platform overlap, and require the separately authenticated ALARM Limine package before enabling assembly. This profile does not select an image build or change installed-system trust.
