@@ -35,6 +35,34 @@ class PackageSetTest(unittest.TestCase):
     def verify(self):
         return builder.verify_packages(self.records, COMMIT, self.versions, COMMIT)
 
+    def add_boot_packages(self):
+        for name in builder.BOOT_PACKAGES:
+            version = '1.0-1.10001'
+            self.versions[name] = version
+            self.records[name] = ({'pkgname': [name], 'pkgver': [version], 'arch': ['aarch64']}, set(), COMMIT)
+        self.records['omarchy-settings'][1].add('usr/share/omarchy/default/limine/limine.conf')
+        self.records['omarchy-mac-boot'][1].add('usr/lib/omarchy/initcpio/omarchy-mac-encrypt')
+
+    def test_boot_candidate_is_explicit_and_requires_complete_owned_payload(self):
+        self.add_boot_packages()
+        builder.verify_packages(self.records, COMMIT, self.versions, COMMIT, schema=4)
+        with self.assertRaises(ValueError):
+            self.verify()
+        self.records['omarchy-settings'][1].clear()
+        with self.assertRaisesRegex(ValueError, 'menu template'):
+            builder.verify_packages(self.records, COMMIT, self.versions, COMMIT, schema=4)
+
+    def test_boot_candidate_rejects_foreign_key_and_overlapping_ownership(self):
+        self.add_boot_packages()
+        path = 'usr/lib/omarchy/mac-first-boot/omarchy-arm-repository.key'
+        self.records['omarchy-mac-boot'][1].add(path)
+        with self.assertRaisesRegex(ValueError, 'repository key'):
+            builder.verify_packages(self.records, COMMIT, self.versions, COMMIT, schema=4)
+        self.records['omarchy-mac-boot'][1].remove(path)
+        self.records['omarchy-mac-boot'][1].add(builder.TRANSFERRED[0])
+        with self.assertRaisesRegex(ValueError, 'duplicate file owner'):
+            builder.verify_packages(self.records, COMMIT, self.versions, COMMIT, schema=4)
+
     def test_complete_same_source_set_has_one_owner_per_transferred_file(self):
         owners = self.verify()
         for path in builder.TRANSFERRED:
