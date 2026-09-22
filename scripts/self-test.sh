@@ -32,7 +32,7 @@ env TMPDIR="$work" TMP="$work/caller-tmp" TEMP="$work/caller-temp" \
   || no "sourcing common preserves caller temporary variables"
 
 env -u TMPDIR -u TMP -u TEMP -u XDG_CACHE_HOME HOME="$work/private-home" \
-  PKGBASE=avd-fw SOURCE=local CATEGORY=any PKGNAMES=avd-fw OUTDIR="$work/build-probe" \
+  PKGBASE=tobi-try SOURCE=local CATEGORY=any PKGNAMES=tobi-try OUTDIR="$work/build-probe" \
   PROBE="$work/build-tmp-ok" bash -c '
     mktemp() {
       [[ ! -v TMPDIR && ! -v TMP && ! -v TEMP ]] && : > "$PROBE"

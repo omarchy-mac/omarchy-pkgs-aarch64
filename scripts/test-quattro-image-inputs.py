@@ -22,7 +22,7 @@ VERSION = '4.0.0.alpha.quattro.r1790000000.gaaaaaaaaaaaa'
 class PackageSetTest(unittest.TestCase):
     def setUp(self):
         self.versions = {'omarchy': VERSION + '-1.10001', 'omarchy-settings': VERSION + '-1.10001',
-                         'omarchy-mac': '0.1.0-4.10001', 'avd-fw': '0.1-1.10001', 'libva-v4l2_request-avd': '1.3-1.10001'}
+                         'omarchy-mac': '0.1.0-4.10001', 'libva-v4l2_request-avd': '1.3-1.10001'}
         self.versions.update({n: '1.0-1.10001' for n in ('asdcontrol', 'tobi-try', 'qemu-user-static', 'qemu-user-static-binfmt')})
         self.records = {}
         for name, version in self.versions.items():
@@ -41,13 +41,19 @@ class PackageSetTest(unittest.TestCase):
             self.assertEqual(owners[path], 'omarchy-mac')
 
     def test_video_revision_and_architecture_are_checked(self):
-        fields, paths, _ = self.records['avd-fw']
-        self.records['avd-fw'] = (fields, paths, 'b' * 40)
+        fields, paths, _ = self.records['libva-v4l2_request-avd']
+        self.records['libva-v4l2_request-avd'] = (fields, paths, 'b' * 40)
         with self.assertRaisesRegex(ValueError, 'mixed source revisions'):
             self.verify()
-        self.records['avd-fw'] = (fields, paths, COMMIT)
-        fields['arch'] = ['aarch64']
+        self.records['libva-v4l2_request-avd'] = (fields, paths, COMMIT)
+        fields['arch'] = ['any']
         with self.assertRaisesRegex(ValueError, 'wrong architecture'):
+            self.verify()
+
+    def test_firmware_from_asahi_alarm_is_not_a_candidate(self):
+        self.records['avd-fw'] = ({'pkgname': ['avd-fw'], 'pkgver': ['0.1-1'],
+                                   'arch': ['any']}, set(), COMMIT)
+        with self.assertRaisesRegex(ValueError, 'exactly eight'):
             self.verify()
 
     def test_old_desktop_still_owning_mapper_is_rejected(self):
@@ -58,7 +64,7 @@ class PackageSetTest(unittest.TestCase):
     def test_partial_and_mixed_revision_sets_are_rejected(self):
         saved = copy.deepcopy(self.records)
         del self.records['omarchy-settings']
-        with self.assertRaisesRegex(ValueError, 'exactly nine'):
+        with self.assertRaisesRegex(ValueError, 'exactly eight'):
             self.verify()
         self.records = saved
         fields, paths, _ = self.records['omarchy-settings']

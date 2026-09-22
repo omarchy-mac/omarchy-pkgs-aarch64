@@ -11,10 +11,11 @@ import subprocess
 
 
 DESKTOP_PACKAGES = ('omarchy', 'omarchy-settings', 'omarchy-mac')
-VIDEO_PACKAGES = ('avd-fw', 'libva-v4l2_request-avd')
+# Firmware comes from the image's pinned Asahi ALARM dependencies.
+VIDEO_PACKAGES = ('libva-v4l2_request-avd',)
 EXTRA_BASES = VIDEO_PACKAGES + ('asdcontrol', 'tobi-try', 'qemu-user-static')
 EXTRA_PACKAGES = EXTRA_BASES + ('qemu-user-static-binfmt',)
-ANY_PACKAGES = {'avd-fw', 'tobi-try'}
+ANY_PACKAGES = {'tobi-try'}
 PACKAGES = DESKTOP_PACKAGES + EXTRA_PACKAGES
 TRANSFERRED = (
     'usr/bin/omarchy-wifi-resume-fix',
@@ -115,7 +116,7 @@ def inspect_package(path):
 
 
 def verify_packages(records, commit, versions, recipe_commit):
-    require(set(records) == set(PACKAGES), 'candidate must contain exactly nine packages')
+    require(set(records) == set(PACKAGES), 'candidate must contain exactly eight packages')
     owners = {}
     for name, (fields, paths, source) in records.items():
         require(fields.get('pkgname') == [name], f'wrong package name: {name}')
@@ -290,7 +291,7 @@ def main():
     shutil.copy2(repository / 'patches/omarchy-first-run-packages.patch',
                  artifacts / 'recipes/omarchy-first-run-packages.patch')
     (artifacts / 'manifest.json').write_text(json.dumps(dict(
-        schema=3, candidate_only=True, source_repository='omacom/omarchy-mac', source_revision=commit,
+        schema=4, candidate_only=True, source_repository='omacom/omarchy-mac', source_revision=commit,
         package_repository_revision=recipe_commit, upstream_recipe_revision=upstream_commit,
         desktop_test_iso_revision=iso_commit,
         recipe_patch='patches/omarchy-first-run-packages.patch',
@@ -304,7 +305,7 @@ def main():
     ), indent=2) + '\n')
     files = sorted(p for p in artifacts.rglob('*') if p.is_file())
     (artifacts / 'SHA256SUMS').write_text(''.join(f'{digest(p)}  {p.relative_to(artifacts)}\n' for p in files))
-    print(f'Built nine unsigned image inputs from {commit}; no packages installed or published.')
+    print(f'Built eight unsigned image inputs from {commit}; no packages installed or published.')
 
 
 if __name__ == '__main__':
