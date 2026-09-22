@@ -6,10 +6,11 @@
 # with Asahi's and bump pkgrel above theirs.
 
 pkgname=uboot-asahi
-_ver=2026.07
-_asahirel=2
-
+# Keep a literal version for the authenticated candidate metadata reader.
+# Source identity is derived from it, so a version bump cannot mislabel U-Boot.
 pkgver=2026.07.asahi2
+_ver=${pkgver%%.asahi*}
+_asahirel=${pkgver##*.asahi}
 pkgrel=3
 pkgdesc='U-Boot for Apple Silicon Macs (Omarchy build: silent console)'
 _commit_id=asahi-v${_ver}-${_asahirel}

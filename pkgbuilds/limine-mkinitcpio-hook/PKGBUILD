@@ -1,8 +1,6 @@
 # Maintainer: Zesko
 _pkgname="limine-entry-tool"
 pkgname="limine-mkinitcpio-hook"
-_pkgver=1.36.0
-_extver=""
 _gradle_version=9.7.0
 pkgver=1.36.0
 pkgrel=3
