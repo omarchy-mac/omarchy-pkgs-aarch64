@@ -131,6 +131,14 @@ make_keyring() {
 }
 
 run_deferred_steps() {
+  local steps=$state_dir/deferred-steps
+  # This is the builder's fresh-image contract, not an executable input list.
+  # Reset re-arms first boot without it, so it cannot authorize conversion again.
+  if [[ -e $steps || -L $steps ]]; then
+    [[ -f $steps && ! -L $steps ]] || fail "deferred-steps is not a regular file"
+    cmp -s "$steps" <(printf '%s\n' 'install/hardware/apple/limine-boot.sh') ||
+      fail "deferred-steps does not match the supported image contract"
+  fi
   # System hardware setup already ran inside the image builder. Only the
   # boot activation needs the installed machine identity on first boot.
   [[ -n ${OMARCHY_PATH:-} ]] || fail "OMARCHY_PATH is missing"

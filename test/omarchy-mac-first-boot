@@ -330,6 +330,29 @@ grep -Fq 'the deferred hardware steps failed' "$root/var/lib/omarchy/mac-first-b
   fail "the missing runner is named"
 echo 'ok - a runtime without omarchy-mac-run-deferred-steps keeps first boot pending'
 
+# A fresh-image contract allows exactly the one fixed activation leaf. The
+# existing no-marker cases exercise reset's normal first-boot path.
+new_case supported-deferred-contract
+write_esp 'format=1' 'encrypt=0'
+printf '%s\n' 'install/hardware/apple/limine-boot.sh' >"$root/var/lib/omarchy/mac-first-boot/deferred-steps"
+expect_handoff "a supported deferred-steps contract"
+for kind in other extra missing-newline symlink dangling-symlink directory; do
+  new_case "unsupported-deferred-$kind"
+  write_esp 'format=1' 'encrypt=0'
+  steps=$root/var/lib/omarchy/mac-first-boot/deferred-steps
+  case $kind in
+    other) printf '%s\n' 'install/hardware/apple.sh' >"$steps" ;;
+    extra) printf '%s\n' 'install/hardware/apple/limine-boot.sh' 'touch /tmp/unsafe' >"$steps" ;;
+    missing-newline) printf '%s' 'install/hardware/apple/limine-boot.sh' >"$steps" ;;
+    symlink) printf '%s\n' 'install/hardware/apple/limine-boot.sh' >"$case_dir/steps"; ln -s "$case_dir/steps" "$steps" ;;
+    dangling-symlink) ln -s "$case_dir/missing" "$steps" ;;
+    directory) mkdir "$steps" ;;
+  esac
+  expect_stop "an unsupported deferred-steps contract ($kind)" 'deferred-steps'
+  [[ ! -s $case_dir/deferred.log ]] || fail "invalid deferred-steps must not execute the activation leaf"
+done
+echo 'ok - first boot accepts only the fixed fresh-image contract and permits marker-free reset'
+
 # ── durable persist before ESP deletion ────────────────────────────────────
 new_case persist-sync-fails
 write_esp 'format=1' 'encrypt=0' 'lane=rc'
