@@ -204,6 +204,11 @@ def check_boot_build_dependencies(recipes):
             ', '.join(result.stdout.splitlines()))
 
 
+def require_boot_profile(source, schema):
+    require(schema == 4 or not (source / 'packages/omarchy-mac/boot').is_dir(),
+            'this runtime requires the coordinated --boot-profile limine candidate')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('source', type=Path)
@@ -237,6 +242,7 @@ def main():
     artifacts = destination / 'artifacts'
     logs = destination / 'logs'
     archive(args.source, commit, source)
+    require_boot_profile(source, schema)
     archive(args.upstream_recipes, upstream_commit, recipes, 'pkgbuilds/omarchy', 'pkgbuilds/omarchy-settings',
             'pkgbuilds/omarchy-dev', 'pkgbuilds/omarchy-settings-dev')
     archive(args.upstream_iso, iso_commit, iso)

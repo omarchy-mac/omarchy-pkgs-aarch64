@@ -21,6 +21,15 @@ VERSION = '4.0.0.alpha.quattro.r1790000000.gaaaaaaaaaaaa'
 
 
 class BootBuildDependenciesTest(unittest.TestCase):
+    def test_split_runtime_requires_coordinated_boot_profile(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            builder.require_boot_profile(root, 3)
+            (root / 'packages/omarchy-mac/boot').mkdir(parents=True)
+            with self.assertRaisesRegex(ValueError, 'boot-profile limine'):
+                builder.require_boot_profile(root, 3)
+            builder.require_boot_profile(root, 4)
+
     def test_build_dependencies_are_checked_without_installing_runtime_packages(self):
         metadata = "pkgbase = fixture\n\tmakedepends = git\n\tmakedepends_aarch64 = zlib\n\tdepends = limine\n"
         with patch.object(builder, 'output', return_value=metadata), patch.object(builder.subprocess, 'run') as run:
