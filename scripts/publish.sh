@@ -194,7 +194,9 @@ while read -r asset; do
   command grep -Fxq "${asset%.sig}" "$work/filenames.after" || stale+=("$asset")
 done < "$work/assets.now"
 
-if ((${#stale[@]})); then
+if [[ ${PRESERVE_SUPERSEDED:-0} == 1 ]]; then
+  log "Retaining superseded package assets for reviewed rollback"
+elif ((${#stale[@]})); then
   log "Deleting ${#stale[@]} superseded asset(s):"
   printf '    %s\n' "${stale[@]}" >&2
   for asset in "${stale[@]}"; do

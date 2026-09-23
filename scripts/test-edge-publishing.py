@@ -187,8 +187,11 @@ class EdgeTests(unittest.TestCase):
             if not strict:
                 for name in list(runenv):
                     if name.startswith('PACMAN_SIGNING_'): del runenv[name]
+                runenv['PRESERVE_SUPERSEDED']='1'
+                (remote/'stale-0-1-any.pkg.tar.zst').write_bytes(b'prior edge bytes')
             result=subprocess.run(['bash','scripts/publish.sh'],cwd=repo,env=runenv,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
             self.assertEqual(result.returncode,0,result.stdout.decode())
+            if not strict:self.assertEqual((remote/'stale-0-1-any.pkg.tar.zst').read_bytes(),b'prior edge bytes')
             self.assertEqual(boot.bundle.digest(remote/filename),package['sha256'])
             self.assertEqual((remote/(filename+'.sig')).exists(),strict)
             self.assertEqual(boot.bundle.digest(remote/extra['filename']),extra['sha256'])

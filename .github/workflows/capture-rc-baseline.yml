@@ -6,7 +6,7 @@ on:
       baseline_lane:
         description: 'Selected baseline lane; use published rc for RC5'
         type: choice
-        options: [rc, edge]
+        options: [rc, edge, stable]
         default: rc
         required: true
       baseline_database_sha256:

@@ -1,0 +1,208 @@
+name: Publish qualified unsigned lane
+
+on:
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: 'Destination package lane; final edge precedes stable'
+        type: choice
+        options: [rc, edge, stable]
+        required: true
+      artifact_run_id:
+        description: 'Same-repository run containing the complete reviewed bundle'
+        type: string
+        required: true
+      artifact_name:
+        description: 'Reviewed bundle artifact name'
+        type: string
+        required: true
+      validation_run_id:
+        description: 'Same-repository qualification run containing the reviewed receipt and report'
+        type: string
+        required: true
+      validation_artifact_name:
+        description: 'Artifact with qualification.json and its report'
+        type: string
+        required: true
+      manifest_sha256:
+        description: 'Approved bundle manifest SHA256'
+        type: string
+        required: true
+      source_commit:
+        description: 'Approved desktop source commit'
+        type: string
+        required: true
+      expected_db:
+        description: 'Approved current destination lane database SHA256, or absent for a new lane'
+        type: string
+        required: true
+      expected_edge_db:
+        description: 'For stable, approved public edge DB SHA256 after exact-byte final promotion'
+        type: string
+        required: false
+      rc_artifact_run_id:
+        description: 'For final edge/stable, run containing the qualified RC bundle'
+        type: string
+        required: false
+      rc_artifact_name:
+        description: 'Qualified RC bundle artifact name'
+        type: string
+        required: false
+      rc_validation_run_id:
+        description: 'Run containing the qualified RC receipt and report'
+        type: string
+        required: false
+      rc_validation_artifact_name:
+        description: 'Qualified RC receipt artifact name'
+        type: string
+        required: false
+      rc_manifest_sha256:
+        description: 'Approved qualified RC manifest SHA256'
+        type: string
+        required: false
+      rc_source_commit:
+        description: 'Approved qualified RC source commit'
+        type: string
+        required: false
+      dry_run:
+        description: 'Validate and inspect only; no remote writes'
+        type: boolean
+        required: true
+        default: true
+      accept_unsigned_publication:
+        description: 'Accept unsigned package and database publication for this lane'
+        type: boolean
+        required: true
+        default: false
+      accept_mutable_alias_window:
+        description: 'Accept non-atomic database alias replacement during execution'
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: edge-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment: package-signing
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Validate exact inputs and disk-backed scratch
+        env:
+          LANE: ${{ inputs.lane }}
+          INPUT_RUN: ${{ inputs.artifact_run_id }}
+          VALIDATION_RUN: ${{ inputs.validation_run_id }}
+          INPUT_HASH: ${{ inputs.manifest_sha256 }}
+          INPUT_SOURCE: ${{ inputs.source_commit }}
+          INPUT_PREVIOUS: ${{ inputs.expected_db }}
+          INPUT_EDGE: ${{ inputs.expected_edge_db }}
+          RC_RUN: ${{ inputs.rc_artifact_run_id }}
+          RC_VALIDATION_RUN: ${{ inputs.rc_validation_run_id }}
+          RC_HASH: ${{ inputs.rc_manifest_sha256 }}
+          RC_SOURCE: ${{ inputs.rc_source_commit }}
+          RC_ARTIFACT: ${{ inputs.rc_artifact_name }}
+          RC_VALIDATION_ARTIFACT: ${{ inputs.rc_validation_artifact_name }}
+          ACCEPT_UNSIGNED: ${{ inputs.accept_unsigned_publication && '1' || '0' }}
+          EXECUTE: ${{ !inputs.dry_run && '1' || '0' }}
+          ACCEPT_WINDOW: ${{ inputs.accept_mutable_alias_window && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == omarchy-mac/omarchy-pkgs-aarch64 ]]
+          [[ "$LANE" == rc || "$LANE" == edge || "$LANE" == stable ]]
+          [[ "$ACCEPT_UNSIGNED" == 1 ]]
+          [[ "$INPUT_RUN" =~ ^[1-9][0-9]*$ && "$VALIDATION_RUN" =~ ^[1-9][0-9]*$ && "$INPUT_HASH" =~ ^[a-f0-9]{64}$ && "$INPUT_SOURCE" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$INPUT_PREVIOUS" == absent || "$INPUT_PREVIOUS" =~ ^[a-f0-9]{64}$ ]]
+          [[ "$EXECUTE" == 0 || "$ACCEPT_WINDOW" == 1 ]]
+          if [[ "$LANE" != rc ]]; then
+            [[ "$RC_RUN" =~ ^[1-9][0-9]*$ && "$RC_VALIDATION_RUN" =~ ^[1-9][0-9]*$ && "$RC_HASH" =~ ^[a-f0-9]{64}$ && "$RC_SOURCE" =~ ^[a-f0-9]{40}$ ]]
+            [[ -n "$RC_ARTIFACT" && -n "$RC_VALIDATION_ARTIFACT" ]]
+          fi
+          if [[ "$LANE" == stable ]]; then [[ "$INPUT_EDGE" =~ ^[a-f0-9]{64}$ ]]; fi
+          if [[ "$LANE" == edge ]]; then [[ "$INPUT_PREVIOUS" != absent ]]; fi
+          case $(findmnt -n -o FSTYPE -T "$RUNNER_TEMP") in ''|tmpfs|ramfs) exit 1;; esac
+          mkdir -p "$RUNNER_TEMP/unsigned-lane"/{input,validation,rc-input,rc-validation,tmp,logs}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.artifact_run_id }}
+          name: ${{ inputs.artifact_name }}
+          path: ${{ runner.temp }}/unsigned-lane/input
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.validation_run_id }}
+          name: ${{ inputs.validation_artifact_name }}
+          path: ${{ runner.temp }}/unsigned-lane/validation
+      - if: inputs.lane != 'rc'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.rc_artifact_run_id }}
+          name: ${{ inputs.rc_artifact_name }}
+          path: ${{ runner.temp }}/unsigned-lane/rc-input
+      - if: inputs.lane != 'rc'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.rc_validation_run_id }}
+          name: ${{ inputs.rc_validation_artifact_name }}
+          path: ${{ runner.temp }}/unsigned-lane/rc-validation
+      - name: Prepare archive tools without signing credentials
+        run: docker build --build-arg BASE_IMAGE=archlinux:base-devel -f .github/publisher.Dockerfile -t omarchy-unsigned-publisher .
+      - name: Validate and publish only the selected lane
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_HASH: ${{ inputs.manifest_sha256 }}
+          INPUT_SOURCE: ${{ inputs.source_commit }}
+          INPUT_PREVIOUS: ${{ inputs.expected_db }}
+          INPUT_EDGE: ${{ inputs.expected_edge_db }}
+          RC_HASH: ${{ inputs.rc_manifest_sha256 }}
+          RC_SOURCE: ${{ inputs.rc_source_commit }}
+          LANE: ${{ inputs.lane }}
+          PUBLISHER_COMMIT: ${{ github.sha }}
+          EXECUTE: ${{ !inputs.dry_run && '1' || '0' }}
+          ACCEPT_WINDOW: ${{ inputs.accept_mutable_alias_window && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD:/w:ro" -w /w -v "$RUNNER_TEMP/unsigned-lane:/task" \
+            -e GH_TOKEN -e INPUT_HASH -e INPUT_SOURCE -e INPUT_PREVIOUS -e INPUT_EDGE -e RC_HASH -e RC_SOURCE -e LANE -e PUBLISHER_COMMIT -e EXECUTE -e ACCEPT_WINDOW \
+            -e TMPDIR=/task/tmp -e TMP=/task/tmp -e TEMP=/task/tmp -e PYTHONDONTWRITEBYTECODE=1 \
+            omarchy-unsigned-publisher bash -euo pipefail -c '
+              args=(--accept-unsigned-publication --evidence-dir /task/logs)
+              [[ "$EXECUTE" == 0 ]] || args+=(--execute)
+              [[ "$ACCEPT_WINDOW" == 0 ]] || args+=(--accept-mutable-alias-window)
+              if [[ "$LANE" != rc ]]; then
+                args+=(--rc-bundle /task/rc-input --rc-validation /task/rc-validation/qualification.json
+                  --rc-manifest-sha256 "$RC_HASH" --rc-source-commit "$RC_SOURCE")
+              fi
+              if [[ "$LANE" == stable ]]; then args+=(--expected-edge-db "$INPUT_EDGE"); fi
+              python3 scripts/publish-unsigned-lane.py --bundle /task/input \
+                --validation /task/validation/qualification.json \
+                --manifest-sha256 "$INPUT_HASH" --source-commit "$INPUT_SOURCE" \
+                --publisher-commit "$PUBLISHER_COMMIT" --expected-db "$INPUT_PREVIOUS" \
+                --lane "$LANE" "${args[@]}"
+            ' 2>&1 | tee "$RUNNER_TEMP/unsigned-lane/logs/publication.log"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: unsigned-lane-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/unsigned-lane/logs/
+          if-no-files-found: warn
+          retention-days: 90
