@@ -25,6 +25,8 @@ class CandidateTest(unittest.TestCase):
         packages = []
         for name in s.build.candidate_packages(self.schema):
             deps = {'omarchy': ['omarchy-settings=1.0', 'snapper'], 'omarchy-settings': [], 'omarchy-mac': ['omarchy'], 'avd-fw': [], 'libva-v4l2_request-avd': ['glibc', 'libva']}.get(name, [])
+            if self.schema == 4 and name == 'omarchy-mac-boot':
+                deps = ['omarchy=1.0-1']
             payload = {'.PKGINFO': '\n'.join([f'pkgname = {name}', 'pkgver = 1.0-1', 'arch = any' if name in s.build.ANY_PACKAGES else 'arch = aarch64', *[f'depend = {d}' for d in deps]])}
             revision = 'usr/share/omarchy-mac/source-revision' if name == 'omarchy-mac' else f'usr/share/doc/{name}/source-revision'
             payload[revision] = self.source + '\n'
@@ -39,6 +41,8 @@ class CandidateTest(unittest.TestCase):
                 payload['usr/share/omarchy/default/limine/limine.conf'] = 'fixture menu'
             if self.schema == 4 and name == 'omarchy-mac-boot':
                 payload['usr/lib/omarchy/initcpio/omarchy-mac-encrypt'] = 'fixture converter'
+                payload['usr/share/omarchy-mac/boot-source-revision'] = self.source + '\n'
+                payload.update({p: 'fixture' for p in s.build.BOOT_TRANSFERRED})
             filename = name + '-1.0-1-aarch64.pkg.tar.xz'
             with tarfile.open(self.root / filename, 'w:xz') as archive:
                 for path, text in payload.items():
