@@ -1,4 +1,4 @@
-# Package signing and bootstrap
+# Optional package signing and bootstrap
 
 The fork has a separate `omarchy-mac-keyring`; it does not replace upstream
 `omarchy-keyring`, Arch Linux ARM or Asahi trust. The reviewed public certificate
@@ -57,14 +57,13 @@ configuration requirement; repository YAML alone cannot enforce approval.
 ## Two-stage trust transition
 
 First deliver the public bootstrap material through the separately reviewed
-exact source/key fingerprint. The unsigned 4.0.3rc4 candidate is the explicitly
-disclosed final use of the existing `Optional TrustAll` fork policy. It installs
+exact source/key fingerprint. The unsigned 4.0.3rc4 candidate uses the disclosed `Optional TrustAll` fork policy. It installs
 and populates `omarchy-mac-keyring` without fetching a key from a keyserver.
 A package signed only by its own unknown key cannot bootstrap trust itself.
 The no-email UID is supported through the checked-in public certificate,
 without relying on keyserver UID publication.
 
-Then build the source with the fork keyring dependency and stage all five
+If opting into signed publication later, build the source with the fork keyring dependency and stage all five
 candidate inputs: matching omarchy/settings, upstream keyring/font and the new
 fork keyring. The initial inventory contains 52 packages: the previous 51 plus
 `omarchy-mac-keyring`. Every retained archive must come from the reviewed captured
@@ -82,8 +81,7 @@ rollback or unsigned publication fallback is allowed. Obtain a new validation
 receipt bound to the signed manifest; the unsigned receipt cannot be reused.
 
 The strict policy is `PackageRequired DatabaseRequired TrustedOnly`.
-`check` retains legacy unsigned-bundle integrity inspection, but `publish`
-refuses an unsigned bundle. Published package/signature filenames are immutable;
+`check` validates unsigned-bundle integrity. The signed `release-bundle.py publish` planner refuses an unsigned bundle; [the unsigned lifecycle](docs/unsigned-release-lifecycle.md) uses a separate manual publisher. Published package/signature filenames are immutable;
 identical retries reuse verified existing signature bytes.
 
 ## Activation and automated edge updates

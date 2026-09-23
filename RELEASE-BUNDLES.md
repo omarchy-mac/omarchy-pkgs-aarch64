@@ -58,7 +58,7 @@ After the actual tests and review pass, record their report in a JSON receipt. T
 }
 ```
 
-The report path is relative to the receipt. Record the actual scope and remaining hardware coverage honestly. Do not fabricate passes to satisfy the planner.
+The report path is relative to the receipt. Record the actual scope and remaining hardware coverage honestly. Do not fabricate passes to satisfy the planner. For final unsigned 4.0.3, also record `"released_upgrade_from": "4.0.2-2"` and `"hardware_checks": {"m1_reboot_runtime": "pass", "m2_reboot_runtime": "pass"}`. The unsigned publisher requires these fields and a fresh receipt for the final bundle; the report must contain the actual physical observations.
 
 ```bash
 python3 scripts/release-bundle.py publish \
@@ -88,9 +88,8 @@ Both lane preflights must pass before the planner emits a promotion plan. Cross-
 
 Run the offline native archive/database fixtures with `PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-release-bundle.py -v`. They use a `gh` recorder that rejects every remote mutation. These tests establish local repository mechanics and planning guards, not final release qualification or hosted publication reliability.
 
-## Signed release requirement
+## Publication policy
 
-Unsigned bundles remain readable as historical integrity evidence. Publication
-now requires the signed derivation from `seal`, the dedicated fork keyring and a
-fresh receipt bound to the signed manifest. See [SIGNING.md](SIGNING.md) for
-bootstrap, immutable activation, protected CI variables and rollback policy.
+A complete unsigned bundle with a fresh qualification receipt can be published to RC or stable through the manual [unsigned release lifecycle](docs/unsigned-release-lifecycle.md). This uses the same immutable snapshot, exact package-byte checks, and database-last selection as the historical RC4 bootstrap. The final edge-first step uses the same retained bundle through `scripts/publish.sh`, which preserves edge-only packages. Stable checks the public edge archive hashes before selecting its database.
+
+The `publish` and `promote` commands in this file remain read-only planners for the optional signed path and still require a sealed bundle. See [SIGNING.md](SIGNING.md) before deliberately enabling required signatures. Do not enable a strict client policy while the lanes remain unsigned.

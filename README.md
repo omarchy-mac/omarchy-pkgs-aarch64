@@ -334,3 +334,7 @@ Packages marked `arch=('any')` need no rebuild at all; the AUR artifact works
 on ARM unchanged.
 
 Main-branch candidate signing reuses the existing credentials in `package-signing-edge` without a per-run approval. Signed outputs remain Actions artifacts and never enter the rolling feed. Hourly checks of `quattro-upstream` reuse only successfully signed sets; failed signing remains retryable.
+
+## Release lanes
+
+For unsigned edge → RC → stable publication, see [the release lifecycle](docs/unsigned-release-lifecycle.md). Signed publication is an optional separate path documented in [SIGNING.md](SIGNING.md).
