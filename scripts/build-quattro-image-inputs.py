@@ -22,6 +22,11 @@ BOOT_PACKAGES = ('omarchy-mac-boot', 'limine-mkinitcpio-hook', 'limine-snapper-s
 def candidate_packages(schema):
     require(schema in (3, 4), 'unsupported candidate schema')
     return PACKAGES + (BOOT_PACKAGES if schema == 4 else ())
+BOOT_TRANSFERRED = tuple("usr/bin/" + name for name in (
+    "omarchy-apple-silicon-boot-check", "omarchy-mac-boot-update", "omarchy-mac-kernel",
+    "omarchy-mac-limine-active", "omarchy-mac-limine-cmdline", "omarchy-mac-limine-deploy",
+)) + ("usr/lib/omarchy-mac/boot/provision.sh", "usr/lib/omarchy-mac/boot/factory-reset.sh",
+      "usr/lib/omarchy-mac/boot/setup/grub-console.sh", "usr/lib/omarchy-mac/boot/setup/limine-boot.sh")
 TRANSFERRED = (
     'usr/bin/omarchy-wifi-resume-fix',
     'usr/bin/omarchy-audio-asahi-mic-map',
@@ -123,6 +128,9 @@ def inspect_package(path):
     revision_path = ('usr/share/omarchy-mac/source-revision' if name == 'omarchy-mac'
                      else f'usr/share/doc/{name}/source-revision')
     source = output('bsdtar', '-xOf', str(path), revision_path)
+    if name == 'omarchy-mac-boot':
+        fields['x_runtime_source'] = [output('bsdtar', '-xOf', str(path),
+                                           'usr/share/omarchy-mac/boot-source-revision')]
     return fields, paths, source
 
 
@@ -153,6 +161,12 @@ def verify_packages(records, commit, versions, recipe_commit, schema=3):
     require(not any(d.startswith('linux-') for d in addon.get('depend', [])), 'add-on selects a kernel')
     require(not any(p.startswith(('etc/', 'boot/')) for p in addon_paths), 'add-on owns administrator files')
     if schema == 4:
+        require(records['omarchy-mac-boot'][0].get('x_runtime_source') == [commit],
+                'boot helpers must match the desktop source revision')
+        require(f'omarchy={versions["omarchy"]}' in records['omarchy-mac-boot'][0].get('depend', []),
+                'boot helpers require the matching desktop package')
+        for path in BOOT_TRANSFERRED:
+            require(owners.get(path) == 'omarchy-mac-boot', f'wrong boot helper owner: {path}')
         require(owners.get('usr/share/omarchy/default/limine/limine.conf') == 'omarchy-settings',
                 'ARM64 settings must ship the Limine menu template')
         require(owners.get('usr/lib/omarchy/initcpio/omarchy-mac-encrypt') == 'omarchy-mac-boot',
@@ -291,6 +305,10 @@ def main():
         build.mkdir(exist_ok=True)
         recipe_path = build / 'PKGBUILD'
         text = addon_recipe if name == 'omarchy-mac' else recipe_path.read_text()
+        if name == 'omarchy-mac-boot':
+            text = replace_assignment(text, '_runtime_commit', commit)
+            require(text.count("'omarchy'") == 1, 'boot runtime dependency changed')
+            text = text.replace("'omarchy'", f"'omarchy={versions['omarchy']}'")
         if name in EXTRA_PACKAGES + BOOT_PACKAGES:
             recipe_path.write_text(prepare_extra_recipe(text, name, recipe_commit, releases[name]))
         else:
@@ -304,7 +322,7 @@ def main():
             # Build dependencies are provisioned in the disposable CI container.
             # Runtime dependencies belong to the later image assembly check.
             command = ['makepkg', '--nodeps', '--nosign', '--cleanbuild']
-            if name == 'omarchy-mac':
+            if name in ('omarchy-mac', 'omarchy-mac-boot'):
                 command.append('--check')  # Do not inherit a local BUILDENV=(!check).
             subprocess.run(command, cwd=build, env=package_env, stdout=log,
                            stderr=subprocess.STDOUT, check=True)

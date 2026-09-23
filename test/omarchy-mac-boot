@@ -6,9 +6,16 @@ stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 fail() { echo "not ok - $*" >&2; exit 1; }
 cp -a "$package_dir/." "$stage/src"
+# Recipe fixture: production prepare obtains this from the pinned runtime source.
+mkdir -p "$stage/sources/boot-support"
+cat >"$stage/sources/boot-support/install" <<'INSTALL'
+#!/bin/bash
+install -Dm755 /dev/null "$1/usr/bin/omarchy-mac-boot-fixture"
+INSTALL
+chmod +x "$stage/sources/boot-support/install"
 (
   cd "$stage/src"
-  startdir=$PWD pkgdir=$stage/pkg bash -c 'set -euo pipefail; source ./PKGBUILD; package'
+  startdir=$PWD srcdir=$stage/sources pkgdir=$stage/pkg bash -c 'set -euo pipefail; source ./PKGBUILD; package'
 )
 python - "$package_dir" "$stage/pkg" <<'PY'
 from pathlib import Path
@@ -17,9 +24,12 @@ source, staged = map(Path, sys.argv[1:])
 files = source / 'files'
 expected = {p.relative_to(files) for p in files.rglob('*') if (p.is_symlink() or p.is_file()) and p.name != '.gitkeep'}
 actual = {p.relative_to(staged) for p in staged.rglob('*') if (p.is_symlink() or p.is_file()) and p.name != '.gitkeep'}
+expected.update(map(Path, ("usr/bin/omarchy-mac-boot-fixture", "usr/share/omarchy-mac/boot-source-revision")))
 assert expected == actual, (expected - actual, actual - expected)
 for rel in expected:
     before, after = files / rel, staged / rel
+    if not before.exists() and not before.is_symlink():
+        continue
     if before.is_symlink():
         assert after.is_symlink() and before.readlink() == after.readlink(), rel
     else:

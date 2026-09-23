@@ -10,16 +10,32 @@
 # vendorfw helpers.
 pkgname=omarchy-mac-boot
 pkgver=20260921
-pkgrel=9
+pkgrel=10
 pkgdesc="Apple Silicon boot, vendor firmware, and first-boot gates for Omarchy"
 arch=(aarch64)
 url="https://omarchy.org"
 license=('MIT')
-depends=('asahi-scripts' 'bash' 'btrfs-progs' 'coreutils' 'cpio' 'cryptsetup' 'gnupg' 'gum' 'kbd' 'mkinitcpio' 'systemd' 'util-linux')
+depends=('omarchy' 'limine' 'limine-mkinitcpio-hook' 'limine-snapper-sync' 'asahi-scripts' 'bash' 'btrfs-progs' 'coreutils' 'cpio' 'cryptsetup' 'gnupg' 'gum' 'kbd' 'mkinitcpio' 'systemd' 'util-linux')
 provides=('omarchy-apple-boot' 'omarchy-first-boot')
 conflicts=('omarchy-apple-boot' 'omarchy-first-boot')
 replaces=('omarchy-apple-boot' 'omarchy-first-boot')
 install=omarchy-mac-boot.install
+
+# Boot helpers share the reviewed runtime revision; image candidates replace
+# this pin with their exact desktop commit and verify both provenances.
+_runtime_commit=0d4070aeac3fb09dff4f8816e85c6446bffddb14
+makedepends=('git')
+source=("omarchy-mac-source::git+https://github.com/omacom/omarchy-mac.git#commit=$_runtime_commit")
+sha256sums=('SKIP')
+
+prepare() {
+  [[ $(git -C "$srcdir/omarchy-mac-source" rev-parse HEAD) == "$_runtime_commit" ]]
+  cp -a "$srcdir/omarchy-mac-source/packages/omarchy-mac/boot" "$srcdir/boot-support"
+}
+
+check() {
+  bash "$srcdir/boot-support/test/all"
+}
 
 _omarchy_mac_boot_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
@@ -38,6 +54,8 @@ _omarchy_mac_boot_mode() {
 }
 
 package() {
+  "$srcdir/boot-support/install" "$pkgdir"
+  install -Dm644 /dev/stdin "$pkgdir/usr/share/omarchy-mac/boot-source-revision" <<<"$_runtime_commit"
   local files_root rel dest src
   local -a entries
   files_root=${startdir:-$_omarchy_mac_boot_dir}/files
