@@ -10,8 +10,7 @@
 # Ordering matters and is not incidental:
 #   1. packages up first, so the db never names a file that isn't there yet
 #   2. db second (.db last of the four, since that is what pacman fetches)
-#   3. garbage-collect superseded packages only after the new db is live, so
-#      the db being served never references a deleted asset
+#   3. retain superseded archives so approved prior databases remain restorable
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -181,29 +180,7 @@ for f in "${database_assets[@]}"; do
     || die "failed to upload $f"
 done
 
-# --- garbage-collect superseded packages ------------------------------------
-# Anything not named by the db we just published is dead weight, and stale
-# versions are what make a hand-maintained repo confusing to browse.
-log "Checking for superseded package assets"
-gh release view "$REPO_TAG" --repo "$GH_REPO" --json assets \
-  | jq -r '.assets[].name' | command grep '\.pkg\.tar\.' | sort > "$work/assets.now" || true
-
-stale=()
-while read -r asset; do
-  [[ -n "$asset" ]] || continue
-  command grep -Fxq "${asset%.sig}" "$work/filenames.after" || stale+=("$asset")
-done < "$work/assets.now"
-
-if ((${#stale[@]})); then
-  log "Deleting ${#stale[@]} superseded asset(s):"
-  printf '    %s\n' "${stale[@]}" >&2
-  for asset in "${stale[@]}"; do
-    run gh release delete-asset "$REPO_TAG" "$asset" --repo "$GH_REPO" --yes \
-      || warn "could not delete $asset"
-  done
-else
-  log "No superseded assets to delete"
-fi
+log "Retaining superseded package assets for reviewed rollback"
 
 # Hand the new db to the caller so the README table can be rebuilt from it.
 if [[ -n "${DB_OUT:-}" ]]; then

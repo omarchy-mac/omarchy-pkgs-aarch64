@@ -288,9 +288,9 @@ generate its shell completions. Emulating aarch64 on an x86 runner does work,
 but a free native ARM runner makes it pointless.
 
 Publishing is ordered so the repo is never internally inconsistent: package
-assets upload first, then the four db files with `.db` last, and only then are
-superseded package assets deleted. A package whose version carries an epoch is
-renamed before `repo-add` sees it, because a GitHub release asset cannot contain
+assets upload first, then the four db files with `.db` last. Superseded package
+assets remain available for reviewed rollback. A package whose version carries
+an epoch is renamed before `repo-add` sees it, because a GitHub release asset cannot contain
 a `:` — the db records `1:1.93.138-1` as the version but
 `brave-origin-bin-1.1.93.138-1-aarch64.pkg.tar.xz` as the filename.
 
@@ -334,3 +334,7 @@ Packages marked `arch=('any')` need no rebuild at all; the AUR artifact works
 on ARM unchanged.
 
 Main-branch candidate signing reuses the existing credentials in `package-signing-edge` without a per-run approval. Signed outputs remain Actions artifacts and never enter the rolling feed. Hourly checks of `quattro-upstream` reuse only successfully signed sets; failed signing remains retryable.
+
+## Release lanes
+
+For unsigned edge → RC → stable publication, see [the release lifecycle](docs/unsigned-release-lifecycle.md). Signed publication is an optional separate path documented in [SIGNING.md](SIGNING.md).

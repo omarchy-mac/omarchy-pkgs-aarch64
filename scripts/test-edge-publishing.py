@@ -187,8 +187,37 @@ class EdgeTests(unittest.TestCase):
             if not strict:
                 for name in list(runenv):
                     if name.startswith('PACMAN_SIGNING_'): del runenv[name]
+                runenv['PRESERVE_SUPERSEDED']='1'
+                unrelated=next(item for item in self.manifest['packages'] if item['name']=='1password')
+                newer_unrelated=Fixture.make_package(remote,unrelated['name'],'2-1')
+                unrelated_bytes=newer_unrelated.read_bytes()
+                boot.bundle.run('repo-add','--quiet','--prevent-downgrade',f'{boot.DB}.db.tar.zst',
+                                newer_unrelated.name,cwd=remote)
+                (remote/f'{boot.DB}.db').unlink()
+                shutil.copyfile(remote/f'{boot.DB}.db.tar.zst',remote/f'{boot.DB}.db')
+                old_package=next(item for item in self.manifest['packages']
+                                 if item['name']=='ttf-jetbrains-mono-nerd-basic')
+                old_archive=(remote/old_package['filename']).read_bytes()
+                newer_package=Fixture.make_package(incoming,old_package['name'],'99-1')
             result=subprocess.run(['bash','scripts/publish.sh'],cwd=repo,env=runenv,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
             self.assertEqual(result.returncode,0,result.stdout.decode())
+            if not strict:
+                self.assertEqual(boot.bundle.field(boot.bundle.database(remote/f'{boot.DB}.db')[unrelated['name']],
+                                                   'VERSION'),'2-1')
+                self.assertEqual((remote/newer_unrelated.name).read_bytes(),unrelated_bytes)
+                self.assertEqual((remote/old_package['filename']).read_bytes(),old_archive)
+                self.assertEqual(boot.bundle.field(boot.bundle.database(remote/f'{boot.DB}.db')[old_package['name']],
+                                                   'FILENAME'),newer_package.name)
+                scheduled=subprocess.run(['bash','scripts/publish.sh'],cwd=repo,env=env,
+                                         stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+                self.assertEqual(scheduled.returncode,0,scheduled.stdout.decode())
+                self.assertEqual(boot.bundle.field(boot.bundle.database(remote/f'{boot.DB}.db')[unrelated['name']],
+                                                   'VERSION'),'2-1')
+                self.assertEqual((remote/newer_unrelated.name).read_bytes(),unrelated_bytes)
+                self.assertEqual((remote/old_package['filename']).read_bytes(),old_archive)
+                events=[json.loads(line) for line in Path(env['EVENT_LOG']).read_text().splitlines()]
+                self.assertFalse(any(event[1]=='delete-asset' for event in events))
+                newer_package.unlink()
             self.assertEqual(boot.bundle.digest(remote/filename),package['sha256'])
             self.assertEqual((remote/(filename+'.sig')).exists(),strict)
             self.assertEqual(boot.bundle.digest(remote/extra['filename']),extra['sha256'])

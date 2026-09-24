@@ -14,6 +14,8 @@ spec=importlib.util.spec_from_file_location('bootstrap',Path(__file__).with_name
 boot=importlib.util.module_from_spec(spec);spec.loader.exec_module(boot)
 spec=importlib.util.spec_from_file_location('bundle_tests',Path(__file__).with_name('test-release-bundle.py'))
 fixtures=importlib.util.module_from_spec(spec);spec.loader.exec_module(fixtures)
+spec=importlib.util.spec_from_file_location('unsigned_publisher',Path(__file__).with_name('publish-unsigned-lane.py'))
+publisher=importlib.util.module_from_spec(spec);spec.loader.exec_module(publisher)
 
 # Reuse the real archive/DB/signing fixture helpers without inheriting their tests.
 class Fixture:pass
@@ -41,7 +43,7 @@ class Remote:
         self.events.append(('view',tag))
         if tag not in self.releases:return None
         r=self.releases[tag]
-        return {'tag_name':tag,'prerelease':True,'draft':r['draft'],'target_commitish':r['commit'],
+        return {'tag_name':tag,'prerelease':tag != 'stable','draft':r['draft'],'target_commitish':r['commit'],
                 'asset_map':{name:{'size':len(data),'id':i+1} for i,(name,data) in enumerate(r['assets'].items())}}
     def read(self,release,name,public=False,destination=None):
         tag=release['tag_name'];self.events.append(('read',tag,name,public))
@@ -51,7 +53,7 @@ class Remote:
         return __import__('hashlib').sha256(data).hexdigest()
     def tag_commit(self,tag):return self.tags.get(tag)
     def create(self,tag,commit,body):
-        self.events.append(('create',tag));assert tag=='rc' or tag.startswith(('rc-baseline-','rc4-old-trust-','edge-signed-baseline-'));assert tag not in self.releases
+        self.events.append(('create',tag));assert tag in ('edge','rc','stable') or tag.startswith(('rc-baseline-','rc4-old-trust-','edge-signed-baseline-','edge-unsigned-','rc-unsigned-','stable-unsigned-'));assert tag not in self.releases
         assert self.tags.get(tag) in (None,commit);self.tags[tag]=commit
         self.releases[tag]={'draft':True,'commit':commit,'assets':{}}
     def upload(self,tag,path,clobber=False):
@@ -62,6 +64,7 @@ class Remote:
             assert clobber;del assets[path.name];raise ValueError('interrupted after clobber deletion')
         assets[path.name]=path.read_bytes()
     def expose(self,tag):self.events.append(('expose',tag));self.releases[tag]['draft']=False
+    def mark_latest(self,tag):self.events.append(('latest',tag));assert tag=='stable'
     def delete(self,tag,name):self.events.append(('delete',tag,name));del self.releases[tag]['assets'][name]
 
 class BootstrapTests(unittest.TestCase):
@@ -723,6 +726,171 @@ class BootstrapTests(unittest.TestCase):
         self.assertEqual(boot.bundle.check(signed,Fixture.keys.policy)['signature_policy'],boot.bundle.STRICT_POLICY)
         self.assertFalse(any(e[0] in ('create','upload','delete','expose') for e in remote.events))
 
+    def test_17_unsigned_rc_and_stable_publication(self):
+        rc_manifest=boot.validate(self.bundle4,self.sha4,self.source4,Fixture.keys.policy,signed=False)
+        rc_args=self.transition_args()
+        rc_args.accept_unsigned_publication=True
+        rc_args.trust_policy=Fixture.keys.policy
+        rc=Remote()
+        result=boot.publish_checked(rc_args,rc_manifest,rc,unsigned_publication=True)
+        self.assertIn('PASS',result['result'])
+        self.assertTrue(result['snapshot_tag'].startswith('rc-unsigned-'))
+        self.assertFalse(any(name.endswith('.sig') for name in rc.releases['rc']['assets']))
+
+        (Fixture.root/'source4/version').write_text('4.0.3\n')
+        boot.bundle.run('git','-C',Fixture.root/'source4','add','version')
+        boot.bundle.run('git','-C',Fixture.root/'source4','-c','user.name=Fixture','-c','user.email=fixture@example.invalid','-c','commit.gpgsign=false','commit','-qm','Fixture final')
+        commit=boot.bundle.run('git','-C',Fixture.root/'source4','rev-parse','HEAD').decode().strip()
+        candidates=Fixture.root/'unsigned-final-candidates';shutil.copytree(Fixture.root/'candidates4',candidates)
+        for name in ('omarchy','omarchy-settings'):
+            next(candidates.glob(name+'-4.0.3rc4-*')).unlink()
+            Fixture.make_package(candidates,name,'4.0.3-1')
+        Fixture.write_build_inputs(candidates,commit,'4.0.3')
+        final=Fixture.root/'unsigned-final'
+        boot.bundle.stage(argparse.Namespace(base_db=Fixture.base_db,base_packages=Fixture.base,candidates=candidates,
+                                              source=Fixture.root/'source4',source_git=None,source_commit=commit,
+                                              release='4.0.3',output=final))
+        final_manifest=boot.validate(final,boot.bundle.digest(final/'manifest.json'),commit,Fixture.keys.policy,
+                                     signed=False,channel='stable')
+        boot.verify_final_lineage(rc_manifest,final_manifest)
+        changed=copy.deepcopy(final_manifest)
+        changed['source']['files']['build-packages.sh']['sha256']='0'*64
+        self.assertRaisesRegex(ValueError,'only in version',boot.verify_final_lineage,rc_manifest,changed)
+        rc_receipt=Fixture.make_receipt(self.bundle4,'unsigned-rc')
+        final_receipt=Fixture.make_receipt(final,'unsigned-final')
+        final_data=json.loads(final_receipt.read_text())
+        final_data.update(released_upgrade_from='4.0.2-2',
+                          hardware_checks={'m1_reboot_runtime':'pass','m2_reboot_runtime':'pass'})
+        final_receipt.write_text(json.dumps(final_data))
+        evidence=argparse.Namespace(rc_bundle=self.bundle4,rc_validation=rc_receipt,
+                                    rc_manifest_sha256=self.sha4,rc_source_commit=self.source4,
+                                    trust_policy=Fixture.keys.policy)
+        publisher.require_final_evidence(evidence,final_manifest,final_data)
+        missing=dict(final_data,hardware_checks={'m1_reboot_runtime':'pass'})
+        self.assertRaisesRegex(ValueError,'M1 and M2',publisher.require_final_evidence,evidence,final_manifest,missing)
+        for lane in ('stable',):
+            args=self.transition_args();args.bundle=final;args.manifest_sha256=boot.bundle.digest(final/'manifest.json')
+            args.source_commit=commit;args.lane=lane;args.accept_unsigned_publication=True
+            args.trust_policy=Fixture.keys.policy
+            args.expected_edge_db=boot.bundle.digest(final/'assets'/'omarchy-aarch64.db')
+            remote=Remote()
+            remote.releases['edge']={'draft':False,'commit':'a'*40,
+                                     'assets':{path.name:path.read_bytes() for path in (final/'assets').iterdir()}}
+            remote.releases['edge']['assets']['omarchy-steam-fex-extra.pkg.tar.zst']=b'edge-only'
+            dry=argparse.Namespace(bundle=final,expected_db=args.expected_edge_db,execute=False,
+                                   accept_mutable_alias_window=False,scratch=Fixture.root/'edge-dry-run',
+                                   evidence_dir=Fixture.root/'edge-evidence',
+                                   manifest_sha256=args.manifest_sha256)
+            dry.scratch.mkdir()
+            original_run=publisher.subprocess.run
+            edge_calls=[]
+            def run_edge_only(argv,**kwargs):
+                if argv[0]=='bash' and str(argv[1]).endswith('/scripts/publish.sh'):
+                    edge_calls.append((argv,kwargs))
+                    return __import__('subprocess').CompletedProcess(argv,0)
+                return original_run(argv,**kwargs)
+            with patch.object(publisher.subprocess,'run',side_effect=run_edge_only):
+                edge_plan=publisher.publish_edge(dry,final_manifest,remote)
+            self.assertEqual(edge_plan['mode'],'dry-run')
+            self.assertEqual(edge_calls[0][1]['env']['DRY_RUN'],'1')
+            self.assertNotIn('PRESERVE_SUPERSEDED',edge_calls[0][1]['env'])
+            self.assertEqual(boot.bundle.digest(dry.evidence_dir/'previous-edge.db'),args.expected_edge_db)
+            result=boot.publish_checked(args,final_manifest,remote,unsigned_publication=True)
+            self.assertIn('PASS',result['result'])
+            self.assertTrue(result['snapshot_tag'].startswith(lane+'-unsigned-'))
+            self.assertFalse(remote.release(lane)['prerelease'] if lane=='stable' else False)
+            self.assertFalse(any(name.endswith('.sig') for name in remote.releases[lane]['assets']))
+            self.assertIn(('latest','stable'),remote.events)
+            self.assertIn('omarchy-steam-fex-extra.pkg.tar.zst',remote.releases['edge']['assets'])
+            desktop=next(p for p in final_manifest['packages'] if p['name']=='omarchy')
+            remote.releases['edge']['assets'][desktop['filename']]=b'changed edge bytes'
+            self.assertRaisesRegex(ValueError,'Public edge omarchy archive differs',
+                                   boot.publish_checked,args,final_manifest,remote,unsigned_publication=True)
+            remote.releases['edge']['assets'][desktop['filename']]=(final/'assets'/desktop['filename']).read_bytes()
+            remote.releases[lane]['assets']['omarchy-aarch64.db.sig']=b'signed'
+            self.assertRaises(ValueError,boot.publish_checked,args,final_manifest,remote,unsigned_publication=True)
+
+    def test_18_unsigned_publication_rejects_newer_dependency_before_writes(self):
+        previous=Fixture.root/'newer-dependency-lane'
+        shutil.copytree(self.bundle4/'assets',previous)
+        package=next(item for item in self.manifest['packages'] if item['name']=='ttf-jetbrains-mono-nerd-basic')
+        (previous/package['filename']).unlink()
+        newer=Fixture.make_package(previous,package['name'],'99-1')
+        boot.bundle.run('repo-add','--quiet','--prevent-downgrade',f'{boot.DB}.db.tar.zst',newer.name,cwd=previous)
+        (previous/f'{boot.DB}.db').unlink()
+        shutil.copyfile(previous/f'{boot.DB}.db.tar.zst',previous/f'{boot.DB}.db')
+        manifest=boot.validate(self.bundle4,self.sha4,self.source4,Fixture.keys.policy,signed=False)
+        for lane in ('rc','edge'):
+            remote=Remote()
+            remote.releases[lane]={'draft':False,'commit':'a'*40,
+                                   'assets':{path.name:path.read_bytes() for path in previous.iterdir()}}
+            expected=boot.bundle.digest(previous/f'{boot.DB}.db')
+            if lane=='rc':
+                args=self.transition_args()
+                args.accept_unsigned_publication=True
+                args.trust_policy=Fixture.keys.policy
+                args.expected_rc_db=expected
+                with self.assertRaisesRegex(ValueError,'cannot downgrade ttf-jetbrains-mono-nerd-basic'):
+                    boot.publish_checked(args,manifest,remote,unsigned_publication=True)
+            else:
+                args=argparse.Namespace(bundle=self.bundle4,expected_db=expected,execute=True,
+                                        accept_mutable_alias_window=True,scratch=Fixture.root/'edge-newer-scratch',
+                                        evidence_dir=None,manifest_sha256=self.sha4)
+                args.scratch.mkdir()
+                original_run=publisher.subprocess.run
+                def reject_publish(argv,**kwargs):
+                    if argv[0]=='bash':
+                        self.fail('edge publisher ran before downgrade preflight')
+                    return original_run(argv,**kwargs)
+                with patch.object(publisher.subprocess,'run',side_effect=reject_publish):
+                    with self.assertRaisesRegex(ValueError,'newer ttf-jetbrains-mono-nerd-basic'):
+                        publisher.publish_edge(args,manifest,remote)
+            self.assertFalse(any(event[0] in ('create','upload','delete','expose') for event in remote.events))
+
+    def test_19_edge_allows_newer_non_candidate_without_changing_it(self):
+        previous=Fixture.root/'newer-unrelated-edge'
+        shutil.copytree(self.bundle4/'assets',previous)
+        package=next(item for item in self.manifest['packages'] if item['name']=='1password')
+        newer=Fixture.make_package(previous,package['name'],'2-1')
+        boot.bundle.run('repo-add','--quiet','--prevent-downgrade',f'{boot.DB}.db.tar.zst',newer.name,cwd=previous)
+        (previous/f'{boot.DB}.db').unlink()
+        shutil.copyfile(previous/f'{boot.DB}.db.tar.zst',previous/f'{boot.DB}.db')
+        expected=boot.bundle.digest(previous/f'{boot.DB}.db')
+        remote=Remote()
+        remote.releases['edge']={'draft':False,'commit':'a'*40,
+                                 'assets':{path.name:path.read_bytes() for path in previous.iterdir()}}
+        manifest=boot.validate(self.bundle4,self.sha4,self.source4,Fixture.keys.policy,signed=False)
+        args=argparse.Namespace(bundle=self.bundle4,expected_db=expected,execute=False,
+                                accept_mutable_alias_window=False,scratch=Fixture.root/'edge-unrelated-scratch',
+                                evidence_dir=None,manifest_sha256=self.sha4)
+        args.scratch.mkdir()
+        original_run=publisher.subprocess.run
+        calls=[]
+        def run_edge(argv,**kwargs):
+            if argv[0]=='bash':
+                calls.append((argv,kwargs))
+                return __import__('subprocess').CompletedProcess(argv,0)
+            return original_run(argv,**kwargs)
+        with patch.object(publisher.subprocess,'run',side_effect=run_edge):
+            plan=publisher.publish_edge(args,manifest,remote)
+        self.assertEqual(plan['mode'],'dry-run')
+        self.assertEqual(len(calls),1)
+        self.assertEqual(calls[0][1]['env']['DRY_RUN'],'1')
+        self.assertEqual(boot.bundle.field(boot.bundle.database(previous/f'{boot.DB}.db')['1password'],
+                                           'VERSION'),'2-1')
+        self.assertEqual(remote.releases['edge']['assets'][newer.name],newer.read_bytes())
+        self.assertFalse(any(event[0] in ('create','upload','delete','expose') for event in remote.events))
+        rc=Remote()
+        rc.releases['rc']={'draft':False,'commit':'a'*40,
+                           'assets':{path.name:path.read_bytes() for path in previous.iterdir()}}
+        rc_args=self.transition_args()
+        rc_args.accept_unsigned_publication=True
+        rc_args.trust_policy=Fixture.keys.policy
+        rc_args.expected_rc_db=expected
+        with self.assertRaisesRegex(ValueError,'cannot downgrade 1password'):
+            boot.publish_checked(rc_args,manifest,rc,unsigned_publication=True)
+        self.assertFalse(any(event[0] in ('create','upload','delete','expose') for event in rc.events))
+
     def test_10_api_errors_are_not_release_absence(self):
         transport=boot.GitHub(Fixture.root)
         original=boot.bundle.run
@@ -732,7 +900,7 @@ class BootstrapTests(unittest.TestCase):
         finally:boot.bundle.run=original
     def test_11_workflows_are_manual_and_protected(self):
         import yaml
-        for name in ['bootstrap-signed-rc.yml','prepare-rc-baseline.yml','publish-rc4-old-trust.yml']:
+        for name in ['bootstrap-signed-rc.yml','prepare-rc-baseline.yml','publish-rc4-old-trust.yml','publish-unsigned-lane.yml']:
             data=yaml.safe_load((boot.ROOT/'.github/workflows'/name).read_text())
             triggers=data.get('on',data.get(True));self.assertEqual(set(triggers),{'workflow_dispatch'})
             for job in data['jobs'].values():self.assertEqual(job['environment'],'package-signing')
