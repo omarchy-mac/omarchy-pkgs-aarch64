@@ -2,20 +2,29 @@
 #
 # Why this is an in-tree PKGBUILD and not an AUR one: the AUR has
 # libva-v4l2_request 1.2 (megi's, maintained by anarsoul), which does not carry
-# the AVD fixes. This packages sofus13's fork at tag 1.3 -- megi's driver plus
-# the commits that make AVD work (HEVC entry point offsets, surface sizing,
-# HEVC slice params). It is not itself in the AUR.
+# the AVD fixes. This packages iconidentify's fork, pinned to a commit: megi's
+# driver, sofus13's AVD support (tag 1.3: HEVC entry point offsets, surface
+# sizing, HEVC slice params), plus the fixes sofus13's repository has not taken
+# (it has been idle since 2026-08): decoding into surfaces the client exported
+# before the first decode, which is how every Chromium-family browser allocates
+# its frame pool and why 1.3 showed solid green video there (omarchy-mac #370,
+# #388); H.264 multi-slice hangs; HEVC slice-header parsing, reference ordering
+# and 10-bit surfaces; frame lifetime and error propagation; VP9 validation. It
+# is not itself in the AUR.
 #
 # Why it is needed at all: AVD is a *stateless* decoder, which almost no
 # desktop software speaks. ffmpeg's v4l2m2m decoders are stateful and will
 # never negotiate with it, so without this shim the firmware alone gets you a
 # working /dev/video node that nothing can drive.
 #
-# Version bumps are edits to this file: update pkgver and sha256sums.
+# Version bumps are edits to this file: update pkgver, _commit and sha256sums.
+# The snapshot suffix records commits since the previous r11 package pin and
+# the source revision. It sorts after both 1.3-1 and existing 1.3.r11 packages.
 
-_fork=sofus13
+_fork=iconidentify
+_commit=5b5046cbda6892f4a63df0015857a80bd42c17cf
 pkgname=libva-v4l2_request-avd
-pkgver=1.3
+pkgver=1.3.r11.r164.g5b5046c
 pkgrel=1
 pkgdesc='VA-API driver for V4L2 stateless decoders, with Apple Video Decoder (AVD) support'
 arch=('aarch64')
@@ -26,13 +35,14 @@ license=('GPL-3.0-or-later')
 # a link-time dependency -- and that symbol is versioned, so this needs a
 # rebuild whenever libva's driver ABI is bumped. libdrm is only used for
 # drm_fourcc.h constants at compile time.
-depends=('glibc' 'libva')
+depends=('glibc' 'libva>=2.24' 'libva<3')
 makedepends=('meson' 'libdrm')
+checkdepends=('python')
 provides=('libva-v4l2_request')
 conflicts=('libva-v4l2_request')
 install="$pkgname.install"
-source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/$pkgver.tar.gz")
-sha256sums=('3670a1712f9f0a5a61bd44a781eba81dd9b2e0fd8271417ca8a9fbbed9dccfe9')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/$_commit.tar.gz")
+sha256sums=('27cfdede20222c8808396b09369011c5fe092960591b736c4128d7c78c510462')
 
 build() {
   # driverdir is left unset so meson takes it from libva's pkg-config
@@ -45,8 +55,14 @@ build() {
     --prefix=/usr \
     --buildtype=plain \
     --wrap-mode=nodownload \
-    "libva-v4l2_request-$pkgver" build
+    "libva-v4l2_request-$_commit" build
   meson compile -C build
+}
+
+check() {
+  # The fork's offline suite: parser fuzz seeds, reference-ownership and
+  # intercepted-device decode cases; none of it needs /dev/video*.
+  meson test -C build --print-errorlogs
 }
 
 package() {
@@ -60,8 +76,8 @@ package() {
   # collide and pacman will say so at install time.
   ln -sf v4l2_request_drv_video.so "$pkgdir/usr/lib/dri/asahi_drv_video.so"
 
-  install -Dm644 "libva-v4l2_request-$pkgver/COPYING" \
+  install -Dm644 "libva-v4l2_request-$_commit/COPYING" \
     "$pkgdir/usr/share/licenses/$pkgname/COPYING"
-  install -Dm644 "libva-v4l2_request-$pkgver/README" \
+  install -Dm644 "libva-v4l2_request-$_commit/README" \
     "$pkgdir/usr/share/doc/$pkgname/README"
 }
