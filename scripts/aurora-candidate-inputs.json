@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "kind": "aurora-candidate-inputs",
+  "upstream_repository": "maralcbr/omarchy-pkgs",
+  "upstream_revision": "3caea4693df7c472d57809b5c6b05b07579c1f7a",
+  "original_files": {
+    "pkgbuilds/linux-aurora/PKGBUILD": "613ab329def78387e5b7fa90c19e7cc648d041a8ee1287ea86ff5a9b582643c5",
+    "pkgbuilds/linux-aurora/config": "4228006ad9c5fcc2237b91b3fd1f70934d23e6d8bdb012faf5a763e042a6edee",
+    "pkgbuilds/linux-aurora/rust-toolchain.toml": "2a95563bb9f5b216cc3c170a17e9471448bc63a7084bdd67df23d074939b366c",
+    "pkgbuilds/m1n1-aurora/PKGBUILD": "3ac99d9be38e3d1796e55fa6bca15a6e6c4c1b49a42bd3d061064e3c17e44c90",
+    "pkgbuilds/m1n1-aurora/aurora-cio-aliases.patch": "4345a4e431642c4316595bdf023bc67d5c72e0374f3c8d59be81318710138f32"
+  },
+  "files": {
+    "pkgbuilds/linux-aurora/PKGBUILD": "11e870af2ca92ff74654820376d14c98eb3e6eb2b018356359955a1038151650",
+    "pkgbuilds/linux-aurora/config": "4228006ad9c5fcc2237b91b3fd1f70934d23e6d8bdb012faf5a763e042a6edee",
+    "pkgbuilds/linux-aurora/rust-toolchain.toml": "2a95563bb9f5b216cc3c170a17e9471448bc63a7084bdd67df23d074939b366c",
+    "pkgbuilds/m1n1-aurora/PKGBUILD": "e781cc04c49adfedec3841c37e2513925ba33e2595037e4e205fea4c2aabd2fb",
+    "pkgbuilds/m1n1-aurora/aurora-cio-aliases.patch": "4345a4e431642c4316595bdf023bc67d5c72e0374f3c8d59be81318710138f32"
+  },
+  "kernel_revision": "2439016d2e8d3a0d8aebcd243f29604a91f201c9",
+  "m1n1_revision": "06a4601a351ebfd1abb6abba9a44c34e40d94776",
+  "packages": {
+    "linux-aurora": "7.1.12.aurora2-7.1",
+    "linux-aurora-headers": "7.1.12.aurora2-7.1",
+    "m1n1-aurora": "1.6.1.aurora1-2.1"
+  }
+}

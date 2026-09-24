@@ -1,0 +1,72 @@
+name: Build Aurora candidate
+
+# No schedules, secrets, signing environment, release writes or update feeds.
+# Before merge, the PR label is the explicit opt-in to an expensive ARM build.
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    paths:
+      - .github/workflows/build-aurora-candidate.yml
+      - scripts/aurora-candidate*
+      - scripts/test-aurora-candidate.py
+      - pkgbuilds/linux-aurora/**
+      - pkgbuilds/m1n1-aurora/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aurora-candidate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - run: python3 scripts/test-aurora-candidate.py
+
+  build:
+    needs: check
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'build-aurora-candidate')
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Build an unsigned set in an isolated native ARM container
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/aurora"
+          docker pull menci/archlinuxarm:base-devel
+          build_image=$(docker image inspect menci/archlinuxarm:base-devel --format '{{index .RepoDigests 0}}')
+          docker run --rm -v "$PWD:/source:ro" -v "$RUNNER_TEMP/aurora:/out" -w /source \
+            -e AURORA_BUILD_IMAGE="$build_image" -e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT \
+            -e OMARCHY_BUILD_JOBS=4 "$build_image" bash -euo pipefail -c '
+              # Use the signed ALARM repositories only; no downstream rolling repo.
+              sed -i "s|http://mirror.archlinuxarm.org|https://ca.us.mirror.archlinuxarm.org|" /etc/pacman.d/mirrorlist
+              pacman -Syu --noconfirm --needed base-devel git python bc dtc kmod libelf pahole cpio perl rustup rust-bindgen tar xz xmlto clang lld llvm patch
+              useradd --create-home builder
+              chown builder:builder /out
+              runuser -u builder -- git config --global --add safe.directory /source
+              runuser -u builder -- python3 scripts/aurora-candidate.py build /out/candidate
+            ' 2>&1 | tee "$RUNNER_TEMP/aurora/container.log"
+      - name: Retain packages and evidence, including failed-attempt logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: aurora-unsigned-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/aurora/container.log
+            ${{ runner.temp }}/aurora/candidate/artifacts/
+            ${{ runner.temp }}/aurora/candidate/logs/
+          if-no-files-found: warn
+          retention-days: 30
+          include-hidden-files: true
