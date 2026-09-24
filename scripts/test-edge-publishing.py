@@ -254,9 +254,35 @@ class EdgeTests(unittest.TestCase):
         boot.stage_input(args,Fixture.keys.policy)
         output=boot.bundle.check(args.output,Fixture.keys.policy)
         self.assertEqual([(p['name'],p['sha256']) for p in output['packages']],[(p['name'],p['sha256']) for p in self.manifest['packages']])
+        fex=next(package for package in output['packages'] if package['name']=='omarchy-steam-fex')
+        self.assertEqual(boot.bundle.digest(args.output/'assets'/fex['filename']),fex['sha256'])
+        self.assertEqual(boot.bundle.field(boot.bundle.database(args.output/'assets'/f'{boot.DB}.db')['omarchy-steam-fex'],
+                                           'SHA256SUM'),fex['sha256'])
         Fixture.make_package(built,'omarchy','4.0.3-1',content='changed runtime')
         args.candidates=scratch/'bad';args.output=scratch/'bad-output'
         self.assertRaisesRegex(ValueError,'payload differs',boot.stage_input,args,Fixture.keys.policy)
+
+    def test_09_unsigned_rc_and_stable_select_fex(self):
+        for lane,bundle,source in [('rc',Path(str(Fixture.rc)+'.unsigned'),Fixture.rc_commit),
+                                   ('stable',self.unsigned,self.source)]:
+            checksum=boot.bundle.digest(bundle/'manifest.json')
+            manifest=boot.validate(bundle,checksum,source,Fixture.keys.policy,signed=False,
+                                   channel='rc' if lane=='rc' else 'stable')
+            remote=Remote() if lane=='rc' else self.remote()
+            args=argparse.Namespace(bundle=bundle,manifest_sha256=checksum,source_commit=source,
+                                    lane=lane,publisher_commit='a'*40,expected_rc_db='absent',
+                                    expected_edge_db=boot.bundle.digest(self.unsigned/'assets'/f'{boot.DB}.db'),
+                                    execute=True,accept_mutable_alias_window=True,
+                                    accept_unsigned_publication=True,trust_policy=Fixture.keys.policy,
+                                    scratch=Path(tempfile.mkdtemp(dir=self.root)))
+            self.assertIn('PASS',boot.publish_checked(args,manifest,remote,unsigned_publication=True)['result'])
+            fex=next(package for package in manifest['packages'] if package['name']=='omarchy-steam-fex')
+            self.assertEqual(remote.releases[lane]['assets'][fex['filename']],
+                             (bundle/'assets'/fex['filename']).read_bytes())
+            selected=args.scratch/f'{lane}-selected.db'
+            selected.write_bytes(remote.releases[lane]['assets'][f'{boot.DB}.db'])
+            self.assertEqual(boot.bundle.field(boot.bundle.database(selected)['omarchy-steam-fex'],'SHA256SUM'),
+                             fex['sha256'])
 
 
 
