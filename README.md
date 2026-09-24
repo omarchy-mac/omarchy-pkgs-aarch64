@@ -57,12 +57,14 @@ small, checked packaging patch described below. Packages come from four places:
 | `brave-origin-bin` | 1:1.95.104-1 | Minimalist browser from the Brave team |
 | `cliamp` | 2.2.0-1 | Retro terminal music player |
 | `cursor-bin` | 3.20.17-1 | Cursor editor (vendor linux-arm64 AppImage) |
+| `displaylink` | 6.3-1 | DisplayLink USB graphics driver (Synaptics 6.3, aarch64) |
 | `dotnet-host-bin` | 10.0.12.sdk401-1 | .NET CLI driver |
 | `dotnet-runtime-2.1` | 2.1.30.sdk818-1 | .NET Core 2.1 runtime |
 | `dotnet-runtime-bin` | 10.0.12.sdk401-1 | .NET runtime |
 | `dotnet-sdk-2.1` | 2.1.30.sdk818-1 | .NET Core 2.1 SDK |
 | `dotnet-sdk-bin` | 10.0.12.sdk401-1 | .NET SDK |
 | `dotnet-targeting-pack-bin` | 10.0.12.sdk401-1 | .NET targeting pack |
+| `evdi` | 1.14.15-1 | EVDI virtual display kernel module + libevdi (DisplayLink) |
 | `ghostty` | 1.3.1-1 | Stable terminal emulator |
 | `ghostty-nautilus` | 1.3.1-1 | Open in Ghostty extension for GNOME Files |
 | `ghostty-shell-integration` | 1.3.1-1 | Ghostty shell integration scripts |
@@ -252,6 +254,19 @@ is a direct dependency of the binary that nothing else in the depends pulls
 in. `StartupWMClass` matches the vendor entry, `grok-bot`, not upstream's
 `Grok Bot`.
 
+`evdi` and `displaylink` bring Synaptics DisplayLink USB graphics (the chip
+inside many multi-output USB-C hubs/docks) to Apple Silicon. The vendor
+publishes Ubuntu-only packages; the AUR recipes are x86-orientated. `evdi`
+builds the kernel module against the pinned asahi kernel release (PKGBUILD
+`_KVER`; bump with asahi kernel bumps) plus libevdi at the revision driver 6.3
+bundles. `displaylink` installs the checksum-pinned official aarch64
+DisplayLinkManager, firmware, an Arch systemd unit, udev rules and suspend
+hooks. Verified on an M1 (Asahi): a hub's DisplayLink ports drive two extra
+monitors in Hyprland at 1080p60. Custom kernels without headers
+(`linux-asahi-hdmi-recover`) cannot load any evdi built from unrelated headers —
+align the header tree's config to the running kernel's `/proc/config.gz` before
+building (kernel packaging gap, not an evdi bug).
+
 `zed` is named `zed`, not `zed-bin`, because `omarchy-install-editor-zed` runs
 `omarchy-pkg-add zed omazed`, and `omarchy-pkg-add` gates on `pacman -Si`,
 which matches exact package names and never `provides`. Arch extra's `zed`
@@ -272,7 +287,7 @@ file the recipe already ships. Signature checks are not skipped.
 [`packages.json`](packages.json) records which group each package belongs to and
 where its PKGBUILD comes from — the AUR for most, `omacom-io/omarchy-pkgs` for
 the ones that aren't in the AUR, and this repo's own `pkgbuilds/` for
-`obs-studio`, `pinta`, `cursor-bin`, `grok-bot`, and `zed`. The source is per-package on purpose: for
+`obs-studio`, `pinta`, `cursor-bin`, `grok-bot`, `evdi`, `displaylink`, and `zed`. The source is per-package on purpose: for
 `omarchy-emacs` the AUR leads Omarchy's own repo, so switching it would be a
 downgrade.
 
