@@ -54,7 +54,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `aspnet-runtime-bin` | 10.0.12.sdk401-1 | ASP.NET Core runtime |
 | `aspnet-targeting-pack-bin` | 10.0.12.sdk401-1 | ASP.NET Core targeting pack |
 | `avd-fw` | 0.1-1 | Apple Video Decoder firmware — H.264/HEVC/VP9 hardware decode |
-| `brave-origin-bin` | 1:1.95.104-1 | Minimalist browser from the Brave team |
+| `brave-origin-bin` | 1:1.96.59-1 | Minimalist browser from the Brave team |
 | `cliamp` | 2.2.0-1 | Retro terminal music player |
 | `cursor-bin` | 3.20.17-1 | Cursor editor (vendor linux-arm64 AppImage) |
 | `dotnet-host-bin` | 10.0.12.sdk401-1 | .NET CLI driver |
