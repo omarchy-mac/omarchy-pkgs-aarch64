@@ -57,7 +57,8 @@ def publish_edge(args, manifest, transport):
                      'Retained previous edge database differs')
     rows = boot.bundle.database(previous)
     packages = {p['name']: p for p in manifest['packages']}
-    for name, package in packages.items():
+    for name in sorted(boot.bundle.CANDIDATES):
+        package = packages[name]
         if name in rows:
             boot.require(int(boot.bundle.run('vercmp', boot.bundle.field(rows[name], 'VERSION'),
                                                  package['version']).strip()) <= 0,

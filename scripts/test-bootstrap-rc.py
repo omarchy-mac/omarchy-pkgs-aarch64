@@ -847,6 +847,50 @@ class BootstrapTests(unittest.TestCase):
                         publisher.publish_edge(args,manifest,remote)
             self.assertFalse(any(event[0] in ('create','upload','delete','expose') for event in remote.events))
 
+    def test_19_edge_allows_newer_non_candidate_without_changing_it(self):
+        previous=Fixture.root/'newer-unrelated-edge'
+        shutil.copytree(self.bundle4/'assets',previous)
+        package=next(item for item in self.manifest['packages'] if item['name']=='1password')
+        newer=Fixture.make_package(previous,package['name'],'2-1')
+        boot.bundle.run('repo-add','--quiet','--prevent-downgrade',f'{boot.DB}.db.tar.zst',newer.name,cwd=previous)
+        (previous/f'{boot.DB}.db').unlink()
+        shutil.copyfile(previous/f'{boot.DB}.db.tar.zst',previous/f'{boot.DB}.db')
+        expected=boot.bundle.digest(previous/f'{boot.DB}.db')
+        remote=Remote()
+        remote.releases['edge']={'draft':False,'commit':'a'*40,
+                                 'assets':{path.name:path.read_bytes() for path in previous.iterdir()}}
+        manifest=boot.validate(self.bundle4,self.sha4,self.source4,Fixture.keys.policy,signed=False)
+        args=argparse.Namespace(bundle=self.bundle4,expected_db=expected,execute=False,
+                                accept_mutable_alias_window=False,scratch=Fixture.root/'edge-unrelated-scratch',
+                                evidence_dir=None,manifest_sha256=self.sha4)
+        args.scratch.mkdir()
+        original_run=publisher.subprocess.run
+        calls=[]
+        def run_edge(argv,**kwargs):
+            if argv[0]=='bash':
+                calls.append((argv,kwargs))
+                return __import__('subprocess').CompletedProcess(argv,0)
+            return original_run(argv,**kwargs)
+        with patch.object(publisher.subprocess,'run',side_effect=run_edge):
+            plan=publisher.publish_edge(args,manifest,remote)
+        self.assertEqual(plan['mode'],'dry-run')
+        self.assertEqual(len(calls),1)
+        self.assertEqual(calls[0][1]['env']['DRY_RUN'],'1')
+        self.assertEqual(boot.bundle.field(boot.bundle.database(previous/f'{boot.DB}.db')['1password'],
+                                           'VERSION'),'2-1')
+        self.assertEqual(remote.releases['edge']['assets'][newer.name],newer.read_bytes())
+        self.assertFalse(any(event[0] in ('create','upload','delete','expose') for event in remote.events))
+        rc=Remote()
+        rc.releases['rc']={'draft':False,'commit':'a'*40,
+                           'assets':{path.name:path.read_bytes() for path in previous.iterdir()}}
+        rc_args=self.transition_args()
+        rc_args.accept_unsigned_publication=True
+        rc_args.trust_policy=Fixture.keys.policy
+        rc_args.expected_rc_db=expected
+        with self.assertRaisesRegex(ValueError,'cannot downgrade 1password'):
+            boot.publish_checked(rc_args,manifest,rc,unsigned_publication=True)
+        self.assertFalse(any(event[0] in ('create','upload','delete','expose') for event in rc.events))
+
     def test_10_api_errors_are_not_release_absence(self):
         transport=boot.GitHub(Fixture.root)
         original=boot.bundle.run
