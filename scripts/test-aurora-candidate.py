@@ -21,7 +21,7 @@ class CandidateTest(unittest.TestCase):
             recipe = 'm1n1-aurora' if name == 'm1n1-aurora' else 'linux-aurora'
             info = {'pkgname': [name], 'pkgver': [self.lock['packages'][name]], 'arch': ['aarch64']}
             build = {'pkgbuild_sha256sum': [self.lock['files'][f'pkgbuilds/{recipe}/PKGBUILD']],
-                     'installed': ['compiler-1.0-1']}
+                     'installed': ['compiler-1.0-1-aarch64']}
             self.records[name] = info, build, set()
         kernel, headers, boot = [self.records[n] for n in ('linux-aurora', 'linux-aurora-headers', 'm1n1-aurora')]
         kernel[0]['conflict'] = ['linux-asahi']
@@ -32,7 +32,13 @@ class CandidateTest(unittest.TestCase):
         boot[2].add('usr/lib/asahi-boot/m1n1.bin')
 
     def verify(self):
-        return c.validate_records(self.records, self.lock, ['compiler-1.0-1'])
+        return c.validate_records(self.records, self.lock, ['compiler-1.0-1-aarch64'])
+
+    def test_inventory_matches_makepkg_architecture_records(self):
+        text = 'Name            : compiler\nVersion         : 1.0-1\nArchitecture    : aarch64\n\nName            : source\nVersion         : 2:3.0-2\nArchitecture    : any\n'
+        self.assertEqual(c.installed_inventory(text), ['compiler-1.0-1-aarch64', 'source-2:3.0-2-any'])
+        with self.assertRaisesRegex(ValueError, 'Architecture'):
+            c.installed_inventory('Name : compiler\nVersion : 1.0-1')
 
     def test_complete_set(self):
         self.assertEqual(self.verify(), '7.1.12-aurora')
@@ -52,7 +58,7 @@ class CandidateTest(unittest.TestCase):
                 self.records['linux-aurora'][table][field] = value
 
     def test_build_dependencies_must_match(self):
-        self.records['linux-aurora'][1]['installed'].append('unrecorded-2.0-1')
+        self.records['linux-aurora'][1]['installed'].append('unrecorded-2.0-1-any')
         with self.assertRaisesRegex(ValueError, 'inventory differs'):
             self.verify()
 

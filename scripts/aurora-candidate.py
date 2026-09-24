@@ -97,6 +97,18 @@ def validate_records(records, lock, installed):
     return prefix.rsplit('/', 1)[1]
 
 
+def installed_inventory(text):
+    result = []
+    for block in text.strip().split('\n\n'):
+        values = []
+        for key in ('Name', 'Version', 'Architecture'):
+            match = re.search(r'^' + key + r'\s+: (.+)$', block, re.M)
+            require(match, f'Missing installed package {key}')
+            values.append(match.group(1).strip())
+        result.append('-'.join(values))
+    return sorted(result)
+
+
 def audit(directory, lock, provenance):
     archives = sorted(directory.glob('*.pkg.tar.*'))
     require(len(archives) == 3 and all(p.is_file() and not p.is_symlink() for p in archives),
@@ -131,8 +143,8 @@ def build(destination):
     artifacts.mkdir()
     logs = destination / 'logs'
     logs.mkdir()
-    inventory = output('pacman', '-Q')
-    installed = ['-'.join(line.split(' ', 1)) for line in inventory.splitlines()]
+    inventory = output('pacman', '-Qi', env=dict(os.environ, LC_ALL='C'))
+    installed = installed_inventory(inventory)
     provenance = {'recipe_revision': output('git', '-C', ROOT, 'rev-parse', 'HEAD'),
                   'builder_image': image, 'installed_dependencies': installed,
                   'runner': output('uname', '-a'), 'run_id': os.environ.get('GITHUB_RUN_ID'),
@@ -145,6 +157,7 @@ def build(destination):
     provenance['dependency_archives'] = {p.name: digest(p)
                                          for p in sorted(Path('/var/cache/pacman/pkg').glob('*.pkg.tar.*'))
                                          if p.is_file() and not p.name.endswith('.sig')}
+    (artifacts / 'provenance.json').write_text(json.dumps(provenance, indent=2) + '\n')
     source_epoch = output('git', '-C', ROOT, 'show', '-s', '--format=%ct', 'HEAD')
     for recipe in ('linux-aurora', 'm1n1-aurora'):
         work = destination / recipe
@@ -160,10 +173,12 @@ def build(destination):
                            cwd=work, env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
         provenance.setdefault('source_archives', {})[recipe] = {
             p.name: digest(p) for p in work.glob('*.tar.gz') if p.is_file()}
+        (artifacts / 'provenance.json').write_text(json.dumps(provenance, indent=2) + '\n')
     provenance['rust_toolchains'] = output('rustup', 'toolchain', 'list')
     toolchains = Path.home() / '.rustup/toolchains'
     provenance['rust_toolchain_files'] = {str(p.relative_to(toolchains)): digest(p)
                                         for p in sorted(toolchains.rglob('*')) if p.is_file()}
+    (artifacts / 'provenance.json').write_text(json.dumps(provenance, indent=2) + '\n')
     manifest = audit(artifacts, lock, provenance)
     (artifacts / 'provenance.json').write_text(json.dumps(provenance, indent=2) + '\n')
     (artifacts / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')

@@ -52,6 +52,11 @@ jobs:
             -e OMARCHY_BUILD_JOBS=4 "$build_image" bash -euo pipefail -c '
               # Use the signed ALARM repositories only; no downstream rolling repo.
               sed -i "s|http://mirror.archlinuxarm.org|https://ca.us.mirror.archlinuxarm.org|" /etc/pacman.d/mirrorlist
+              for repo in $(pacman-conf --repo-list); do
+                case "$repo" in core|extra|alarm|aur) ;; *) echo "Unexpected build repository: $repo" >&2; exit 1 ;; esac
+                pacman-conf --repo "$repo" SigLevel | grep -Fxq PackageRequired
+                pacman-conf --repo "$repo" SigLevel | grep -Fxq PackageTrustedOnly
+              done
               build_dependencies=(base-devel git python bc dtc kmod libelf pahole cpio perl rustup rust-bindgen tar xz xmlto clang lld llvm patch)
               if ! pacman -Syu --noconfirm --needed "${build_dependencies[@]}"; then
                 # GitHub Docker denies the pacman downloader Landlock setup.
