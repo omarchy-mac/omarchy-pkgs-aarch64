@@ -396,6 +396,14 @@
       "note": "Excluded from the generic updater and managed as an atomic pair with omarchy by update-omarchy-mac.yml. Built from the same exact release and rejected if x86-only Limine, mkinitcpio, zram, or oomd paths enter the aarch64 payload."
     },
     {
+      "name": "omarchy-steam-fex",
+      "pkgbase": "omarchy-steam-fex",
+      "source": "local",
+      "category": "repack",
+      "allow_empty_elf": true,
+      "note": "Retain the exact published edge archive in complete RC and stable bundles. Script-only aarch64 launcher for the Asahi muvm/FEX Steam stack; installation and runtime still require release qualification."
+    },
+    {
       "name": "yaru-icon-theme",
       "pkgbase": "yaru",
       "source": "aur",

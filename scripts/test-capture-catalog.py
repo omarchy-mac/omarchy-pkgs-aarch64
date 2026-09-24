@@ -29,7 +29,7 @@ class CatalogTests(unittest.TestCase):
         self.names = {p['name'] for p in json.loads(self.catalog.read_bytes())['packages']}
         self.assertEqual(len(self.names), 52)
         current = {p['name'] for p in json.loads((boot.ROOT / 'packages.json').read_text())['packages']}
-        self.assertTrue({'omazed', 'zed'} <= current - self.names)
+        self.assertTrue({'omazed', 'zed', 'omarchy-steam-fex'} <= current - self.names)
         self.args = argparse.Namespace(lane='rc', database_sha256='a' * 64,
             output=self.root / 'capture', catalog=self.catalog,
             catalog_sha256=hashlib.sha256(self.catalog.read_bytes()).hexdigest())
