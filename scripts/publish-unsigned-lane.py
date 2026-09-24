@@ -57,10 +57,13 @@ def publish_edge(args, manifest, transport):
                      'Retained previous edge database differs')
     rows = boot.bundle.database(previous)
     packages = {p['name']: p for p in manifest['packages']}
+    for name, package in packages.items():
+        if name in rows:
+            boot.require(int(boot.bundle.run('vercmp', boot.bundle.field(rows[name], 'VERSION'),
+                                                 package['version']).strip()) <= 0,
+                         f'Edge has a newer {name} version')
     for name in ('omarchy', 'omarchy-settings'):
-        boot.require(name in rows and int(boot.bundle.run('vercmp', boot.bundle.field(rows[name], 'VERSION'),
-                                                          packages[name]['version']).strip()) <= 0,
-                     f'Edge has a newer {name} version')
+        boot.require(name in rows, f'Edge lacks {name}')
         boot.require(not rows[name].get('PGPSIG'), 'Unsigned edge cannot replace signed packages')
         filename = packages[name]['filename']
         if filename in current['asset_map']:
@@ -82,7 +85,7 @@ def publish_edge(args, manifest, transport):
             'retry': 'Stop for review after a partial upload; reuse the same retained bundle bytes'}
     environment = os.environ.copy()
     environment.update(GH_REPO=boot.REPO, REPO_TAG='edge', PKGDIR=str(staging),
-                       DB_OUT=str(args.scratch / 'edge-output'), PRESERVE_SUPERSEDED='1',
+                       DB_OUT=str(args.scratch / 'edge-output'),
                        DRY_RUN='0' if args.execute else '1')
     subprocess.run(['bash', str(boot.ROOT / 'scripts/publish.sh')], cwd=boot.ROOT,
                    env=environment, check=True)

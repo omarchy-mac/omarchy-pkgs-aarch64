@@ -793,7 +793,7 @@ class BootstrapTests(unittest.TestCase):
                 edge_plan=publisher.publish_edge(dry,final_manifest,remote)
             self.assertEqual(edge_plan['mode'],'dry-run')
             self.assertEqual(edge_calls[0][1]['env']['DRY_RUN'],'1')
-            self.assertEqual(edge_calls[0][1]['env']['PRESERVE_SUPERSEDED'],'1')
+            self.assertNotIn('PRESERVE_SUPERSEDED',edge_calls[0][1]['env'])
             self.assertEqual(boot.bundle.digest(dry.evidence_dir/'previous-edge.db'),args.expected_edge_db)
             result=boot.publish_checked(args,final_manifest,remote,unsigned_publication=True)
             self.assertIn('PASS',result['result'])
@@ -809,6 +809,43 @@ class BootstrapTests(unittest.TestCase):
             remote.releases['edge']['assets'][desktop['filename']]=(final/'assets'/desktop['filename']).read_bytes()
             remote.releases[lane]['assets']['omarchy-aarch64.db.sig']=b'signed'
             self.assertRaises(ValueError,boot.publish_checked,args,final_manifest,remote,unsigned_publication=True)
+
+    def test_18_unsigned_publication_rejects_newer_dependency_before_writes(self):
+        previous=Fixture.root/'newer-dependency-lane'
+        shutil.copytree(self.bundle4/'assets',previous)
+        package=next(item for item in self.manifest['packages'] if item['name']=='ttf-jetbrains-mono-nerd-basic')
+        (previous/package['filename']).unlink()
+        newer=Fixture.make_package(previous,package['name'],'99-1')
+        boot.bundle.run('repo-add','--quiet','--prevent-downgrade',f'{boot.DB}.db.tar.zst',newer.name,cwd=previous)
+        (previous/f'{boot.DB}.db').unlink()
+        shutil.copyfile(previous/f'{boot.DB}.db.tar.zst',previous/f'{boot.DB}.db')
+        manifest=boot.validate(self.bundle4,self.sha4,self.source4,Fixture.keys.policy,signed=False)
+        for lane in ('rc','edge'):
+            remote=Remote()
+            remote.releases[lane]={'draft':False,'commit':'a'*40,
+                                   'assets':{path.name:path.read_bytes() for path in previous.iterdir()}}
+            expected=boot.bundle.digest(previous/f'{boot.DB}.db')
+            if lane=='rc':
+                args=self.transition_args()
+                args.accept_unsigned_publication=True
+                args.trust_policy=Fixture.keys.policy
+                args.expected_rc_db=expected
+                with self.assertRaisesRegex(ValueError,'cannot downgrade ttf-jetbrains-mono-nerd-basic'):
+                    boot.publish_checked(args,manifest,remote,unsigned_publication=True)
+            else:
+                args=argparse.Namespace(bundle=self.bundle4,expected_db=expected,execute=True,
+                                        accept_mutable_alias_window=True,scratch=Fixture.root/'edge-newer-scratch',
+                                        evidence_dir=None,manifest_sha256=self.sha4)
+                args.scratch.mkdir()
+                original_run=publisher.subprocess.run
+                def reject_publish(argv,**kwargs):
+                    if argv[0]=='bash':
+                        self.fail('edge publisher ran before downgrade preflight')
+                    return original_run(argv,**kwargs)
+                with patch.object(publisher.subprocess,'run',side_effect=reject_publish):
+                    with self.assertRaisesRegex(ValueError,'newer ttf-jetbrains-mono-nerd-basic'):
+                        publisher.publish_edge(args,manifest,remote)
+            self.assertFalse(any(event[0] in ('create','upload','delete','expose') for event in remote.events))
 
     def test_10_api_errors_are_not_release_absence(self):
         transport=boot.GitHub(Fixture.root)

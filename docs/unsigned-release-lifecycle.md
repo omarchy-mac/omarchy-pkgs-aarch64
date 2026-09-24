@@ -4,6 +4,8 @@ New edge, RC, and stable clients use `SigLevel = Optional TrustAll`. An unsigned
 
 The package repository publishes mutable `edge`, `rc`, and `stable` GitHub releases. Pacman clients stay on their existing lane URL. For RC and stable, the publisher prepares a complete immutable snapshot and verifies it publicly before selecting the mutable lane database. All lane publishers upload packages before database aliases and `.db` last. Replacing separate GitHub assets is not atomic: a client may see a transient missing database during a clobber. If any upload or readback fails, stop for operator review, retain both snapshots, inspect the live selection, and retry the **same** retained bytes or perform a reviewed rollback. Never rebuild an interrupted candidate.
 
+The qualified unsigned edge publisher and scheduled rolling publishers retain superseded package archives. Download and retain the qualified publication's `previous-edge.db` evidence artifact before it expires; archive retention alone does not preserve prior database bytes. Archive cleanup requires a separate reviewed policy; scheduled publication does not delete them.
+
 ## RC candidate
 
 1. Commit desktop source with `version` set to `X.Y.ZrcN`, review the exact source and recipe pins, and build the complete unsigned bundle with **Prepare complete baseline artifact**. Capture the current RC inventory first with **Retain read-only baseline capture**. The manifest binds the archives, database, source commit, recipe, and builder inputs.

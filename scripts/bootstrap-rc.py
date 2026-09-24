@@ -416,9 +416,13 @@ def publish_checked(args, manifest, transport, *, old_trust_transition=False, ed
             if selected(current, transport) == args.expected_rc_db:
                 require(transport.read(current, f'{DB}.db', public=True) == args.expected_rc_db, 'Public selected edge database differs')
         if old_trust_transition or unsigned_publication:
+            packages = {package['name']: package for package in manifest['packages']}
+            for name, record in rows.items():
+                require(name in packages and int(bundle.run('vercmp', bundle.field(record, 'VERSION'),
+                                                    packages[name]['version']).strip()) <= 0,
+                        f'Unsigned publication cannot downgrade {name}')
             for name in ('omarchy', 'omarchy-settings'):
-                require(name in rows and int(bundle.run('vercmp', bundle.field(rows[name], 'VERSION'), manifest['version']).strip()) <= 0,
-                        'Unsigned publication cannot downgrade a newer lane selection')
+                require(name in rows, f'Previous database lacks {name}')
                 require(not rows[name].get('PGPSIG'), 'Refusing unsigned publication over signed packages')
         allowed_names = {p['name'] for p in manifest['packages']}
         require(set(rows) <= allowed_names, 'Previous database contains unapproved package names')
