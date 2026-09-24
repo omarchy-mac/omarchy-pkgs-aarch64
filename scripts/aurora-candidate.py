@@ -130,6 +130,18 @@ def audit(directory, lock, provenance):
             'inputs': lock, 'provenance': provenance, 'packages': sorted(packages, key=lambda p: p['name'])}
 
 
+def verify_candidate(directory, expected_digest):
+    require(re.fullmatch('[a-f0-9]{64}', expected_digest), 'Approved manifest digest required')
+    require(directory.is_dir() and not directory.is_symlink(), 'Unsafe candidate directory')
+    manifest = directory / 'manifest.json'
+    require(manifest.is_file() and not manifest.is_symlink() and digest(manifest) == expected_digest,
+            'Candidate manifest checksum mismatch')
+    data = json.loads(manifest.read_text())
+    actual = audit(directory, inputs(), data['provenance'])
+    require(actual == data, 'Candidate content or provenance differs')
+    return data
+
+
 def build(destination):
     lock = inputs()
     require(os.geteuid() != 0, 'Run makepkg as an unprivileged container user')
@@ -191,10 +203,16 @@ def main():
     sub.add_parser('check-inputs')
     build_parser = sub.add_parser('build')
     build_parser.add_argument('destination', type=Path)
+    verify_parser = sub.add_parser('verify')
+    verify_parser.add_argument('directory', type=Path)
+    verify_parser.add_argument('--manifest-sha256', required=True)
     args = parser.parse_args()
     if args.command == 'check-inputs':
         inputs()
         print('Pinned Aurora recipe inputs match')
+    elif args.command == 'verify':
+        verify_candidate(args.directory, args.manifest_sha256)
+        print('Exact unsigned candidate verified; signing and installation remain separate')
     else:
         build(args.destination.resolve())
 

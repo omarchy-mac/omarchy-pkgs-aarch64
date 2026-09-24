@@ -18,7 +18,7 @@ The native `ubuntu-24.04-arm` worker uses a pinned base container digest, uses o
 
 The artifact contains three unsigned packages, an input lock, build logs, provenance and a success manifest. A failed attempt may retain partial packages and logs but has no success manifest. The verifier checks recipe digests, native architecture, exact package versions, complete output inventory, matching kernel/header module directories, Apple DTBs, replacement contracts and exclusive file ownership. `.BUILDINFO` must match the recorded installed dependency inventory. Source archives and downloaded Rust toolchain files are hashed after build.
 
-Run `python3 scripts/test-aurora-candidate.py` for pure rejection tests and `python3 scripts/aurora-candidate.py check-inputs` to check recipe inputs. A local build must run inside a disposable native ARM container, never on the installed system; use the workflow as the reference invocation.
+Run `python3 scripts/test-aurora-candidate.py` for pure rejection tests and `python3 scripts/aurora-candidate.py check-inputs` to check recipe inputs. Verify a retained unsigned set with `python3 scripts/aurora-candidate.py verify /path/to/artifacts --manifest-sha256 APPROVED_DIGEST`. The release-boundary fixture (`scripts/test-aurora-release-fixture.py`) checks real synthetic archives and disposable GnuPG signatures; it never installs packages or uses production keys. A local build must run inside a disposable native ARM container, never on the installed system; use the workflow as the reference invocation.
 
 ## Qualification and promotion
 

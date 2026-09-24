@@ -10,6 +10,7 @@ on:
       - .github/workflows/build-aurora-candidate.yml
       - scripts/aurora-candidate*
       - scripts/test-aurora-candidate.py
+      - scripts/test-aurora-release-fixture.py
       - pkgbuilds/linux-aurora/**
       - pkgbuilds/m1n1-aurora/**
 
@@ -29,6 +30,11 @@ jobs:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - run: python3 scripts/test-aurora-candidate.py
+      - name: Exercise the release boundary with disposable keys only
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools gnupg
+          TMPDIR="$RUNNER_TEMP" python3 scripts/test-aurora-release-fixture.py
 
   build:
     needs: check
