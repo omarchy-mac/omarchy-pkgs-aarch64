@@ -82,10 +82,10 @@ small, checked packaging patch described below. Packages come from four places:
 | `omarchy` | 4.0.2-2 | Omarchy Mac scripts and desktop runtime |
 | `omarchy-mac-keyring` | Pending edge bootstrap | Omarchy Mac public signing certificate and trust policy |
 | `omarchy-emacs` | 1.10.1-1 | Emacs theme/font syncing for Omarchy |
-| `omarchy-nvim` | 2026.9.21-1 | Pre-built LazyVim configuration |
+| `omarchy-nvim` | 2026.9.21-2 | Pre-built LazyVim configuration |
 | `omarchy-settings` | 4.0.2-2 | Apple Silicon system and user defaults |
 | `omarchy-steam-fex` | 1.0.0-1 | Steam launcher for the Asahi muvm/FEX stack |
-| `omarchy-webapp-theme` | 0.3.8-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
+| `omarchy-webapp-theme` | 0.3.9-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
 | `omawrite` | 0.5.0-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
 | `omazed` | 2.1.2-1 | Live Omarchy theme sync for Zed |
 | `openai-codex-desktop` | 26.915.31945-1 | ChatGPT desktop app with Codex |
