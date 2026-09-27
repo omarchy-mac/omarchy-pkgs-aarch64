@@ -96,7 +96,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `tzupdate` | 3.1.0-1 | Set timezone from IP geolocation |
 | `ufw-docker` | 251123-1 | Fix the Docker/UFW security flaw |
 | `vi` | 1:070224-9 | Original ex/vi text editor |
-| `voxtype-bin` | 1.0.1-1 | Push-to-talk dictation |
+| `voxtype-bin` | 1.1.0-1 | Push-to-talk dictation |
 | `xdg-terminal-exec` | 0.14.3-1 | Launch desktop apps with `Terminal=true` |
 | `yaru-icon-theme` | 26.04.5.1ubuntu-1 | Yaru default Ubuntu icon theme |
 | `yay` | 13.0.1-1 | Pacman wrapper and AUR helper |
