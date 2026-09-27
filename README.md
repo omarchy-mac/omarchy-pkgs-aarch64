@@ -70,7 +70,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `grok-bot` | 0.47.0-1 | Grok Bot desktop agent (vendor linux-arm64 .deb) |
 | `herdr` | 0.9.1-1 | Terminal workspace manager for AI coding agents |
 | `hermes-desktop` | 2026.9.7-1 | Native desktop shell for Hermes Agent |
-| `hypa-ttfx-bin` | 0.3.1-1 | Hypa terminal text effects |
+| `hypa-ttfx-bin` | 0.3.2-1 | Hypa terminal text effects |
 | `hyprland-preview-share-picker` | 0.2.1-2 | Share picker with window/monitor previews |
 | `libva-v4l2_request-avd` | 1.3.r11.r164.g5b5046c-1 | VA-API driver so applications can reach the Apple Video Decoder |
 | `localsend` | 1.18.2-2 | Cross-platform AirDrop alternative |
@@ -87,8 +87,8 @@ small, checked packaging patch described below. Packages come from four places:
 | `omarchy-steam-fex` | 1.0.0-1 | Steam launcher for the Asahi muvm/FEX stack |
 | `omarchy-webapp-theme` | 0.3.9-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
 | `omawrite` | 0.5.0-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
-| `omazed` | 2.1.2-1 | Live Omarchy theme sync for Zed |
-| `openai-codex-desktop` | 26.915.31945-1 | ChatGPT desktop app with Codex |
+| `omazed` | 2.2.0-1 | Live Omarchy theme sync for Zed |
+| `openai-codex-desktop` | 26.924.22138-1 | ChatGPT desktop app with Codex |
 | `pinta` | 3.1.2-1 | Simple image editor |
 | `tensaku` | 0.29.0-1 | Screenshot annotation for Wayland |
 | `ttf-ia-writer` | 20181225-1 | iA Writer font subset |
