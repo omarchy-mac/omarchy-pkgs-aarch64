@@ -69,12 +69,12 @@ small, checked packaging patch described below. Packages come from four places:
 | `ghostty-terminfo` | 1.3.1-1 | `xterm-ghostty` terminal definition |
 | `grok-bot` | 0.47.0-1 | Grok Bot desktop agent (vendor linux-arm64 .deb) |
 | `herdr` | 0.9.1-1 | Terminal workspace manager for AI coding agents |
-| `hermes-desktop` | 2026.9.7-1 | Native desktop shell for Hermes Agent |
-| `hypa-ttfx-bin` | 0.3.2-1 | Hypa terminal text effects |
+| `hermes-desktop` | 2026.9.7-2 | Native desktop shell for Hermes Agent |
+| `hypa-ttfx-bin` | 0.3.3-1 | Hypa terminal text effects |
 | `hyprland-preview-share-picker` | 0.2.1-2 | Share picker with window/monitor previews |
 | `libva-v4l2_request-avd` | 1.3.r11.r164.g5b5046c-1 | VA-API driver so applications can reach the Apple Video Decoder |
 | `localsend` | 1.18.2-2 | Cross-platform AirDrop alternative |
-| `mise-bin` | 2026.9.14-1 | Dev tools, env vars, task runner |
+| `mise-bin` | 2026.9.15-1 | Dev tools, env vars, task runner |
 | `obs-studio` | 32.2.2-1 | Video recording and live streaming (no browser source) |
 | `obsidian-appimage` | 1.13.7-2 | Markdown knowledge base (AppImage) |
 | `omacalc` | 0.2.2-1 | Calculator — bound to `SUPER + CTRL + Q` |
@@ -87,16 +87,16 @@ small, checked packaging patch described below. Packages come from four places:
 | `omarchy-steam-fex` | 1.0.0-1 | Steam launcher for the Asahi muvm/FEX stack |
 | `omarchy-webapp-theme` | 0.3.9-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
 | `omawrite` | 0.5.0-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
-| `omazed` | 2.2.0-1 | Live Omarchy theme sync for Zed |
+| `omazed` | 2.2.0-2 | Live Omarchy theme sync for Zed |
 | `openai-codex-desktop` | 26.924.22138-1 | ChatGPT desktop app with Codex |
 | `pinta` | 3.1.2-1 | Simple image editor |
 | `tensaku` | 0.29.0-1 | Screenshot annotation for Wayland |
 | `ttf-ia-writer` | 20181225-1 | iA Writer font subset |
-| `ttfx` | 0.4.0-1 | Terminal text effects, static binary |
+| `ttfx` | 0.5.0-1 | Terminal text effects, static binary |
 | `tzupdate` | 3.1.0-1 | Set timezone from IP geolocation |
 | `ufw-docker` | 251123-1 | Fix the Docker/UFW security flaw |
 | `vi` | 1:070224-9 | Original ex/vi text editor |
-| `voxtype-bin` | 1.1.0-1 | Push-to-talk dictation |
+| `voxtype-bin` | 1.1.0-2 | Push-to-talk dictation |
 | `xdg-terminal-exec` | 0.14.3-1 | Launch desktop apps with `Terminal=true` |
 | `yaru-icon-theme` | 26.04.5.1ubuntu-1 | Yaru default Ubuntu icon theme |
 | `yay` | 13.0.1-1 | Pacman wrapper and AUR helper |
