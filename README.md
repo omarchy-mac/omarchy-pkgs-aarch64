@@ -50,7 +50,7 @@ small, checked packaging patch described below. Packages come from four places:
 |---------|---------|----------|
 | `1password` | 8.12.36-2 | Password manager |
 | `1password-cli` | 2.39.0-1 | 1Password CLI |
-| `aether` | 4.31.0-1 | Wallpaper-driven desktop theming |
+| `aether` | 4.31.1-1 | Wallpaper-driven desktop theming |
 | `aspnet-runtime-bin` | 10.0.12.sdk401-1 | ASP.NET Core runtime |
 | `aspnet-targeting-pack-bin` | 10.0.12.sdk401-1 | ASP.NET Core targeting pack |
 | `avd-fw` | 0.1-1 | Apple Video Decoder firmware — H.264/HEVC/VP9 hardware decode |
@@ -69,7 +69,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `ghostty-terminfo` | 1.3.1-1 | `xterm-ghostty` terminal definition |
 | `grok-bot` | 0.47.0-1 | Grok Bot desktop agent (vendor linux-arm64 .deb) |
 | `herdr` | 0.9.1-1 | Terminal workspace manager for AI coding agents |
-| `hermes-desktop` | 2026.9.7-2 | Native desktop shell for Hermes Agent |
+| `hermes-desktop` | 2026.9.7-3 | Native desktop shell for Hermes Agent |
 | `hypa-ttfx-bin` | 0.3.3-1 | Hypa terminal text effects |
 | `hyprland-preview-share-picker` | 0.2.1-2 | Share picker with window/monitor previews |
 | `libva-v4l2_request-avd` | 1.3.r11.r164.g5b5046c-1 | VA-API driver so applications can reach the Apple Video Decoder |
