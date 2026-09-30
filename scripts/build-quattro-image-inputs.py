@@ -16,6 +16,17 @@ EXTRA_BASES = VIDEO_PACKAGES + ('asdcontrol', 'tobi-try', 'qemu-user-static')
 EXTRA_PACKAGES = EXTRA_BASES + ('qemu-user-static-binfmt',)
 ANY_PACKAGES = {'avd-fw', 'tobi-try'}
 PACKAGES = DESKTOP_PACKAGES + EXTRA_PACKAGES
+BOOT_PACKAGES = ('omarchy-mac-boot', 'limine-mkinitcpio-hook', 'limine-snapper-sync', 'uboot-asahi')
+
+
+def candidate_packages(schema):
+    require(schema in (3, 4), 'unsupported candidate schema')
+    return PACKAGES + (BOOT_PACKAGES if schema == 4 else ())
+BOOT_TRANSFERRED = tuple("usr/bin/" + name for name in (
+    "omarchy-apple-silicon-boot-check", "omarchy-mac-boot-update", "omarchy-mac-kernel",
+    "omarchy-mac-limine-active", "omarchy-mac-limine-cmdline", "omarchy-mac-limine-deploy",
+)) + ("usr/lib/omarchy-mac/boot/provision.sh", "usr/lib/omarchy-mac/boot/factory-reset.sh",
+      "usr/lib/omarchy-mac/boot/setup/grub-console.sh", "usr/lib/omarchy-mac/boot/setup/limine-boot.sh")
 TRANSFERRED = (
     'usr/bin/omarchy-wifi-resume-fix',
     'usr/bin/omarchy-audio-asahi-mic-map',
@@ -75,8 +86,14 @@ def prepare_recipe(recipe, name, commit, version, release):
     return recipe
 
 
+def prepare_boot_settings(recipe):
+    removal = '    rm -rf "$pkgdir/usr/share/omarchy/default/limine"'
+    require(recipe.count(removal) == 1, 'ARM64 settings template removal changed; review the recipe')
+    return recipe.replace(removal, '    : # Keep the Limine template for the private Apple boot candidate.')
+
+
 def prepare_extra_recipe(recipe, name, revision, release):
-    require(name in EXTRA_BASES, 'unexpected image dependency')
+    require(name in EXTRA_BASES + BOOT_PACKAGES, 'unexpected image dependency')
     require(re.fullmatch('[0-9a-f]{40}', revision), 'invalid recipe revision')
     recipe = replace_assignment(recipe, 'pkgrel', release)
     recipe += "\noptions+=('!debug')\n"
@@ -111,17 +128,20 @@ def inspect_package(path):
     revision_path = ('usr/share/omarchy-mac/source-revision' if name == 'omarchy-mac'
                      else f'usr/share/doc/{name}/source-revision')
     source = output('bsdtar', '-xOf', str(path), revision_path)
+    if name == 'omarchy-mac-boot':
+        fields['x_runtime_source'] = [output('bsdtar', '-xOf', str(path),
+                                           'usr/share/omarchy-mac/boot-source-revision')]
     return fields, paths, source
 
 
-def verify_packages(records, commit, versions, recipe_commit):
-    require(set(records) == set(PACKAGES), 'candidate must contain exactly nine packages')
+def verify_packages(records, commit, versions, recipe_commit, schema=3):
+    require(set(records) == set(candidate_packages(schema)), 'candidate must contain exactly nine packages' if schema == 3 else 'candidate must contain exactly thirteen packages')
     owners = {}
     for name, (fields, paths, source) in records.items():
         require(fields.get('pkgname') == [name], f'wrong package name: {name}')
         require(fields.get('arch') == ['any' if name in ANY_PACKAGES else 'aarch64'], f'wrong architecture: {name}')
         require(fields.get('pkgver') == [versions[name]], f'wrong version: {name}')
-        require(source == (recipe_commit if name in EXTRA_PACKAGES else commit), f'mixed source revisions: {name}')
+        require(source == (recipe_commit if name in EXTRA_PACKAGES + BOOT_PACKAGES else commit), f'mixed source revisions: {name}')
         for path in paths:
             require(path not in owners, f'duplicate file owner: {path}')
             owners[path] = name
@@ -140,6 +160,19 @@ def verify_packages(records, commit, versions, recipe_commit):
     require('omarchy' in addon.get('depend', []), 'add-on runtime dependency is missing')
     require(not any(d.startswith('linux-') for d in addon.get('depend', [])), 'add-on selects a kernel')
     require(not any(p.startswith(('etc/', 'boot/')) for p in addon_paths), 'add-on owns administrator files')
+    if schema == 4:
+        require(records['omarchy-mac-boot'][0].get('x_runtime_source') == [commit],
+                'boot helpers must match the desktop source revision')
+        require(f'omarchy={versions["omarchy"]}' in records['omarchy-mac-boot'][0].get('depend', []),
+                'boot helpers require the matching desktop package')
+        for path in BOOT_TRANSFERRED:
+            require(owners.get(path) == 'omarchy-mac-boot', f'wrong boot helper owner: {path}')
+        require(owners.get('usr/share/omarchy/default/limine/limine.conf') == 'omarchy-settings',
+                'ARM64 settings must ship the Limine menu template')
+        require(owners.get('usr/lib/omarchy/initcpio/omarchy-mac-encrypt') == 'omarchy-mac-boot',
+                'boot package must own initrd conversion')
+        require(not any('omarchy-arm-repository.key' in p for p in owners),
+                'candidate must not install the upstream repository key')
     return owners
 
 
@@ -156,6 +189,26 @@ def test_environment(env, source, recipes, iso, test_tools):
     return env
 
 
+def check_boot_build_dependencies(recipes):
+    dependencies = set()
+    for name in BOOT_PACKAGES:
+        metadata = output('makepkg', '--printsrcinfo', cwd=recipes / 'pkgbuilds' / name)
+        for line in metadata.splitlines():
+            key, separator, value = line.strip().partition(' = ')
+            if separator and key in ('makedepends', 'makedepends_aarch64'):
+                dependencies.add(value)
+    result = subprocess.run(['pacman', '-T', *sorted(dependencies)],
+                            text=True, capture_output=True, check=False)
+    require(result.returncode in (0, 127), 'cannot query native boot build dependencies: ' + result.stderr.strip())
+    require(result.returncode == 0, 'install native boot build dependencies in the disposable builder: ' +
+            ', '.join(result.stdout.splitlines()))
+
+
+def require_boot_profile(source, schema):
+    require(schema == 4 or not (source / 'packages/omarchy-mac/boot').is_dir(),
+            'this runtime requires the coordinated --boot-profile limine candidate')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('source', type=Path)
@@ -165,7 +218,11 @@ def main():
     parser.add_argument('destination', type=Path)
     parser.add_argument('run_id', type=int)
     parser.add_argument('attempt', type=int)
+    parser.add_argument('--boot-profile', choices=('baseline', 'limine'), default='baseline',
+                        help='opt in to the coordinated boot packages; baseline remains schema 3')
     args = parser.parse_args()
+    schema = 4 if args.boot_profile == 'limine' else 3
+    extra_bases = EXTRA_BASES + (BOOT_PACKAGES if schema == 4 else ())
     require(os.geteuid() != 0 and os.uname().machine == 'aarch64', 'run as a non-root user on native aarch64')
     require(args.destination.is_absolute() and not args.destination.exists(), 'use a new absolute output directory')
     require(args.run_id > 0 and 1 <= args.attempt <= 9999, 'use a positive run ID and attempt 1..9999')
@@ -185,6 +242,7 @@ def main():
     artifacts = destination / 'artifacts'
     logs = destination / 'logs'
     archive(args.source, commit, source)
+    require_boot_profile(source, schema)
     archive(args.upstream_recipes, upstream_commit, recipes, 'pkgbuilds/omarchy', 'pkgbuilds/omarchy-settings',
             'pkgbuilds/omarchy-dev', 'pkgbuilds/omarchy-settings-dev')
     archive(args.upstream_iso, iso_commit, iso)
@@ -211,6 +269,10 @@ def main():
     with (logs / 'recipe-preparation.log').open('w') as log:
         subprocess.run(['bash', str(repository / 'scripts/prepare-omarchy-recipes.sh'), str(recipes)],
                        env=patch_env, stdout=log, stderr=subprocess.STDOUT, check=True)
+    if schema == 4:
+        for name in ('omarchy-settings', 'omarchy-settings-dev'):
+            recipe_path = recipes / 'pkgbuilds' / name / 'PKGBUILD'
+            recipe_path.write_text(prepare_boot_settings(recipe_path.read_text()))
     stamp = output('git', 'show', '-s', '--format=%ct', commit, cwd=args.source)
     version = (source / 'version').read_text().strip()
     addon_version = (source / 'packages/omarchy-mac/version').read_text().strip()
@@ -223,9 +285,9 @@ def main():
                 'omarchy-mac': f'{addon_release[1]}.{run}'}
     versions = {name: f'{addon_version if name == "omarchy-mac" else desktop_version}-{releases[name]}'
                 for name in DESKTOP_PACKAGES}
-    for name in EXTRA_BASES:
+    for name in extra_bases:
         archive(repository, recipe_commit, destination / name, f"pkgbuilds/{name}")
-        shutil.copytree(destination / name / "pkgbuilds" / name, recipes / "pkgbuilds" / name)
+        shutil.copytree(destination / name / "pkgbuilds" / name, recipes / "pkgbuilds" / name, symlinks=True)
         recipe = (recipes / "pkgbuilds" / name / "PKGBUILD").read_text()
         version = re.search(r"^pkgver=[\'\"]?([0-9A-Za-z.+_]+)[\'\"]?$", recipe, re.M)
         release = re.search(r"^pkgrel=([0-9]+)$", recipe, re.M)
@@ -237,17 +299,23 @@ def main():
             versions['qemu-user-static-binfmt'] = versions[name]
     env = dict(os.environ, LC_ALL='C.UTF-8', PYTHONDONTWRITEBYTECODE='1',
                PKGDEST=str(artifacts), SOURCE_DATE_EPOCH=stamp)
+    if schema == 4:
+        check_boot_build_dependencies(recipes)
     print('Running the headless desktop aggregate suite...', flush=True)
     with (logs / 'desktop-tests.log').open('w') as log:
         subprocess.run(['bash', 'test/all'], cwd=source, env=test_environment(env, source, recipes, iso, test_tools), stdout=log,
                        stderr=subprocess.STDOUT, check=True)
-    for name in DESKTOP_PACKAGES + EXTRA_BASES:
+    for name in DESKTOP_PACKAGES + extra_bases:
         print(f'Building {name}...', flush=True)
         build = recipes / 'pkgbuilds' / name
         build.mkdir(exist_ok=True)
         recipe_path = build / 'PKGBUILD'
         text = addon_recipe if name == 'omarchy-mac' else recipe_path.read_text()
-        if name in EXTRA_PACKAGES:
+        if name == 'omarchy-mac-boot':
+            text = replace_assignment(text, '_runtime_commit', commit)
+            require(text.count("'omarchy'") == 1, 'boot runtime dependency changed')
+            text = text.replace("'omarchy'", f"'omarchy={versions['omarchy']}'")
+        if name in EXTRA_PACKAGES + BOOT_PACKAGES:
             recipe_path.write_text(prepare_extra_recipe(text, name, recipe_commit, releases[name]))
         else:
             recipe_path.write_text(prepare_recipe(text, name, commit,
@@ -260,7 +328,7 @@ def main():
             # Build dependencies are provisioned in the disposable CI container.
             # Runtime dependencies belong to the later image assembly check.
             command = ['makepkg', '--nodeps', '--nosign', '--cleanbuild']
-            if name == 'omarchy-mac':
+            if name in ('omarchy-mac', 'omarchy-mac-boot'):
                 command.append('--check')  # Do not inherit a local BUILDENV=(!check).
             subprocess.run(command, cwd=build, env=package_env, stdout=log,
                            stderr=subprocess.STDOUT, check=True)
@@ -280,7 +348,7 @@ def main():
         records[name] = record
         packages.append(dict(name=name, version=record[0]['pkgver'][0], filename=path.name,
                              sha256=digest(path), dependencies=record[0].get('depend', [])))
-    owners = verify_packages(records, commit, versions, recipe_commit)
+    owners = verify_packages(records, commit, versions, recipe_commit, schema)
     (artifacts / 'ownership.json').write_text(json.dumps(owners, indent=2, sort_keys=True) + '\n')
     for name in ('omarchy-base.packages', 'omarchy-apple.packages'):
         shutil.copy2(source / 'install' / name, artifacts / name)
@@ -290,7 +358,7 @@ def main():
     shutil.copy2(repository / 'patches/omarchy-first-run-packages.patch',
                  artifacts / 'recipes/omarchy-first-run-packages.patch')
     (artifacts / 'manifest.json').write_text(json.dumps(dict(
-        schema=3, candidate_only=True, source_repository='omacom/omarchy-mac', source_revision=commit,
+        schema=schema, candidate_only=True, source_repository='omacom/omarchy-mac', source_revision=commit,
         package_repository_revision=recipe_commit, upstream_recipe_revision=upstream_commit,
         desktop_test_iso_revision=iso_commit,
         recipe_patch='patches/omarchy-first-run-packages.patch',
@@ -304,7 +372,7 @@ def main():
     ), indent=2) + '\n')
     files = sorted(p for p in artifacts.rglob('*') if p.is_file())
     (artifacts / 'SHA256SUMS').write_text(''.join(f'{digest(p)}  {p.relative_to(artifacts)}\n' for p in files))
-    print(f'Built nine unsigned image inputs from {commit}; no packages installed or published.')
+    print(f'Built {len(packages)} unsigned image inputs from {commit}; no packages installed or published.')
 
 
 if __name__ == '__main__':

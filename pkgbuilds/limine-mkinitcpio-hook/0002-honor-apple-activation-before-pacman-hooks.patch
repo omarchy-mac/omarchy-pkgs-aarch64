@@ -1,0 +1,57 @@
+--- a/install/arch-linux/limine-mkinitcpio-hook/usr/share/libalpm/scripts/limine-mkinitcpio-install
++++ b/install/arch-linux/limine-mkinitcpio-hook/usr/share/libalpm/scripts/limine-mkinitcpio-install
+@@ -1,4 +1,16 @@
+ #!/usr/bin/env bash
++
++# Omarchy's Apple boot package opts in only after image activation. An absent
++# helper keeps the generic Limine behavior. Check before loading ESP defaults.
++if [[ -x /usr/lib/omarchy/mac-boot/limine-ready ]]; then
++  omarchy_gate_status=0
++  /usr/lib/omarchy/mac-boot/limine-ready || omarchy_gate_status=$?
++  case $omarchy_gate_status in
++    0) ;;
++    100) exec /usr/share/libalpm/scripts/mkinitcpio install ;;
++    *) exit "$omarchy_gate_status" ;;
++  esac
++fi
+ 
+ 
+ # Import functions and environment variables
+--- a/install/arch-linux/limine-mkinitcpio-hook/usr/share/libalpm/scripts/limine-mkinitcpio-remove
++++ b/install/arch-linux/limine-mkinitcpio-hook/usr/share/libalpm/scripts/limine-mkinitcpio-remove
+@@ -1,4 +1,16 @@
+ #!/usr/bin/env bash
++
++# Omarchy's Apple boot package opts in only after image activation. An absent
++# helper keeps the generic Limine behavior. Check before loading ESP defaults.
++if [[ -x /usr/lib/omarchy/mac-boot/limine-ready ]]; then
++  omarchy_gate_status=0
++  /usr/lib/omarchy/mac-boot/limine-ready || omarchy_gate_status=$?
++  case $omarchy_gate_status in
++    0) ;;
++    100) cat >/dev/null; exit 0 ;;
++    *) exit "$omarchy_gate_status" ;;
++  esac
++fi
+ # Handles cleanup of Limine boot entries when kernels are removed or upgraded
+ 
+ # Import functions and environment variables
+--- a/install/arch-linux/limine-entry-tool/usr/bin/limine-install
++++ b/install/arch-linux/limine-entry-tool/usr/bin/limine-install
+@@ -1,4 +1,16 @@
+ #!/usr/bin/env bash
++
++# Omarchy's Apple boot package opts in only after image activation. An absent
++# helper keeps the generic Limine behavior. Check before loading ESP defaults.
++if [[ -x /usr/lib/omarchy/mac-boot/limine-ready ]]; then
++  omarchy_gate_status=0
++  /usr/lib/omarchy/mac-boot/limine-ready || omarchy_gate_status=$?
++  case $omarchy_gate_status in
++    0) ;;
++    100) exit 0 ;;
++    *) exit "$omarchy_gate_status" ;;
++  esac
++fi
+ 
+ # Default values
+ EFI_REGISTER=yes

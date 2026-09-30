@@ -16,14 +16,17 @@ spec.loader.exec_module(s)
 
 
 class CandidateTest(unittest.TestCase):
+    schema = 3
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.source = 'a' * 40
         packages = []
-        for name in s.build.PACKAGES:
+        for name in s.build.candidate_packages(self.schema):
             deps = {'omarchy': ['omarchy-settings=1.0', 'snapper'], 'omarchy-settings': [], 'omarchy-mac': ['omarchy'], 'avd-fw': [], 'libva-v4l2_request-avd': ['glibc', 'libva']}.get(name, [])
+            if self.schema == 4 and name == 'omarchy-mac-boot':
+                deps = ['omarchy=1.0-1']
             payload = {'.PKGINFO': '\n'.join([f'pkgname = {name}', 'pkgver = 1.0-1', 'arch = any' if name in s.build.ANY_PACKAGES else 'arch = aarch64', *[f'depend = {d}' for d in deps]])}
             revision = 'usr/share/omarchy-mac/source-revision' if name == 'omarchy-mac' else f'usr/share/doc/{name}/source-revision'
             payload[revision] = self.source + '\n'
@@ -34,6 +37,12 @@ class CandidateTest(unittest.TestCase):
                 for manifest in ('omarchy-base.packages', 'omarchy-apple.packages'):
                     payload['usr/share/omarchy/install/' + manifest] = 'omarchy-mac\n'
                     (self.root / manifest).write_text('omarchy-mac\n')
+            if self.schema == 4 and name == 'omarchy-settings':
+                payload['usr/share/omarchy/default/limine/limine.conf'] = 'fixture menu'
+            if self.schema == 4 and name == 'omarchy-mac-boot':
+                payload['usr/lib/omarchy/initcpio/omarchy-mac-encrypt'] = 'fixture converter'
+                payload['usr/share/omarchy-mac/boot-source-revision'] = self.source + '\n'
+                payload.update({p: 'fixture' for p in s.build.BOOT_TRANSFERRED})
             filename = name + '-1.0-1-aarch64.pkg.tar.xz'
             with tarfile.open(self.root / filename, 'w:xz') as archive:
                 for path, text in payload.items():
@@ -43,7 +52,7 @@ class CandidateTest(unittest.TestCase):
                     archive.addfile(member, io.BytesIO(content))
             packages.append(dict(name=name, version='1.0-1', filename=filename,
                                  sha256=s.build.digest(self.root / filename), dependencies=deps))
-        self.data = dict(schema=3, package_repository_revision=self.source, candidate_only=True, publication='none', signing='none',
+        self.data = dict(schema=self.schema, package_repository_revision=self.source, candidate_only=True, publication='none', signing='none',
                          source_repository='omacom/omarchy-mac', source_revision=self.source, packages=packages)
         self.save()
 
@@ -55,7 +64,7 @@ class CandidateTest(unittest.TestCase):
         return s.validate(self.root, self.digest, self.source)
 
     def test_real_archives_and_embedded_manifests(self):
-        self.assertEqual(len(self.validate()[1]), 12)
+        self.assertEqual(len(self.validate()[1]), len(s.build.candidate_packages(self.schema)) + 3)
 
     def test_tampering_wrong_source_and_extra_packages(self):
         with self.assertRaises(ValueError):
@@ -103,6 +112,7 @@ class CandidateTest(unittest.TestCase):
 
 
 class RealSigningTest(unittest.TestCase):
+    schema = 3
     setUp = CandidateTest.setUp
     save = CandidateTest.save
     def test_real_signatures_with_disposable_fixture_key(self):
@@ -127,6 +137,14 @@ class RealSigningTest(unittest.TestCase):
                 verifier.close()
         finally:
             fixture.tearDownClass()
+
+
+class BootCandidateTest(CandidateTest):
+    schema = 4
+
+
+class BootRealSigningTest(RealSigningTest):
+    schema = 4
 
 
 class WorkflowTest(unittest.TestCase):

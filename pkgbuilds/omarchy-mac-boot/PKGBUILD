@@ -1,0 +1,78 @@
+# Maintainer: Omarchy <pkgs@omarchy.org>
+
+# package() installs the files/ tree as-is so other tracks add drop-ins without
+# editing this recipe. This package is not functional without T4b's vendorfw/HID
+# files (90-omarchy-mac.conf names omarchy-vendorfw); the integration PR merges both.
+# 91-omarchy-mac-boot-initramfs.hook rebuilds initramfs: stock mkinitcpio hooks
+# do not match conf.d or etc/initcpio/install. Mkinitcpio and first-boot gate
+# paths differ from the replaced packages so removal cannot unlink the active
+# drop-in mid-transaction. backup= covers every etc/ path and the image-written
+# vendorfw helpers.
+pkgname=omarchy-mac-boot
+pkgver=20260921
+pkgrel=10
+pkgdesc="Apple Silicon boot, vendor firmware, and first-boot gates for Omarchy"
+arch=(aarch64)
+url="https://omarchy.org"
+license=('MIT')
+depends=('omarchy' 'limine' 'limine-mkinitcpio-hook' 'limine-snapper-sync' 'asahi-scripts' 'bash' 'btrfs-progs' 'coreutils' 'cpio' 'cryptsetup' 'gnupg' 'gum' 'kbd' 'mkinitcpio' 'systemd' 'util-linux')
+provides=('omarchy-apple-boot' 'omarchy-first-boot')
+conflicts=('omarchy-apple-boot' 'omarchy-first-boot')
+replaces=('omarchy-apple-boot' 'omarchy-first-boot')
+install=omarchy-mac-boot.install
+
+# Boot helpers share the reviewed runtime revision; image candidates replace
+# this pin with their exact desktop commit and verify both provenances.
+_runtime_commit=0d4070aeac3fb09dff4f8816e85c6446bffddb14
+makedepends=('git')
+source=("omarchy-mac-source::git+https://github.com/omacom/omarchy-mac.git#commit=$_runtime_commit")
+sha256sums=('SKIP')
+
+prepare() {
+  [[ $(git -C "$srcdir/omarchy-mac-source" rev-parse HEAD) == "$_runtime_commit" ]]
+  cp -a "$srcdir/omarchy-mac-source/packages/omarchy-mac/boot" "$srcdir/boot-support"
+}
+
+check() {
+  bash "$srcdir/boot-support/test/all"
+}
+
+_omarchy_mac_boot_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+
+mapfile -t backup < <(
+  cd "$_omarchy_mac_boot_dir/files" &&
+    find . -type f ! -name .gitkeep \( -path './etc/*' -o -path './usr/lib/omarchy/initcpio/*' \) |
+      sed 's#^\./##' | sort
+)
+
+_omarchy_mac_boot_mode() {
+  if stat -c %a "$1" >/dev/null 2>&1; then
+    stat -c %a "$1"
+  else
+    stat -f %OLp "$1"
+  fi
+}
+
+package() {
+  "$srcdir/boot-support/install" "$pkgdir"
+  install -Dm644 /dev/stdin "$pkgdir/usr/share/omarchy-mac/boot-source-revision" <<<"$_runtime_commit"
+  local files_root rel dest src
+  local -a entries
+  files_root=${startdir:-$_omarchy_mac_boot_dir}/files
+  [[ -d $files_root ]] || return 1
+  mapfile -t entries < <(cd "$files_root" && find . \( -type f -o -type l \))
+  for src in "${entries[@]}"; do
+    rel=${src#./}
+    if [[ $(basename "$rel") == .gitkeep ]]; then
+      continue
+    fi
+    dest=$pkgdir/$rel
+    src=$files_root/$rel
+    install -d "$(dirname "$dest")"
+    if [[ -L $src ]]; then
+      ln -s "$(readlink "$src")" "$dest"
+    else
+      install -m"$(_omarchy_mac_boot_mode "$src")" "$src" "$dest"
+    fi
+  done
+}
