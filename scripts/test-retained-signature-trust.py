@@ -80,6 +80,64 @@ class RetainedTests(unittest.TestCase):
         self.assertNotIn('--noscriptlet', source)
         self.assertIn("'--populate', 'omarchy-mac'", source)
 
+    def test_missing_database_signature_fetch_diagnostic_is_case_specific(self):
+        import ast, contextlib, io, tempfile
+        spec = importlib.util.spec_from_file_location('trust', ROOT/'scripts/test-signature-trust.py')
+        assert spec and spec.loader
+        trust = importlib.util.module_from_spec(spec); spec.loader.exec_module(trust)
+        # Run the real case setup/mutation/assertion; substitute only native IO.
+        tree = ast.parse((ROOT/'scripts/test-signature-trust.py').read_text())
+        attempt = next(node for node in ast.walk(tree)
+                       if isinstance(node, ast.FunctionDef) and node.name == 'attempt'
+                       and any(arg.arg == 'database' for arg in node.args.kwonlyargs))
+        # Captured run 35653515883, job 106511385665, lines 245-248.
+        captured_path = '/tmp/rc4-trust-neo4zfzw/missing-database-signature-x0m9fhog/repo/omarchy-aarch64.db.sig'
+        captured = (
+            ':: Synchronizing package databases...\n'
+            ' omarchy-aarch64 downloading...\n'
+            "error: failed retrieving file 'omarchy-aarch64.db.sig' from disk : Could not open file " + captured_path + '\n'
+            'error: failed to synchronize all databases (download library error)\n')
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory); repository = work/'candidate'; repository.mkdir()
+            filename = 'keyring.pkg.tar.xz'
+            for name in ['omarchy-aarch64.db', 'omarchy-aarch64.db.sig', filename, filename+'.sig']:
+                (repository/name).write_bytes(b'unchanged fixture bytes')
+            calls = []
+            def command(*args, **kwargs):
+                calls.append(args)
+                repo = Path(args[args.index('--config') + 1]).parent/'repo'
+                signature = repo/'omarchy-aarch64.db.sig'
+                text = captured.replace(captured_path, str(signature))
+                if variant == 'wrong-path': text = text.replace(str(signature), str(work/'other'/signature.name))
+                if variant == 'path-suffix': text = text.replace(str(signature), str(signature)+'.other')
+                if variant == 'wrong-filename': text = text.replace("file 'omarchy-aarch64.db.sig'", "file 'other.db.sig'")
+                if variant == 'generic-download': text = 'error: failed to synchronize all databases (download library error)\n'
+                if variant == 'missing-database': (repo/'omarchy-aarch64.db').unlink()
+                if variant == 'signature-present': signature.write_bytes(b'not missing')
+                if variant == 'other-mutation': signature.unlink()
+                return subprocess.CompletedProcess(args, 0 if variant == 'zero-exit' else 1, text.encode())
+            namespace = dict(vars(trust), work=work, repository=repository, filename=filename,
+                             trusted=work/'trusted', command=command, package_name='keyring')
+            exec(compile(ast.Module(body=[attempt], type_ignores=[]), '<retained-attempt>', 'exec'), namespace)
+            for variant in ['captured', 'wrong-path', 'path-suffix', 'wrong-filename', 'generic-download',
+                            'missing-database', 'signature-present', 'zero-exit', 'other-case', 'other-mutation', 'package-case']:
+                with self.subTest(variant=variant):
+                    name = 'unrelated-database-trust' if variant == 'other-case' else 'missing-database-signature'
+                    mutation = 'database' if variant == 'other-mutation' else 'database-signature'
+                    database = variant != 'package-case'
+                    if not database: mutation = 'package-signature'
+                    output = io.StringIO(); calls.clear()
+                    with contextlib.redirect_stdout(output):
+                        if variant == 'captured':
+                            namespace['attempt'](name, False, database=database, mutation=mutation)
+                        else:
+                            with self.assertRaises(RuntimeError):
+                                namespace['attempt'](name, False, database=database, mutation=mutation)
+                    self.assertEqual(len(calls), 1, 'negative case must stop at its first transaction')
+                    self.assertEqual(output.getvalue(), 'PASS supplemental native trust: '+name+'\n' if variant == 'captured' else '')
+            for path in repository.iterdir():
+                self.assertEqual(path.read_bytes(), b'unchanged fixture bytes')
+
     def test_workflow_is_opt_in_read_only_native(self):
         import yaml
         workflow = yaml.safe_load((ROOT/'.github/workflows/test.yml').read_text())
