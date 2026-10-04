@@ -48,8 +48,8 @@ small, checked packaging patch described below. Packages come from four places:
 
 | Package | Version | Provides |
 |---------|---------|----------|
-| `1password` | 8.12.36-2 | Password manager |
-| `1password-cli` | 2.39.0-1 | 1Password CLI |
+| `1password` | 8.12.38-1 | Password manager |
+| `1password-cli` | 2.40.0-1 | 1Password CLI |
 | `aether` | 4.31.1-1 | Wallpaper-driven desktop theming |
 | `aspnet-runtime-bin` | 10.0.12.sdk401-1 | ASP.NET Core runtime |
 | `aspnet-targeting-pack-bin` | 10.0.12.sdk401-1 | ASP.NET Core targeting pack |
@@ -74,7 +74,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `hyprland-preview-share-picker` | 0.2.1-2 | Share picker with window/monitor previews |
 | `libva-v4l2_request-avd` | 1.3.r11.r164.g5b5046c-1 | VA-API driver so applications can reach the Apple Video Decoder |
 | `localsend` | 1.18.2-2 | Cross-platform AirDrop alternative |
-| `mise-bin` | 2026.10.0-1 | Dev tools, env vars, task runner |
+| `mise-bin` | 2026.10.1-1 | Dev tools, env vars, task runner |
 | `obs-studio` | 32.2.2-1 | Video recording and live streaming (no browser source) |
 | `obsidian-appimage` | 1.13.7-2 | Markdown knowledge base (AppImage) |
 | `omacalc` | 0.2.2-1 | Calculator — bound to `SUPER + CTRL + Q` |
@@ -88,7 +88,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `omarchy-webapp-theme` | 0.3.9-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
 | `omawrite` | 0.5.0-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
 | `omazed` | 2.2.0-2 | Live Omarchy theme sync for Zed |
-| `openai-codex-desktop` | 26.924.22138-1 | ChatGPT desktop app with Codex |
+| `openai-codex-desktop` | 26.930.41038-1 | ChatGPT desktop app with Codex |
 | `pinta` | 3.1.2-1 | Simple image editor |
 | `tensaku` | 0.29.0-1 | Screenshot annotation for Wayland |
 | `ttf-ia-writer` | 20181225-1 | iA Writer font subset |
