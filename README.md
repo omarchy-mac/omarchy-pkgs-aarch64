@@ -86,7 +86,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `omarchy-settings` | 4.0.2-2 | Apple Silicon system and user defaults |
 | `omarchy-steam-fex` | 1.0.0-1 | Steam launcher for the Asahi muvm/FEX stack |
 | `omarchy-webapp-theme` | 0.3.9-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
-| `omawrite` | 0.5.0-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
+| `omawrite` | 0.6.0-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
 | `omazed` | 2.2.0-2 | Live Omarchy theme sync for Zed |
 | `openai-codex-desktop` | 26.930.41038-1 | ChatGPT desktop app with Codex |
 | `pinta` | 3.1.2-1 | Simple image editor |
