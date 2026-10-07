@@ -182,13 +182,22 @@ def acquire_retained(output):
     print('PASS retained ZIP, receipt, run and manifest identity (native signatures not yet tested)')
 
 
-def signature_result(name, result, success, *, report=True):
+def signature_result(name, result, success, *, report=True, missing_database_signature=None):
     import re
     text = result.stdout.decode(errors='replace')
     signature_error = re.search(
         r'invalid or corrupted (?:package|database) \(PGP signature\)|'
         r'missing (?:required|PGP) signature|required key missing from keyring|'
         r'signature from .*(?:unknown trust|marginal trust|invalid)|invalid signature', text, re.I)
+    # pacman reports a deliberately absent file:// DB signature as a fetch
+    # failure, not a PGP error. Never accept a generic download failure.
+    if not success and name == 'missing-database-signature' and missing_database_signature is not None:
+        signature = missing_database_signature
+        if (signature.name == 'omarchy-aarch64.db.sig' and not signature.exists() and
+                signature.with_suffix('').is_file()):
+            diagnostic = ("error: failed retrieving file 'omarchy-aarch64.db.sig' from disk : "
+                          f'Could not open file {signature}')
+            signature_error = signature_error or diagnostic in text.splitlines()
     if (success and (result.returncode != 0 or 'error:' in text.lower())) or (not success and (result.returncode == 0 or not signature_error)):
         raise RuntimeError(f'{name} unexpected result (exit status {result.returncode})\n'+text)
     if report:
@@ -302,7 +311,8 @@ def retained_candidate(candidate):
                     result = command(*cmd, '-Sy', ok=False)
                     if success and result.returncode == 0:
                         result = command(*cmd, '-Sddw', package_name, ok=False)
-                    signature_result(name, result, success)
+                    signature_result(name, result, success, missing_database_signature=(
+                        repo/'omarchy-aarch64.db.sig' if mutation == 'database-signature' else None))
                 else:
                     # -U uses the detached signature; embedded DB signatures cannot mask absence.
                     result = command(*cmd, '-Udd', repo/filename, ok=False)
