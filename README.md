@@ -48,8 +48,8 @@ small, checked packaging patch described below. Packages come from four places:
 
 | Package | Version | Provides |
 |---------|---------|----------|
-| `1password` | 8.12.40-1 | Password manager |
-| `1password-cli` | 2.40.0-1 | 1Password CLI |
+| `1password` | 8.12.40-2 | Password manager |
+| `1password-cli` | 2.40.0-2 | 1Password CLI |
 | `aether` | 4.32.0-1 | Wallpaper-driven desktop theming |
 | `aspnet-runtime-bin` | 10.0.12.sdk401-1 | ASP.NET Core runtime |
 | `aspnet-targeting-pack-bin` | 10.0.12.sdk401-1 | ASP.NET Core targeting pack |
@@ -69,9 +69,9 @@ small, checked packaging patch described below. Packages come from four places:
 | `ghostty-terminfo` | 1.3.1-1 | `xterm-ghostty` terminal definition |
 | `grok-bot` | 0.47.0-1 | Grok Bot desktop agent (vendor linux-arm64 .deb) |
 | `herdr` | 0.9.1-1 | Terminal workspace manager for AI coding agents |
-| `hermes-desktop` | 2026.9.7-3 | Native desktop shell for Hermes Agent |
+| `hermes-desktop` | 2026.9.7-4 | Native desktop shell for Hermes Agent |
 | `hypa-ttfx-bin` | 0.3.3-1 | Hypa terminal text effects |
-| `hyprland-preview-share-picker` | 0.2.1-2 | Share picker with window/monitor previews |
+| `hyprland-preview-share-picker` | 0.2.1-3 | Share picker with window/monitor previews |
 | `libva-v4l2_request-avd` | 1.3.r11.r164.g5b5046c-1 | VA-API driver so applications can reach the Apple Video Decoder |
 | `localsend` | 1.18.2-2 | Cross-platform AirDrop alternative |
 | `mise-bin` | 2026.10.4-1 | Dev tools, env vars, task runner |
@@ -82,17 +82,17 @@ small, checked packaging patch described below. Packages come from four places:
 | `omarchy` | 4.0.2-2 | Omarchy Mac scripts and desktop runtime |
 | `omarchy-mac-keyring` | Pending edge bootstrap | Omarchy Mac public signing certificate and trust policy |
 | `omarchy-emacs` | 1.10.1-1 | Emacs theme/font syncing for Omarchy |
-| `omarchy-nvim` | 2026.9.21-2 | Pre-built LazyVim configuration |
+| `omarchy-nvim` | 2026.9.21-3 | Pre-built LazyVim configuration |
 | `omarchy-settings` | 4.0.2-2 | Apple Silicon system and user defaults |
 | `omarchy-steam-fex` | 1.0.0-1 | Steam launcher for the Asahi muvm/FEX stack |
 | `omarchy-webapp-theme` | 0.3.9-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
-| `omawrite` | 0.6.0-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
-| `omazed` | 2.2.0-2 | Live Omarchy theme sync for Zed |
-| `openai-codex-desktop` | 26.930.61225-1 | ChatGPT desktop app with Codex |
+| `omawrite` | 0.6.0-2 | Markdown writing app — bound to `SUPER + SHIFT + W` |
+| `omazed` | 2.2.0-3 | Live Omarchy theme sync for Zed |
+| `openai-codex-desktop` | 26.930.61225-2 | ChatGPT desktop app with Codex |
 | `pinta` | 3.1.2-1 | Simple image editor |
 | `tensaku` | 0.29.0-1 | Screenshot annotation for Wayland |
 | `ttf-ia-writer` | 20181225-1 | iA Writer font subset |
-| `ttfx` | 0.5.0-1 | Terminal text effects, static binary |
+| `ttfx` | 0.5.0-2 | Terminal text effects, static binary |
 | `tzupdate` | 3.1.0-1 | Set timezone from IP geolocation |
 | `ufw-docker` | 251123-1 | Fix the Docker/UFW security flaw |
 | `vi` | 1:070224-9 | Original ex/vi text editor |
