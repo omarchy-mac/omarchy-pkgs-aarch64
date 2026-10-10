@@ -1,0 +1,73 @@
+# Maintainer: joelrb
+# Contributor: joelrb
+# Synaptics DisplayLink USB graphics driver 6.3, aarch64 payload from the
+# official EXE zip (sha256-pinned). Depends on the in-tree evdi package for
+# the kernel module + libevdi.
+
+pkgname=displaylink
+_pkgfullver=6.3.0-48
+pkgver=6.3
+pkgrel=1
+_releasedate=2026-06
+pkgdesc="Linux driver for DisplayLink USB graphics devices (Synaptics 6.3, aarch64)"
+url="https://www.synaptics.com/products/displaylink-graphics"
+arch=('aarch64')
+license=('custom' 'GPL2' 'LGPL2.1')
+
+depends=('evdi' 'libusb' 'util-linux')
+makedepends=('grep' 'gawk')
+
+source=("displaylink-driver-${pkgver}.zip::https://www.synaptics.com/sites/default/files/exe_files/${_releasedate}/DisplayLink%20USB%20Graphics%20Software%20for%20Ubuntu${pkgver}-EXE.zip"
+        '99-displaylink.rules'
+        'udev.sh'
+        'displaylink.service'
+        'displaylink-sleep.sh'
+        'DLSupportTool.sh')
+sha256sums=('7269856c7527060c513215ce1b5a36fef074d8e89cab89bcab13df342acce098'
+            '35b5c5cf24c0b43cbcb054e8547a2a6966ad764de40208d5364b8d57d793a635'
+            'f46839b1f5a1642392c739c3044177f70dd313e7e14db7b121509fa73c91107d'
+            '342e83abfe2a38d5635ea928345e933d2ad127ebd3f7caca476663d4f583684b'
+            '9b4609423fd9cfaa8cad8acd086dd6b92cd09182facbb28792affeac1ecc4a45'
+            'bf1098f5d42475d58ba1a08840cb44dd5e8f1c341086af8ee14ddbd4c3ea5b2b')
+
+prepare() {
+  chmod +x displaylink-driver-${_pkgfullver}.run
+  ./displaylink-driver-${_pkgfullver}.run \
+     --noexec \
+     --target "$pkgname-$pkgver" \
+     --nox11 \
+     --noprogress
+  if [[ ! -d "$pkgname-$pkgver" ]]; then
+    echo "Extracting the driver with the .run installer failed" >&2
+    exit 1
+  fi
+  mv displaylink-driver-${_pkgfullver}.run "$pkgname-$pkgver/"
+}
+
+package() {
+  echo "Adding udev rule for DisplayLink devices"
+  install -Dm644 99-displaylink.rules "$pkgdir/usr/lib/udev/rules.d/99-displaylink.rules"
+  install -Dm755 udev.sh "$pkgdir/opt/displaylink/udev.sh"
+
+  echo "Installing DLM systemd service"
+  install -Dm644 displaylink.service "$pkgdir/usr/lib/systemd/system/displaylink.service"
+  install -Dm755 displaylink-sleep.sh "$pkgdir/usr/lib/systemd/system-sleep/displaylink.sh"
+
+  COREDIR="$pkgdir/usr/lib/displaylink"
+  install -d -m755 "$COREDIR"
+  install -d -m755 "$pkgdir/var/log/displaylink"
+
+  pushd "$srcdir/$pkgname-$pkgver"
+
+  ARCH="aarch64-linux-gnu"
+  echo "Installing DisplayLink Manager $ARCH"
+  install -Dm755 "$ARCH/DisplayLinkManager" "$COREDIR/DisplayLinkManager"
+
+  echo "Installing firmware packages"
+  install -m644 ./*.spkg "$COREDIR"
+
+  install -Dm755 "$srcdir/DLSupportTool.sh" "$pkgdir/usr/bin/DLSupportTool.sh"
+
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  popd
+}
