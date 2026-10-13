@@ -49,7 +49,7 @@ small, checked packaging patch described below. Packages come from four places:
 | Package | Version | Provides |
 |---------|---------|----------|
 | `1password` | 8.12.40-2 | Password manager |
-| `1password-cli` | 2.40.0-2 | 1Password CLI |
+| `1password-cli` | 2.41.0-1 | 1Password CLI |
 | `aether` | 4.32.0-1 | Wallpaper-driven desktop theming |
 | `aspnet-runtime-bin` | 10.0.12.sdk401-1 | ASP.NET Core runtime |
 | `aspnet-targeting-pack-bin` | 10.0.12.sdk401-1 | ASP.NET Core targeting pack |
