@@ -68,13 +68,13 @@ small, checked packaging patch described below. Packages come from four places:
 | `ghostty-shell-integration` | 1.3.1-1 | Ghostty shell integration scripts |
 | `ghostty-terminfo` | 1.3.1-1 | `xterm-ghostty` terminal definition |
 | `grok-bot` | 0.47.0-1 | Grok Bot desktop agent (vendor linux-arm64 .deb) |
-| `herdr` | 0.9.1-1 | Terminal workspace manager for AI coding agents |
+| `herdr` | 0.9.1-2 | Terminal workspace manager for AI coding agents |
 | `hermes-desktop` | 2026.9.7-5 | Native desktop shell for Hermes Agent |
 | `hypa-ttfx-bin` | 0.3.3-1 | Hypa terminal text effects |
 | `hyprland-preview-share-picker` | 0.2.1-3 | Share picker with window/monitor previews |
 | `libva-v4l2_request-avd` | 1.3.r11.r164.g5b5046c-1 | VA-API driver so applications can reach the Apple Video Decoder |
 | `localsend` | 1.18.2-2 | Cross-platform AirDrop alternative |
-| `mise-bin` | 2026.10.8-1 | Dev tools, env vars, task runner |
+| `mise-bin` | 2026.10.9-1 | Dev tools, env vars, task runner |
 | `obs-studio` | 32.2.2-1 | Video recording and live streaming (no browser source) |
 | `obsidian-appimage` | 1.14.4-1 | Markdown knowledge base (AppImage) |
 | `omacalc` | 0.2.2-1 | Calculator — bound to `SUPER + CTRL + Q` |
@@ -88,11 +88,11 @@ small, checked packaging patch described below. Packages come from four places:
 | `omarchy-webapp-theme` | 0.3.9-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
 | `omawrite` | 0.6.0-2 | Markdown writing app — bound to `SUPER + SHIFT + W` |
 | `omazed` | 2.2.0-3 | Live Omarchy theme sync for Zed |
-| `openai-codex-desktop` | 26.1007.21434-1 | ChatGPT desktop app with Codex |
+| `openai-codex-desktop` | 26.1007.71326-1 | ChatGPT desktop app with Codex |
 | `pinta` | 3.1.2-1 | Simple image editor |
 | `tensaku` | 0.29.0-1 | Screenshot annotation for Wayland |
 | `ttf-ia-writer` | 20181225-1 | iA Writer font subset |
-| `ttfx` | 0.5.0-2 | Terminal text effects, static binary |
+| `ttfx` | 0.5.0-3 | Terminal text effects, static binary |
 | `tzupdate` | 3.1.0-1 | Set timezone from IP geolocation |
 | `ufw-docker` | 251123-1 | Fix the Docker/UFW security flaw |
 | `vi` | 1:070224-9 | Original ex/vi text editor |
