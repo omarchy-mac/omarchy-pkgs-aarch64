@@ -78,7 +78,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `obs-studio` | 32.2.2-1 | Video recording and live streaming (no browser source) |
 | `obsidian-appimage` | 1.14.4-1 | Markdown knowledge base (AppImage) |
 | `omacalc` | 0.3.1-1 | Calculator — bound to `SUPER + CTRL + Q` |
-| `omacut` | 0.7.0-1 | Video length trimmer |
+| `omacut` | 0.7.2-1 | Video length trimmer |
 | `omarchy` | 4.0.2-2 | Omarchy Mac scripts and desktop runtime |
 | `omarchy-mac-keyring` | Pending edge bootstrap | Omarchy Mac public signing certificate and trust policy |
 | `omarchy-emacs` | 1.10.1-1 | Emacs theme/font syncing for Omarchy |
@@ -86,7 +86,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `omarchy-settings` | 4.0.2-2 | Apple Silicon system and user defaults |
 | `omarchy-steam-fex` | 1.0.0-1 | Steam launcher for the Asahi muvm/FEX stack |
 | `omarchy-webapp-theme` | 0.3.9-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
-| `omawrite` | 0.6.0-2 | Markdown writing app — bound to `SUPER + SHIFT + W` |
+| `omawrite` | 0.7.0-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
 | `omazed` | 2.2.0-3 | Live Omarchy theme sync for Zed |
 | `openai-codex-desktop` | 26.1007.71326-1 | ChatGPT desktop app with Codex |
 | `pinta` | 3.1.2-1 | Simple image editor |
