@@ -76,6 +76,13 @@
       "note": "Upstream omarchy-pkgs/AUR cursor-bin is arch=('x86_64') and an amd64 .deb that strips Electron. Official aarch64 edge has cursor-cli, not Cursor. Ships the vendor linux-arm64 AppImage with bundled Electron under /opt/cursor-bin so it does not collide with the Mac workaround at /opt/cursor. Icons and cursor-url-handler.desktop are unsquashed with squashfs-tools; the AppImage is not executed. pkgname stays cursor-bin. quattro-mac follow-up must delete /opt/cursor, /usr/local/bin/cursor, the two .desktop files, and hicolor icons before pacman -S, or those /usr/share paths still conflict."
     },
     {
+      "name": "displaylink",
+      "pkgbase": "displaylink",
+      "source": "local",
+      "category": "repack",
+      "note": "Synaptics DisplayLink USB graphics driver 6.3 for Apple Silicon. The vendor publishes Ubuntu-only packages and the AUR recipe is x86_64-oriented; ours installs the checksum-pinned official aarch64 DisplayLinkManager + firmware, an Arch systemd unit, udev rules and suspend hooks on top of the in-tree evdi package. Verified on an M1 (Asahi): a DL-7xxx/4xxx hub's DisplayLink ports drive 2 extra monitors (wayland/Hyprland, EDID + 1080p60). Version bumps: bump pkgver/_pkgfullver/_releasedate and the zip sha256."
+    },
+    {
       "name": "dotnet-host-bin",
       "pkgbase": "dotnet-core-bin",
       "source": "aur",
@@ -116,6 +123,13 @@
       "source": "aur",
       "category": "repack",
       "note": "split pkgbase"
+    },
+    {
+      "name": "evdi",
+      "pkgbase": "evdi",
+      "source": "local",
+      "category": "compile",
+      "note": "DisplayLink EVDI kernel module + libevdi 1.14.15 (the revision bundled with driver 6.3). ALARM ships no evdi and the AUR recipes build against the build host kernel via dkms; ours pins _KVER to the linux-asahi release (bump with asahi kernel bumps, per repo convention) and installs the module + libevdi without dkms. Custom kernels without headers (linux-asahi-hdmi-recover) cannot load any evdi build made from unrelated headers - the loader rejects a struct-module ABI mismatch with Exec format error; align the header tree's config to /proc/config.gz of the running kernel before building in that case."
     },
     {
       "name": "ghostty",

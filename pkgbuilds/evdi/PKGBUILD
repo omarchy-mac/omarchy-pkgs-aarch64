@@ -1,0 +1,48 @@
+# Maintainer: joelrb
+# Contributor: joelrb
+# DisplayLink EVDI (Extensible Virtual Display Interface) kernel module + libevdi.
+# EVDI revision bundled with DisplayLink driver 6.3 (release notes: v1.14.14-5, tree 1.14.15).
+
+pkgname=evdi
+pkgver=1.14.15
+pkgrel=1
+pkgdesc="Extensible Virtual Display Interface kernel module and library (DisplayLink)"
+url="https://github.com/DisplayLink/evdi"
+arch=('aarch64')
+license=('GPL-2.0-only' 'LGPL-2.1-only' 'MIT')
+
+# Kernel release the module is built for. ALARM ships kernel/headers in lockstep;
+# bump this when linux-asahi is bumped (version bumps are edits to this PKGBUILD,
+# matching the repo convention).
+_KVER="7.1.13-3-2-ARCH"
+
+depends=('libusb' 'util-linux')
+makedepends=('linux-asahi-headers' 'pahole' 'gcc' 'make' 'grep' 'gawk')
+
+source=("v${pkgver}.tar.gz::https://github.com/DisplayLink/evdi/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('3f2f602cf8c3944e5b5f62e2649601185b3c3abac70f6f8941c2449a642f3bff')
+
+build() {
+  cd "$srcdir/evdi-$pkgver"
+  # Build libevdi (userland, no kernel headers needed).
+  make -C library
+  # Build the kernel module against the pinned asahi kernel, not the build host.
+  # RUN_DEPMOD empty: depmod runs at install time on the target machine.
+  make -C module KVER="$_KVER" RUN_DEPMOD=
+}
+
+package() {
+  cd "$srcdir/evdi-$pkgver"
+
+  install -Dm644 module/evdi.ko \
+    "$pkgdir/usr/lib/modules/$_KVER/kernel/drivers/gpu/drm/evdi/evdi.ko"
+
+  install -Dm755 library/libevdi.so.1.14.15 "$pkgdir/usr/lib/libevdi.so.1.14.15"
+  ln -s libevdi.so.1.14.15 "$pkgdir/usr/lib/libevdi.so.1"
+  ln -s libevdi.so.1.14.15 "$pkgdir/usr/lib/libevdi.so"
+  install -Dm644 library/evdi_lib.h "$pkgdir/usr/include/evdi_lib.h"
+
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE.MIT"
+  install -Dm644 library/LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE.LGPL-2.1-only"
+  install -Dm644 module/LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE.GPL-2.0-only"
+}
