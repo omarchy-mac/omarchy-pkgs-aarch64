@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import yaml
 
@@ -17,6 +18,30 @@ builder = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(builder)
 COMMIT = 'a' * 40
 VERSION = '4.0.0.alpha.quattro.r1790000000.gaaaaaaaaaaaa'
+
+
+class BootBuildDependenciesTest(unittest.TestCase):
+    def test_split_runtime_requires_coordinated_boot_profile(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            builder.require_boot_profile(root, 3)
+            (root / 'packages/omarchy-mac/boot').mkdir(parents=True)
+            with self.assertRaisesRegex(ValueError, 'boot-profile limine'):
+                builder.require_boot_profile(root, 3)
+            builder.require_boot_profile(root, 4)
+
+    def test_build_dependencies_are_checked_without_installing_runtime_packages(self):
+        metadata = "pkgbase = fixture\n\tmakedepends = git\n\tmakedepends_aarch64 = zlib\n\tdepends = limine\n"
+        with patch.object(builder, 'output', return_value=metadata), patch.object(builder.subprocess, 'run') as run:
+            run.return_value = subprocess.CompletedProcess([], 127, 'zlib\n', '')
+            with self.assertRaisesRegex(ValueError, 'disposable builder: zlib'):
+                builder.check_boot_build_dependencies(Path('/recipes'))
+            self.assertEqual(run.call_args.args[0], ['pacman', '-T', 'git', 'zlib'])
+            run.return_value = subprocess.CompletedProcess([], 0, '', '')
+            builder.check_boot_build_dependencies(Path('/recipes'))
+            run.return_value = subprocess.CompletedProcess([], 1, '', 'broken database')
+            with self.assertRaisesRegex(ValueError, 'cannot query'):
+                builder.check_boot_build_dependencies(Path('/recipes'))
 
 
 class PackageSetTest(unittest.TestCase):
@@ -34,6 +59,48 @@ class PackageSetTest(unittest.TestCase):
 
     def verify(self):
         return builder.verify_packages(self.records, COMMIT, self.versions, COMMIT)
+
+    def add_boot_packages(self):
+        for name in builder.BOOT_PACKAGES:
+            version = '1.0-1.10001'
+            self.versions[name] = version
+            self.records[name] = ({'pkgname': [name], 'pkgver': [version], 'arch': ['aarch64']}, set(), COMMIT)
+        self.records['omarchy-settings'][1].add('usr/share/omarchy/default/limine/limine.conf')
+        self.records['omarchy-mac-boot'][1].add('usr/lib/omarchy/initcpio/omarchy-mac-encrypt')
+        self.records['omarchy-mac-boot'][1].update(builder.BOOT_TRANSFERRED)
+        self.records['omarchy-mac-boot'][0]['x_runtime_source'] = [COMMIT]
+        self.records['omarchy-mac-boot'][0]['depend'] = ['omarchy=' + self.versions['omarchy']]
+
+    def test_boot_candidate_is_explicit_and_requires_complete_owned_payload(self):
+        self.add_boot_packages()
+        builder.verify_packages(self.records, COMMIT, self.versions, COMMIT, schema=4)
+        with self.assertRaises(ValueError):
+            self.verify()
+        self.records['omarchy-settings'][1].clear()
+        with self.assertRaisesRegex(ValueError, 'menu template'):
+            builder.verify_packages(self.records, COMMIT, self.versions, COMMIT, schema=4)
+
+    def test_boot_helpers_require_matching_source_and_complete_ownership(self):
+        self.add_boot_packages()
+        self.records['omarchy-mac-boot'][0]['x_runtime_source'] = ['b' * 40]
+        with self.assertRaisesRegex(ValueError, 'desktop source revision'):
+            builder.verify_packages(self.records, COMMIT, self.versions, COMMIT, schema=4)
+        self.records['omarchy-mac-boot'][0]['x_runtime_source'] = [COMMIT]
+        self.records['omarchy-mac-boot'][0]['depend'] = ['omarchy=' + self.versions['omarchy']]
+        self.records['omarchy-mac-boot'][1].remove(builder.BOOT_TRANSFERRED[0])
+        with self.assertRaisesRegex(ValueError, 'wrong boot helper owner'):
+            builder.verify_packages(self.records, COMMIT, self.versions, COMMIT, schema=4)
+
+    def test_boot_candidate_rejects_foreign_key_and_overlapping_ownership(self):
+        self.add_boot_packages()
+        path = 'usr/lib/omarchy/mac-first-boot/omarchy-arm-repository.key'
+        self.records['omarchy-mac-boot'][1].add(path)
+        with self.assertRaisesRegex(ValueError, 'repository key'):
+            builder.verify_packages(self.records, COMMIT, self.versions, COMMIT, schema=4)
+        self.records['omarchy-mac-boot'][1].remove(path)
+        self.records['omarchy-mac-boot'][1].add(builder.TRANSFERRED[0])
+        with self.assertRaisesRegex(ValueError, 'duplicate file owner'):
+            builder.verify_packages(self.records, COMMIT, self.versions, COMMIT, schema=4)
 
     def test_complete_same_source_set_has_one_owner_per_transferred_file(self):
         owners = self.verify()

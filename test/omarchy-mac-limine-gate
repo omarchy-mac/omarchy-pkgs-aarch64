@@ -1,0 +1,78 @@
+#!/bin/bash
+# Directory-only regression for the pre-activation native package hooks.
+set -euo pipefail
+ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+python - "$ROOT" <<'PY'
+from pathlib import Path
+import os
+import subprocess
+import sys
+import tempfile
+
+repo = Path(sys.argv[1])
+helper = repo / 'pkgbuilds/omarchy-mac-boot/files/usr/lib/omarchy/mac-boot/limine-ready'
+patch = repo / 'pkgbuilds/limine-mkinitcpio-hook/0002-honor-apple-activation-before-pacman-hooks.patch'
+with tempfile.TemporaryDirectory() as directory:
+    root = Path(directory)
+    marker, defaults, gate = [root / name for name in ('enabled', 'defaults', 'gate')]
+    gate.write_text(helper.read_text().replace('/var/lib/omarchy/limine.enabled', str(marker))
+                    .replace('/etc/default/limine', str(defaults)))
+    gate.chmod(0o755)
+    def status():
+        return subprocess.run([str(gate)], capture_output=True).returncode
+    assert status() == 100
+    marker.touch()
+    assert status() == 1
+    defaults.write_text('ESP_PATH=/boot/efi\n')
+    assert status() == 0
+    for path in (marker, defaults):
+        saved = path.read_bytes()
+        path.unlink(); path.symlink_to(root / 'missing')
+        assert status() == 1
+        path.unlink(); path.mkdir()
+        assert status() == 1
+        path.rmdir(); path.write_bytes(saved)
+    print('ok - dormant/active/invalid marker and defaults have distinct readiness statuses')
+
+    # Execute the actual added patch blocks, ending at the upstream entrypoint
+    # boundary. Native qualification separately applies these hunks to pinned
+    # upstream sources and runs the resulting real pacman hooks.
+    blocks = {}
+    current = None
+    for line in patch.read_text().splitlines(keepends=True):
+        if line.startswith('+++ b/'):
+            current = line[6:].strip(); blocks[current] = ''
+        elif line.startswith('+') and current:
+            blocks[current] += line[1:]
+    assert len(blocks) == 3
+    for path, block in blocks.items():
+        name = Path(path).name
+        entry = root / name
+        stock = root / 'stock-mkinitcpio'
+        stock.write_text('#!/bin/bash\n[[ $1 == install ]] || exit 1\ncat >"$CAPTURE"\n')
+        stock.chmod(0o755)
+        entry.write_text('#!/bin/bash\n' + block
+                         .replace('/usr/lib/omarchy/mac-boot/limine-ready', str(gate))
+                         .replace('/usr/share/libalpm/scripts/mkinitcpio', str(stock)) +
+                         '\necho upstream-boundary\n')
+        env = dict(os.environ, CAPTURE=str(root / 'targets'))
+        def run():
+            return subprocess.run(['bash', str(entry), 'pre'], input='usr/lib/modules/fixture/pkgbase\n',
+                                  text=True, capture_output=True, env=env)
+        # A valid armed image reaches upstream's defaults and runtime logic.
+        assert run().stdout == 'upstream-boundary\n'
+        defaults.unlink()
+        result = run()
+        assert result.returncode == 1 and not result.stdout
+        marker.unlink()
+        result = run()
+        assert result.returncode == 0 and not result.stdout
+        if name == 'limine-mkinitcpio-install':
+            assert (root/'targets').read_text() == 'usr/lib/modules/fixture/pkgbase\n'
+        # Generic installations do not ship the helper and remain untouched.
+        gate.chmod(0o644)
+        assert run().stdout == 'upstream-boundary\n'
+        gate.chmod(0o755)
+        marker.touch(); defaults.write_text('ESP_PATH=/boot/efi\n')
+    print('ok - package hooks preserve generic behavior, retain stock initramfs updates and reject broken activation')
+PY

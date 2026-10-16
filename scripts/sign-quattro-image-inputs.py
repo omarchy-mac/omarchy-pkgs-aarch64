@@ -28,15 +28,16 @@ def validate(root, expected_hash, source):
     require(manifest.is_file() and not manifest.is_symlink(), 'unsafe manifest')
     require(build.digest(manifest) == expected_hash, 'manifest checksum mismatch')
     data = json.loads(manifest.read_text())
-    require(data['schema'] == 3 and data['candidate_only'] is True
+    require(data['schema'] in (3, 4) and data['candidate_only'] is True
             and data['publication'] == 'none' and data['signing'] == 'none', 'not an unsigned candidate')
     require(data['source_repository'] == 'omacom/omarchy-mac'
             and data['source_revision'] == source, 'wrong candidate source')
-    require(len(data['packages']) == 9, 'expected nine packages')
+    expected_packages = build.candidate_packages(data['schema'])
+    require(len(data['packages']) == len(expected_packages), 'wrong candidate package count')
     records, versions, files = {}, {}, []
     for item in data['packages']:
         name, filename = item['name'], item['filename']
-        require(name in build.PACKAGES and name not in records, 'unexpected or duplicate package')
+        require(name in expected_packages and name not in records, 'unexpected or duplicate package')
         require(re.fullmatch(r'[A-Za-z0-9+_.:-]+\.pkg\.tar\.(xz|zst)', filename), 'unsafe package filename')
         path = root / filename
         require(path.is_file() and not path.is_symlink(), 'unsafe package archive')
@@ -46,7 +47,7 @@ def validate(root, expected_hash, source):
         versions[name] = item['version']
         files.append(path)
     require(re.fullmatch('[a-f0-9]{40}', data['package_repository_revision']), 'invalid recipe revision')
-    build.verify_packages(records, source, versions, data['package_repository_revision'])
+    build.verify_packages(records, source, versions, data['package_repository_revision'], data['schema'])
     require({p.name for p in root.glob('*.pkg.tar.*')} == {p.name for p in files}, 'unexpected package or signature')
     runtime = next(root / p['filename'] for p in data['packages'] if p['name'] == 'omarchy')
     # These lists are authoritative image inputs: compare them to the archive,
