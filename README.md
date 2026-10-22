@@ -49,7 +49,7 @@ small, checked packaging patch described below. Packages come from four places:
 | Package | Version | Provides |
 |---------|---------|----------|
 | `1password` | 8.12.42-1 | Password manager |
-| `1password-cli` | 2.41.0-1 | 1Password CLI |
+| `1password-cli` | 2.41.1-1 | 1Password CLI |
 | `aether` | 4.32.0-1 | Wallpaper-driven desktop theming |
 | `aspnet-runtime-bin` | 10.0.13.sdk402-1 | ASP.NET Core runtime |
 | `aspnet-targeting-pack-bin` | 10.0.13.sdk402-1 | ASP.NET Core targeting pack |
@@ -88,7 +88,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `omarchy-webapp-theme` | 0.3.9-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
 | `omawrite` | 0.7.2-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
 | `omazed` | 2.2.0-3 | Live Omarchy theme sync for Zed |
-| `openai-codex-desktop` | 26.1013.40934-1 | ChatGPT desktop app with Codex |
+| `openai-codex-desktop` | 26.1016.61520-1 | ChatGPT desktop app with Codex |
 | `pinta` | 3.1.2-1 | Simple image editor |
 | `tensaku` | 0.29.0-1 | Screenshot annotation for Wayland |
 | `ttf-ia-writer` | 20181225-1 | iA Writer font subset |
