@@ -34,6 +34,9 @@ permissions:
 
 jobs:
   retain:
+    # Only main's copy of the checks may retain a receipt; a branch copy with
+    # weaker checks would produce an artifact the publisher cannot tell apart.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -50,6 +53,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$GITHUB_REPOSITORY" == omarchy-mac/omarchy-pkgs-aarch64 ]]
+          [[ "$GITHUB_REF" == refs/heads/main ]]
           PYTHONDONTWRITEBYTECODE=1 python3 scripts/retain-qualification-receipt.py \
             --manifest-sha256 "$MANIFEST" --receipt-b64 "$RECEIPT" --receipt-sha256 "$RECEIPT_SHA" \
             --report-b64 "$REPORT" --report-sha256 "$REPORT_SHA" --output "$RUNNER_TEMP/qualification"

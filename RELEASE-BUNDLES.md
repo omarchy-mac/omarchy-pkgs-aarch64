@@ -58,7 +58,7 @@ After the actual tests and review pass, record their report in a JSON receipt. T
 }
 ```
 
-The report path is relative to the receipt. Record the actual scope and remaining hardware coverage honestly. Do not fabricate passes to satisfy the planner. For final unsigned 4.0.3, also record `"released_upgrade_from": "4.0.2-2"` and `"hardware_checks": {"m1_reboot_runtime": "pass", "m2_reboot_runtime": "pass"}`. The unsigned publisher requires these fields and a fresh receipt for the final bundle; the report must contain the actual physical observations.
+The report path is relative to the receipt and must be a plain file name. The publisher reads both files from an artifact of a run in this repository: retain them with the **Retain qualification receipt** workflow (dispatched on `main`), which checks the hashes, the manifest binding and the gates above, and uploads the pair as `qualification-<manifest_sha256>-<run_id>-<attempt>` for 90 days. Record the actual scope and remaining hardware coverage honestly. Do not fabricate passes to satisfy the planner. For final unsigned 4.0.3, also record `"released_upgrade_from": "4.0.2-2"` and `"hardware_checks": {"m1_reboot_runtime": "pass", "m2_reboot_runtime": "pass"}`. The unsigned publisher requires these fields and a fresh receipt for the final bundle; the report must contain the actual physical observations.
 
 ```bash
 python3 scripts/release-bundle.py publish \
