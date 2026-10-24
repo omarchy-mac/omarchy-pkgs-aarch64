@@ -1,0 +1,64 @@
+name: Retain qualification receipt
+
+# "Publish qualified unsigned lane" reads qualification.json and the report it
+# names from an artifact of a run in this repository. This is that run: it
+# retains exactly the operator's two files, after checking them against the
+# approved hashes and the approved bundle manifest. No credentials, no writes
+# beyond the artifact. The publisher re-checks the receipt against the bundle.
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_sha256:
+        description: 'Approved bundle manifest.json SHA256 the receipt qualifies'
+        type: string
+        required: true
+      receipt_b64:
+        description: 'qualification.json, base64 (base64 -w0 qualification.json)'
+        type: string
+        required: true
+      receipt_sha256:
+        description: 'Approved qualification.json SHA256'
+        type: string
+        required: true
+      report_b64:
+        description: 'The report the receipt names, base64; inputs share a 65535-character limit'
+        type: string
+        required: true
+      report_sha256:
+        description: 'Approved report SHA256 (must equal the receipt report_sha256)'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  retain:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Check and stage the receipt and report
+        env:
+          MANIFEST: ${{ inputs.manifest_sha256 }}
+          RECEIPT: ${{ inputs.receipt_b64 }}
+          RECEIPT_SHA: ${{ inputs.receipt_sha256 }}
+          REPORT: ${{ inputs.report_b64 }}
+          REPORT_SHA: ${{ inputs.report_sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == omarchy-mac/omarchy-pkgs-aarch64 ]]
+          PYTHONDONTWRITEBYTECODE=1 python3 scripts/retain-qualification-receipt.py \
+            --manifest-sha256 "$MANIFEST" --receipt-b64 "$RECEIPT" --receipt-sha256 "$RECEIPT_SHA" \
+            --report-b64 "$REPORT" --report-sha256 "$REPORT_SHA" --output "$RUNNER_TEMP/qualification"
+          ls -l "$RUNNER_TEMP/qualification"
+          printf 'Retained qualification for manifest %s as artifact %s.\n' "$MANIFEST" \
+            "qualification-${MANIFEST}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >>"$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: qualification-${{ inputs.manifest_sha256 }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qualification/
+          if-no-files-found: error
+          retention-days: 90
