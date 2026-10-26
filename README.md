@@ -76,7 +76,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `localsend` | 1.18.2-2 | Cross-platform AirDrop alternative |
 | `mise-bin` | 2026.10.19-1 | Dev tools, env vars, task runner |
 | `obs-studio` | 32.2.2-1 | Video recording and live streaming (no browser source) |
-| `obsidian-appimage` | 1.14.4-1 | Markdown knowledge base (AppImage) |
+| `obsidian-appimage` | 1.14.5-1 | Markdown knowledge base (AppImage) |
 | `omacalc` | 0.3.1-1 | Calculator — bound to `SUPER + CTRL + Q` |
 | `omacut` | 0.7.2-1 | Video length trimmer |
 | `omarchy` | 4.0.2-2 | Omarchy Mac scripts and desktop runtime |
