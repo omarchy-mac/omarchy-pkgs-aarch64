@@ -51,18 +51,18 @@ small, checked packaging patch described below. Packages come from four places:
 | `1password` | 8.12.42-1 | Password manager |
 | `1password-cli` | 2.41.1-1 | 1Password CLI |
 | `aether` | 4.32.0-1 | Wallpaper-driven desktop theming |
-| `aspnet-runtime-bin` | 10.0.13.sdk402-1 | ASP.NET Core runtime |
-| `aspnet-targeting-pack-bin` | 10.0.13.sdk402-1 | ASP.NET Core targeting pack |
+| `aspnet-runtime-bin` | 10.0.14.sdk403-1 | ASP.NET Core runtime |
+| `aspnet-targeting-pack-bin` | 10.0.14.sdk403-1 | ASP.NET Core targeting pack |
 | `avd-fw` | 0.1-1 | Apple Video Decoder firmware — H.264/HEVC/VP9 hardware decode |
-| `brave-origin-bin` | 1:1.98.60-1 | Minimalist browser from the Brave team |
+| `brave-origin-bin` | 1:1.98.62-1 | Minimalist browser from the Brave team |
 | `cliamp` | 2.3.0-1 | Retro terminal music player |
 | `cursor-bin` | 3.20.17-1 | Cursor editor (vendor linux-arm64 AppImage) |
-| `dotnet-host-bin` | 10.0.13.sdk402-1 | .NET CLI driver |
+| `dotnet-host-bin` | 10.0.14.sdk403-1 | .NET CLI driver |
 | `dotnet-runtime-2.1` | 2.1.30.sdk818-1 | .NET Core 2.1 runtime |
-| `dotnet-runtime-bin` | 10.0.13.sdk402-1 | .NET runtime |
+| `dotnet-runtime-bin` | 10.0.14.sdk403-1 | .NET runtime |
 | `dotnet-sdk-2.1` | 2.1.30.sdk818-1 | .NET Core 2.1 SDK |
-| `dotnet-sdk-bin` | 10.0.13.sdk402-1 | .NET SDK |
-| `dotnet-targeting-pack-bin` | 10.0.13.sdk402-1 | .NET targeting pack |
+| `dotnet-sdk-bin` | 10.0.14.sdk403-1 | .NET SDK |
+| `dotnet-targeting-pack-bin` | 10.0.14.sdk403-1 | .NET targeting pack |
 | `ghostty` | 1.3.1-1 | Stable terminal emulator |
 | `ghostty-nautilus` | 1.3.1-1 | Open in Ghostty extension for GNOME Files |
 | `ghostty-shell-integration` | 1.3.1-1 | Ghostty shell integration scripts |
@@ -99,7 +99,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `voxtype-bin` | 1.1.1-1 | Push-to-talk dictation |
 | `xdg-terminal-exec` | 0.14.3-1 | Launch desktop apps with `Terminal=true` |
 | `yaru-icon-theme` | 26.04.5.1ubuntu-1 | Yaru default Ubuntu icon theme |
-| `yay` | 13.0.1-1 | Pacman wrapper and AUR helper |
+| `yay` | 13.1.0-1 | Pacman wrapper and AUR helper |
 | `zed` | 1.20.2-1 | Zed editor (vendor linux aarch64 release) |
 
 ## Usage
