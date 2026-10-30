@@ -54,7 +54,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `aspnet-runtime-bin` | 10.0.14.sdk403-1 | ASP.NET Core runtime |
 | `aspnet-targeting-pack-bin` | 10.0.14.sdk403-1 | ASP.NET Core targeting pack |
 | `avd-fw` | 0.1-1 | Apple Video Decoder firmware — H.264/HEVC/VP9 hardware decode |
-| `brave-origin-bin` | 1:1.98.62-1 | Minimalist browser from the Brave team |
+| `brave-origin-bin` | 1:1.98.63-1 | Minimalist browser from the Brave team |
 | `cliamp` | 2.3.0-1 | Retro terminal music player |
 | `cursor-bin` | 3.20.17-1 | Cursor editor (vendor linux-arm64 AppImage) |
 | `dotnet-host-bin` | 10.0.14.sdk403-1 | .NET CLI driver |
@@ -71,7 +71,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `herdr` | 0.9.1-2 | Terminal workspace manager for AI coding agents |
 | `hermes-desktop` | 2026.9.7-5 | Native desktop shell for Hermes Agent |
 | `hypa-ttfx-bin` | 0.3.3-1 | Hypa terminal text effects |
-| `hyprland-preview-share-picker` | 0.2.1-3 | Share picker with window/monitor previews |
+| `hyprland-preview-share-picker` | 0.3.0.r3.g07602ef-1 | Share picker with window/monitor previews |
 | `libva-v4l2_request-avd` | 1.3.r11.r164.g5b5046c-1 | VA-API driver so applications can reach the Apple Video Decoder |
 | `localsend` | 1.18.2-2 | Cross-platform AirDrop alternative |
 | `mise-bin` | 2026.10.23-1 | Dev tools, env vars, task runner |
