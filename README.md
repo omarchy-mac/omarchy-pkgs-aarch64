@@ -78,7 +78,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `obs-studio` | 32.2.2-1 | Video recording and live streaming (no browser source) |
 | `obsidian-appimage` | 1.15.0-1 | Markdown knowledge base (AppImage) |
 | `omacalc` | 0.3.1-1 | Calculator — bound to `SUPER + CTRL + Q` |
-| `omacut` | 0.7.2-1 | Video length trimmer |
+| `omacut` | 0.7.3-1 | Video length trimmer |
 | `omarchy` | 4.0.2-2 | Omarchy Mac scripts and desktop runtime |
 | `omarchy-mac-keyring` | Pending edge bootstrap | Omarchy Mac public signing certificate and trust policy |
 | `omarchy-emacs` | 1.10.1-1 | Emacs theme/font syncing for Omarchy |
