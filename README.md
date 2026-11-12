@@ -51,18 +51,18 @@ small, checked packaging patch described below. Packages come from four places:
 | `1password` | 8.12.44-1 | Password manager |
 | `1password-cli` | 2.42.0-1 | 1Password CLI |
 | `aether` | 4.32.0-1 | Wallpaper-driven desktop theming |
-| `aspnet-runtime-bin` | 10.0.14.sdk403-1 | ASP.NET Core runtime |
-| `aspnet-targeting-pack-bin` | 10.0.14.sdk403-1 | ASP.NET Core targeting pack |
+| `aspnet-runtime-bin` | 11.0.0.sdk100-1 | ASP.NET Core runtime |
+| `aspnet-targeting-pack-bin` | 11.0.0.sdk100-1 | ASP.NET Core targeting pack |
 | `avd-fw` | 0.1-1 | Apple Video Decoder firmware — H.264/HEVC/VP9 hardware decode |
-| `brave-origin-bin` | 1:1.99.56-1 | Minimalist browser from the Brave team |
+| `brave-origin-bin` | 1:1.99.57-1 | Minimalist browser from the Brave team |
 | `cliamp` | 2.4.0-1 | Retro terminal music player |
 | `cursor-bin` | 3.20.17-1 | Cursor editor (vendor linux-arm64 AppImage) |
-| `dotnet-host-bin` | 10.0.14.sdk403-1 | .NET CLI driver |
+| `dotnet-host-bin` | 11.0.0.sdk100-1 | .NET CLI driver |
 | `dotnet-runtime-2.1` | 2.1.30.sdk818-1 | .NET Core 2.1 runtime |
-| `dotnet-runtime-bin` | 10.0.14.sdk403-1 | .NET runtime |
+| `dotnet-runtime-bin` | 11.0.0.sdk100-1 | .NET runtime |
 | `dotnet-sdk-2.1` | 2.1.30.sdk818-1 | .NET Core 2.1 SDK |
-| `dotnet-sdk-bin` | 10.0.14.sdk403-1 | .NET SDK |
-| `dotnet-targeting-pack-bin` | 10.0.14.sdk403-1 | .NET targeting pack |
+| `dotnet-sdk-bin` | 11.0.0.sdk100-1 | .NET SDK |
+| `dotnet-targeting-pack-bin` | 11.0.0.sdk100-1 | .NET targeting pack |
 | `ghostty` | 1.3.1-1 | Stable terminal emulator |
 | `ghostty-nautilus` | 1.3.1-1 | Open in Ghostty extension for GNOME Files |
 | `ghostty-shell-integration` | 1.3.1-1 | Ghostty shell integration scripts |
@@ -77,8 +77,8 @@ small, checked packaging patch described below. Packages come from four places:
 | `mise-bin` | 2026.11.7-1 | Dev tools, env vars, task runner |
 | `obs-studio` | 32.2.2-1 | Video recording and live streaming (no browser source) |
 | `obsidian-appimage` | 1.15.0-1 | Markdown knowledge base (AppImage) |
-| `omacalc` | 0.3.1-1 | Calculator — bound to `SUPER + CTRL + Q` |
-| `omacut` | 0.7.3-1 | Video length trimmer |
+| `omacalc` | 0.4.1-1 | Calculator — bound to `SUPER + CTRL + Q` |
+| `omacut` | 0.8.3-1 | Video length trimmer |
 | `omarchy` | 4.0.2-2 | Omarchy Mac scripts and desktop runtime |
 | `omarchy-mac-keyring` | Pending edge bootstrap | Omarchy Mac public signing certificate and trust policy |
 | `omarchy-emacs` | 1.10.1-1 | Emacs theme/font syncing for Omarchy |
@@ -86,7 +86,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `omarchy-settings` | 4.0.2-2 | Apple Silicon system and user defaults |
 | `omarchy-steam-fex` | 1.0.0-1 | Steam launcher for the Asahi muvm/FEX stack |
 | `omarchy-webapp-theme` | 0.3.9-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
-| `omawrite` | 0.7.2-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
+| `omawrite` | 0.7.4-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
 | `omazed` | 2.2.1-1 | Live Omarchy theme sync for Zed |
 | `openai-codex-desktop` | 26.1106.51428-1 | ChatGPT desktop app with Codex |
 | `pinta` | 3.1.2-1 | Simple image editor |
