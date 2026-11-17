@@ -48,7 +48,7 @@ small, checked packaging patch described below. Packages come from four places:
 
 | Package | Version | Provides |
 |---------|---------|----------|
-| `1password` | 8.12.44-1 | Password manager |
+| `1password` | 8.12.46-1 | Password manager |
 | `1password-cli` | 2.42.0-1 | 1Password CLI |
 | `aether` | 4.32.0-1 | Wallpaper-driven desktop theming |
 | `aspnet-runtime-bin` | 11.0.0.sdk100-1 | ASP.NET Core runtime |
