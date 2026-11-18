@@ -50,7 +50,7 @@ small, checked packaging patch described below. Packages come from four places:
 |---------|---------|----------|
 | `1password` | 8.12.46-1 | Password manager |
 | `1password-cli` | 2.42.0-1 | 1Password CLI |
-| `aether` | 4.32.0-1 | Wallpaper-driven desktop theming |
+| `aether` | 4.33.0-1 | Wallpaper-driven desktop theming |
 | `aspnet-runtime-bin` | 11.0.0.sdk100-1 | ASP.NET Core runtime |
 | `aspnet-targeting-pack-bin` | 11.0.0.sdk100-1 | ASP.NET Core targeting pack |
 | `avd-fw` | 0.1-1 | Apple Video Decoder firmware — H.264/HEVC/VP9 hardware decode |
@@ -88,7 +88,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `omarchy-webapp-theme` | 0.3.9-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
 | `omawrite` | 0.7.5-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
 | `omazed` | 2.2.1-1 | Live Omarchy theme sync for Zed |
-| `openai-codex-desktop` | 26.1111.21308-1 | ChatGPT desktop app with Codex |
+| `openai-codex-desktop` | 26.1111.71025-1 | ChatGPT desktop app with Codex |
 | `pinta` | 3.1.2-1 | Simple image editor |
 | `tensaku` | 0.29.0-1 | Screenshot annotation for Wayland |
 | `ttf-ia-writer` | 20181225-1 | iA Writer font subset |
