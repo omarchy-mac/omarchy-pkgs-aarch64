@@ -54,7 +54,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `aspnet-runtime-bin` | 11.0.0.sdk100-1 | ASP.NET Core runtime |
 | `aspnet-targeting-pack-bin` | 11.0.0.sdk100-1 | ASP.NET Core targeting pack |
 | `avd-fw` | 0.1-1 | Apple Video Decoder firmware — H.264/HEVC/VP9 hardware decode |
-| `brave-origin-bin` | 1:1.99.57-1 | Minimalist browser from the Brave team |
+| `brave-origin-bin` | 1:1.100.58-1 | Minimalist browser from the Brave team |
 | `cliamp` | 2.4.1-1 | Retro terminal music player |
 | `cursor-bin` | 3.20.17-1 | Cursor editor (vendor linux-arm64 AppImage) |
 | `dotnet-host-bin` | 11.0.0.sdk100-1 | .NET CLI driver |
@@ -86,7 +86,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `omarchy-settings` | 4.0.2-2 | Apple Silicon system and user defaults |
 | `omarchy-steam-fex` | 1.0.0-1 | Steam launcher for the Asahi muvm/FEX stack |
 | `omarchy-webapp-theme` | 0.3.9-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
-| `omawrite` | 0.7.5-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
+| `omawrite` | 0.7.6-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
 | `omazed` | 2.2.1-1 | Live Omarchy theme sync for Zed |
 | `openai-codex-desktop` | 26.1111.71025-1 | ChatGPT desktop app with Codex |
 | `pinta` | 3.1.2-1 | Simple image editor |
