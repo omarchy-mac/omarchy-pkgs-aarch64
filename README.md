@@ -79,11 +79,11 @@ small, checked packaging patch described below. Packages come from four places:
 | `obsidian-appimage` | 1.15.0-1 | Markdown knowledge base (AppImage) |
 | `omacalc` | 0.4.2-1 | Calculator — bound to `SUPER + CTRL + Q` |
 | `omacut` | 0.8.3-1 | Video length trimmer |
-| `omarchy` | 4.0.2-2 | Omarchy Mac scripts and desktop runtime |
-| `omarchy-mac-keyring` | Pending edge bootstrap | Omarchy Mac public signing certificate and trust policy |
+| `omarchy` | 4.0.3rc4-3 | Omarchy Mac scripts and desktop runtime |
+| `omarchy-mac-keyring` | 20260914-2 | Omarchy Mac public signing certificate and trust policy |
 | `omarchy-emacs` | 1.10.1-1 | Emacs theme/font syncing for Omarchy |
 | `omarchy-nvim` | 2026.9.21-5 | Pre-built LazyVim configuration |
-| `omarchy-settings` | 4.0.2-2 | Apple Silicon system and user defaults |
+| `omarchy-settings` | 4.0.3rc4-3 | Apple Silicon system and user defaults |
 | `omarchy-steam-fex` | 1.0.0-1 | Steam launcher for the Asahi muvm/FEX stack |
 | `omarchy-webapp-theme` | 0.3.9-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
 | `omawrite` | 0.7.6-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
