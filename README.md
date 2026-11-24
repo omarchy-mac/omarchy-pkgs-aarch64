@@ -48,13 +48,13 @@ small, checked packaging patch described below. Packages come from four places:
 
 | Package | Version | Provides |
 |---------|---------|----------|
-| `1password` | 8.12.46-1 | Password manager |
+| `1password` | 8.12.48-1 | Password manager |
 | `1password-cli` | 2.42.0-1 | 1Password CLI |
 | `aether` | 4.33.0-1 | Wallpaper-driven desktop theming |
 | `aspnet-runtime-bin` | 11.0.0.sdk100-1 | ASP.NET Core runtime |
 | `aspnet-targeting-pack-bin` | 11.0.0.sdk100-1 | ASP.NET Core targeting pack |
 | `avd-fw` | 0.1-1 | Apple Video Decoder firmware — H.264/HEVC/VP9 hardware decode |
-| `brave-origin-bin` | 1:1.100.58-1 | Minimalist browser from the Brave team |
+| `brave-origin-bin` | 1:1.100.59-1 | Minimalist browser from the Brave team |
 | `cliamp` | 2.4.1-1 | Retro terminal music player |
 | `cursor-bin` | 3.20.17-1 | Cursor editor (vendor linux-arm64 AppImage) |
 | `dotnet-host-bin` | 11.0.0.sdk100-1 | .NET CLI driver |
@@ -73,7 +73,7 @@ small, checked packaging patch described below. Packages come from four places:
 | `hypa-ttfx-bin` | 0.3.3-1 | Hypa terminal text effects |
 | `hyprland-preview-share-picker` | 0.3.0.r3.g07602ef-1 | Share picker with window/monitor previews |
 | `libva-v4l2_request-avd` | 1.3.r11.r164.g5b5046c-1 | VA-API driver so applications can reach the Apple Video Decoder |
-| `localsend` | 1.18.2-2 | Cross-platform AirDrop alternative |
+| `localsend` | 1.19.0-1 | Cross-platform AirDrop alternative |
 | `mise-bin` | 2026.11.13-1 | Dev tools, env vars, task runner |
 | `obs-studio` | 32.2.2-1 | Video recording and live streaming (no browser source) |
 | `obsidian-appimage` | 1.15.0-1 | Markdown knowledge base (AppImage) |
@@ -86,9 +86,9 @@ small, checked packaging patch described below. Packages come from four places:
 | `omarchy-settings` | 4.0.3rc4-3 | Apple Silicon system and user defaults |
 | `omarchy-steam-fex` | 1.0.0-1 | Steam launcher for the Asahi muvm/FEX stack |
 | `omarchy-webapp-theme` | 0.3.9-1 | Theme Slack, Discord, GitHub et al. to match Omarchy |
-| `omawrite` | 0.7.7-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
+| `omawrite` | 0.7.8-1 | Markdown writing app — bound to `SUPER + SHIFT + W` |
 | `omazed` | 2.2.1-1 | Live Omarchy theme sync for Zed |
-| `openai-codex-desktop` | 26.1120.41243-1 | ChatGPT desktop app with Codex |
+| `openai-codex-desktop` | 26.1120.50957-1 | ChatGPT desktop app with Codex |
 | `pinta` | 3.1.2-1 | Simple image editor |
 | `tensaku` | 0.29.0-1 | Screenshot annotation for Wayland |
 | `ttf-ia-writer` | 20181225-1 | iA Writer font subset |
