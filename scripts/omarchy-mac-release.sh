@@ -139,6 +139,27 @@ verify() {
     || die "omarchy aarch64 package does not depend on networkmanager"
   grep -Fxq snapper <<<"$omarchy_depends" \
     || die "omarchy aarch64 package does not depend on snapper"
+  grep -Fxq zram-generator <<<"$omarchy_depends" \
+    || die "omarchy aarch64 package does not depend on zram-generator"
+
+  # The 4.0.2-2 ARM recipe omitted this runtime path while retaining the
+  # source copy under /usr/share/omarchy. Upgrading therefore removed the
+  # generator's configuration, leaving no swap on the next boot. Require
+  # source-identical bytes in a regular file: zram-generator 1.2.1 ignores
+  # symlinked drop-ins even when their targets contain the correct config.
+  local zram_source=default/systemd/zram-generator.conf.d/90-omarchy.conf
+  local zram_path=usr/lib/systemd/zram-generator.conf.d/90-omarchy.conf zram_entry
+  [[ -f "$SOURCE_DIR/$zram_source" ]] \
+    || die "release source is missing $zram_source"
+  zram_entry="$(bsdtar -tvf "$settings" "./$zram_path" 2>/dev/null \
+    || bsdtar -tvf "$settings" "$zram_path" 2>/dev/null)" \
+    || die "omarchy-settings is missing zram runtime configuration $zram_path"
+  [[ "${zram_entry:0:10}" == '-rw-r--r--' ]] \
+    || die "omarchy-settings zram runtime configuration must be a regular mode-0644 file"
+  (bsdtar -xOqf "$settings" "./$zram_path" 2>/dev/null \
+    || bsdtar -xOqf "$settings" "$zram_path" 2>/dev/null) \
+    | cmp -s - "$SOURCE_DIR/$zram_source" \
+    || die "omarchy-settings has stale zram runtime configuration"
 
   # Older release sources do not ship or enable this service. When present,
   # require the source unit in systemd's directory, not just the copy
@@ -152,8 +173,8 @@ verify() {
       || die "omarchy-settings has stale systemd user unit $keyboard_unit"
   fi
 
-  # These are x86 Limine/memory-stack defaults. Shipping any of them on ARM
-  # can alter the next initramfs or enable services that Apple Silicon lacks.
+  # Retain the existing Limine/oomd policy and omit the obsolete main zram
+  # config. The supported zram configuration is the vendor drop-in above.
   assert_absent_path "$settings" etc/limine-entry-tool.d
   assert_absent_path "$settings" usr/share/omarchy/default/limine
   assert_absent_path "$settings" etc/systemd/oomd.conf.d
